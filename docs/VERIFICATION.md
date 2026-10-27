@@ -1,5 +1,14 @@
 # Milestone 1 verification
 
+## Milestone 2 organization verification — 27 October 2026
+
+- TypeScript, ESLint, six frontend tests, Rust Clippy with warnings denied, production frontend build and standalone debug desktop build passed.
+- Rust: 15 tests passed, two opt-in tests not rerun for this change. Added coverage for real schema 1 migration and legacy archive restoration, folder/tag backup round trips, atomic rollback on invalid assignments, non-destructive deletion, and combined search/filter pagination.
+- `node tests/native/organization.mjs` passed in the compiled Windows WebView2 application using a disposable workspace. It exercises folder/tag creation, document assignment, combined filtering and title search, reopening the application, folder renaming, deletion of an active folder/tag filter, and preservation of the document. Screenshots are saved under `test-results/organization-<timestamp>/`.
+- The existing `node tests/native/acceptance.mjs` suite passed again, including formatted editing, Page/Canvas identity, attachments, actual SQLite write failure and retry, forced-termination recovery, offline editing and integrity checks.
+- The navigation controls were also checked in the native application and confirmed working by the user before this change.
+- Folders are single-level. Shared notes/references remain unimplemented. These checks do not constitute clean-machine installer validation.
+
 Validated on this Windows development PC on 26–27 October 2026. Milestone 1 is implemented and tested; the aspirational performance targets and future milestones are not release guarantees.
 
 ## Automated results

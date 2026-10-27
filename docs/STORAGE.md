@@ -14,6 +14,10 @@ backups/                   temporary SQLite backup snapshots
 
 The initial transactional migration creates objects, documents, attachments, object_attachments, and schema_migrations. `PRAGMA user_version` prevents opening newer databases. Foreign keys are enabled. WAL plus synchronous FULL protects acknowledged transactions. Startup runs quick_check and refuses malformed manifests; existing files are not reset on error.
 
+Database schema version 2 adds folders, tags, an optional `objects.folder_id`, and the `object_tags` join table. Existing version 1 databases migrate transactionally on open, including when restoring old backups. The workspace manifest/archive format remains version 1. Older Knot builds that only understand database schema 1 will refuse the upgraded database.
+
+Each document has at most one folder and up to 100 tags. Folder and tag names are trimmed, limited to 100 UTF-8 bytes, and unique within their type using SQLite's NOCASE collation (ASCII case-insensitive). Folder deletion sets document folders to NULL; tag deletion cascades only to tag assignments. Assignment changes commit atomically and leave editor snapshots untouched. Filters use stable IDs and indexed relationships, combine with title search, exclude soft-deleted documents, and paginate in groups of 100. Names and assignments are included in the SQLite backup automatically.
+
 ## Editor snapshots
 
 BlockSuite 0.19.5 uses a root collection Y.Doc with metadata and a separate spaceDoc subdocument. The adapter stores **both** `Y.encodeStateAsUpdate(collection.doc)` and `Y.encodeStateAsUpdate(doc.spaceDoc)` together. Restore applies the root state first, retrieves the existing document, applies its space state, then loads the block model. Missing roots fail closed rather than initialize over an existing snapshot.

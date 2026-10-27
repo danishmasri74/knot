@@ -10,6 +10,34 @@ export interface Snapshot {
   collection: number[];
   document: number[];
 }
+export interface Label {
+  id: string;
+  name: string;
+}
+export interface Catalog {
+  folders: Label[];
+  tags: Label[];
+}
+export interface Organization {
+  folder: string | null;
+  tags: string[];
+}
+export interface LibraryFilter {
+  folder: string | null;
+  tag: string | null;
+}
+export const organization = {
+  catalog: () => invoke<Catalog>("organization_catalog"),
+  get: (id: string) => invoke<Organization>("get_organization", { id }),
+  save: (id: string, value: Organization) =>
+    invoke<void>("organize_object", { id, value }),
+  create: (kind: "folder" | "tag", name: string) =>
+    invoke<string>("create_label", { kind, name }),
+  rename: (kind: "folder" | "tag", id: string, name: string) =>
+    invoke<void>("rename_label", { kind, id, name }),
+  delete: (kind: "folder" | "tag", id: string) =>
+    invoke<void>("delete_label", { kind, id }),
+};
 export const repository = {
   integrity: () =>
     invoke<{
@@ -18,8 +46,12 @@ export const repository = {
       corrupt: string[];
       orphan_files: string[];
     }>("check_workspace"),
-  list: (search = "", offset = 0) =>
-    invoke<KnowledgeObject[]>("list_objects", { search, offset }),
+  list: (
+    search = "",
+    offset = 0,
+    filter: LibraryFilter = { folder: null, tag: null },
+  ) =>
+    invoke<KnowledgeObject[]>("filter_objects", { search, offset, ...filter }),
   create: (kind: KnowledgeObject["kind"]) =>
     invoke<string>("create_object", { kind }),
   rename: (id: string, title: string) =>

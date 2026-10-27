@@ -20,7 +20,8 @@ Streaming IPC for large files; trash restore; multi-window navigation; startup o
 ## Milestone 2 — in progress
 
 - Implemented: session navigation history with Back/Forward controls, save-before-switch behavior, deleted-document removal, and history reset when restoring a workspace. History keeps the latest 100 visits and is not persisted across restarts.
-- Remaining: folders/tags, shared note placements and workspace-level BlockSuite references, tested shared-note consistency. No duplicate authoritative note bodies.
+- Implemented: single-level folders and tags, document assignment, combined sidebar filters and title search, create/rename/delete management, database migration and backup preservation.
+- Remaining: shared note placements and workspace-level BlockSuite references, tested shared-note consistency. No duplicate authoritative note bodies.
 - Shared notes require a workspace collection/provider design; the current per-object BlockSuite collections are still authoritative until that migration is implemented and verified.
 
 ## Milestone 3

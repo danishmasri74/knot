@@ -7,6 +7,8 @@ React owns navigation, title editing, library queries, status, and application a
 - `src/services/workspace.ts`: typed Tauri command APIs for documents, attachments, and backups.
 - `src/services/persistence.ts`: bounded, serialized asynchronous save coordination.
 - `src-tauri/src/storage.rs`: migrations, workspace initialization, SQLite transactions, asset hashing and storage.
+- `src-tauri/src/organization.rs`: folder/tag catalog, atomic assignments and filtered library queries.
+- `src/app/Organization.tsx`: organization management, document assignment and library filter controls.
 - `src-tauri/src/backup.rs`: consistent SQLite snapshots and validated archive restoration.
 - `src-tauri/src/lib.rs`: narrow commands and default workspace selection.
 

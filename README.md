@@ -31,6 +31,8 @@ Create notes or whiteboards in the sidebar. Page and Canvas are two views of the
 
 Use the Back and Forward buttons beside the document title to revisit documents opened in this session. Pending edits save before navigation; a failed save keeps you on the current document. History resets when opening a restored workspace or restarting Knot.
 
+Use **Manage folders & tags** in the sidebar to create, rename, or delete folders and tags. Open **Organize** above a document to choose one folder and any applicable tags. Sidebar folder/tag filters combine with title search. New documents start unfiled and clear the library filters. Deleting a folder makes its documents unfiled; deleting a tag removes its assignments. Neither action deletes documents. Folders are a single level for now.
+
 Edits save automatically after roughly 600 ms. **Saved** means the snapshot has committed to SQLite. Ctrl+S retries/flushes saves; switching documents and normal window closing flush pending edits. If a save fails, keep the window open and retry. Sudden process termination may lose changes that have not reached Saved.
 
 Back up workspace produces a versioned ZIP-based `.knot` file. Restore validates and opens a new sibling workspace; your previous workspace is retained. Deleted documents are soft-deleted and retained in backups; a trash-management UI is not yet implemented.

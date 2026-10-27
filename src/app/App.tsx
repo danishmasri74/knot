@@ -4,16 +4,35 @@ import { isTauri } from "@tauri-apps/api/core";
 import {
   repository,
   backups,
+  organization,
+  type Catalog,
+  type Organization,
+  type LibraryFilter,
   type KnowledgeObject,
 } from "../services/workspace";
 import type { SaveStatus } from "../services/persistence";
 import { NavigationHistory } from "../services/navigation";
+import {
+  LibraryFilters,
+  DocumentOrganization,
+  OrganizationManager,
+} from "./Organization";
 import {
   openEditor,
   type EditorSession,
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [catalog, setCatalog] = useState<Catalog>({ folders: [], tags: [] });
+  const [filter, setFilter] = useState<LibraryFilter>({
+    folder: null,
+    tag: null,
+  });
+  const [organized, setOrganized] = useState<Organization>({
+    folder: null,
+    tags: [],
+  });
+  const [managing, setManaging] = useState(false);
   const [items, setItems] = useState<KnowledgeObject[]>([]),
     [active, setActive] = useState<KnowledgeObject | null>(null),
     [query, setQuery] = useState(""),
@@ -33,9 +52,9 @@ export function App() {
   useEffect(() => {
     if (host.current) host.current.inert = busy;
   }, [busy]);
-  const refresh = async (search = query) => {
+  const refresh = async (search = query, selected = filter) => {
     const generation = ++searchGeneration.current;
-    const rows = await repository.list(search);
+    const rows = await repository.list(search, 0, selected);
     if (generation === searchGeneration.current) setItems(rows);
     return rows;
   };
@@ -55,6 +74,7 @@ export function App() {
   }
   async function select(item: KnowledgeObject, record = true) {
     await session.current?.flush();
+    const metadata = await organization.get(item.id);
     const next = await openEditor(
       item,
       (s, e) => {
@@ -82,6 +102,7 @@ export function App() {
     session.current = next;
     host.current?.replaceChildren(next.editor);
     setActive(item);
+    setOrganized(metadata);
     setTitle(item.title);
     setMode(next.editor.mode);
     if (record) history.current.visit(item);
@@ -94,6 +115,7 @@ export function App() {
       return;
     }
     void run(async () => {
+      setCatalog(await organization.catalog());
       const rows = await refresh("");
       if (rows[0]) await select(rows[0]);
     });
@@ -124,7 +146,7 @@ export function App() {
     if (!isTauri()) return;
     const timer = setTimeout(() => void refresh(query).catch(report), 180);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, filter]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "s") {
@@ -142,9 +164,28 @@ export function App() {
       await session.current?.flush();
       const id = await repository.create(kind);
       setQuery("");
-      const rows = await refresh("");
+      const all = { folder: null, tag: null };
+      setFilter(all);
+      const rows = await refresh("", all);
       await select(rows.find((x) => x.id === id)!);
     });
+  const reloadOrganization = async () => {
+    const next = await organization.catalog();
+    setCatalog(next);
+    const selected = {
+      folder:
+        filter.folder && !next.folders.some((f) => f.id === filter.folder)
+          ? null
+          : filter.folder,
+      tag:
+        filter.tag && !next.tags.some((t) => t.id === filter.tag)
+          ? null
+          : filter.tag,
+    };
+    setFilter(selected);
+    if (active) setOrganized(await organization.get(active.id));
+    await refresh(query, selected);
+  };
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -178,7 +219,11 @@ export function App() {
             aria-label="Search titles"
             placeholder="Find an idea…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            disabled={busy}
+            onChange={(e) => {
+              ++searchGeneration.current;
+              setQuery(e.target.value);
+            }}
           />
         </label>
         <div className="section-label">
@@ -188,6 +233,22 @@ export function App() {
             {items.length === 100 ? "+" : ""}
           </span>
         </div>
+        <LibraryFilters
+          catalog={catalog}
+          busy={busy}
+          value={filter}
+          onChange={(value) => {
+            ++searchGeneration.current;
+            setFilter(value);
+          }}
+        />
+        <button
+          className="manage-organization"
+          disabled={busy}
+          onClick={() => setManaging(!managing)}
+        >
+          Manage folders & tags
+        </button>
         <nav className="library">
           {items.map((item) => (
             <button
@@ -203,15 +264,20 @@ export function App() {
             </button>
           ))}
           {!items.length && (
-            <p className="empty">A little room for your next idea.</p>
+            <p className="empty">
+              {query || filter.folder !== null || filter.tag
+                ? "No documents match these filters."
+                : "A little room for your next idea."}
+            </p>
           )}
           {items.length >= 100 && (
             <button
+              disabled={busy}
               onClick={() =>
                 void run(async () =>
                   setItems([
                     ...items,
-                    ...(await repository.list(query, items.length)),
+                    ...(await repository.list(query, items.length, filter)),
                   ]),
                 )
               }
@@ -266,7 +332,11 @@ export function App() {
                   host.current?.replaceChildren();
                   setActive(null);
                   setQuery("");
-                  const rows = await refresh("");
+                  const all = { folder: null, tag: null };
+                  setFilter(all);
+                  setManaging(false);
+                  setCatalog(await organization.catalog());
+                  const rows = await refresh("", all);
                   if (rows[0]) await select(rows[0]);
                   setNotice(`Opened restored workspace: ${path}`);
                 }
@@ -419,6 +489,30 @@ export function App() {
             {error}
             <button onClick={() => setError("")}>Dismiss</button>
           </div>
+        )}
+        {managing && (
+          <OrganizationManager
+            catalog={catalog}
+            busy={busy}
+            run={run}
+            onChanged={reloadOrganization}
+            onClose={() => setManaging(false)}
+          />
+        )}
+        {active && (
+          <DocumentOrganization
+            catalog={catalog}
+            busy={busy}
+            value={organized}
+            onChange={(value) =>
+              void run(async () => {
+                await session.current?.flush();
+                await organization.save(active.id, value);
+                setOrganized(value);
+                await refresh();
+              })
+            }
+          />
         )}
         {notice && (
           <div role="status" className="notice-banner">

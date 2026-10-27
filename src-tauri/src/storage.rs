@@ -124,13 +124,18 @@ impl Workspace {
         let db = Connection::open(root.join("knot.db"))?;
         db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;")?;
         let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        if version > 1 {
+        if version > 2 {
             return Err("Database is newer than this Knot version".into());
         }
         if version == 0 {
             db.execute_batch("BEGIN IMMEDIATE;")?;
             db.execute_batch(include_str!("../migrations/001_initial.sql"))?;
             db.execute_batch("PRAGMA user_version=1; COMMIT;")?;
+        }
+        if version < 2 {
+            db.execute_batch("BEGIN IMMEDIATE;")?;
+            db.execute_batch(include_str!("../migrations/002_organization.sql"))?;
+            db.execute_batch("PRAGMA user_version=2; COMMIT;")?;
         }
         let check: String = db.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
         if check != "ok" {
@@ -143,16 +148,7 @@ impl Workspace {
         })
     }
     pub fn list(&self, search: &str, offset: i64) -> Result<Vec<Object>> {
-        let mut q = self.db.prepare("SELECT id,title,kind,updated_at FROM objects WHERE deleted_at IS NULL AND instr(lower(title),lower(?1))>0 ORDER BY updated_at DESC LIMIT 100 OFFSET ?2")?;
-        let rows = q.query_map(params![search, offset.max(0)], |r| {
-            Ok(Object {
-                id: r.get(0)?,
-                title: r.get(1)?,
-                kind: r.get(2)?,
-                updated_at: r.get(3)?,
-            })
-        })?;
-        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+        self.filtered_list(search, offset, None, None)
     }
     pub fn create(&self, kind: &str) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();

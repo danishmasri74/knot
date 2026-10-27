@@ -106,7 +106,7 @@ fn migrations_reopen_without_reset() {
     let v: i64 =
         w.db.pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-    assert_eq!(v, 1);
+    assert_eq!(v, 2);
 }
 #[test]
 fn reject_zip_traversal() {
@@ -302,4 +302,184 @@ fn missing_database_does_not_silently_initialize() {
     std::fs::remove_file(root.join("knot.db")).unwrap();
     assert!(Workspace::open(root.clone()).is_err());
     assert!(!root.join("knot.db").exists());
+}
+
+#[test]
+fn organization_survives_reopen_and_backup() {
+    use crate::organization::Organization;
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("workspace");
+    let mut w = Workspace::open(path.clone()).unwrap();
+    let id = w.create("note").unwrap();
+    let folder = w.create_label("folder", " Research ").unwrap();
+    let tag = w.create_label("tag", "Important").unwrap();
+    w.organize(
+        &id,
+        &Organization {
+            folder: Some(folder.clone()),
+            tags: vec![tag.clone()],
+        },
+    )
+    .unwrap();
+    w.save(
+        &id,
+        &Snapshot {
+            title: Some("Research note".into()),
+            collection: vec![1],
+            document: vec![2],
+        },
+    )
+    .unwrap();
+    drop(w);
+    let w = Workspace::open(path).unwrap();
+    assert_eq!(
+        w.organization(&id).unwrap().folder.as_deref(),
+        Some(folder.as_str())
+    );
+    assert_eq!(w.organization(&id).unwrap().tags, vec![tag.clone()]);
+    assert_eq!(
+        w.filtered_list("research", 0, Some(&folder), Some(&tag))
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(w.filtered_list("", 0, Some(""), None).unwrap().is_empty());
+    let archive = tmp.path().join("organized.knot");
+    backup::export(&w, &archive).unwrap();
+    let restored = Workspace::open(backup::restore(&archive, tmp.path()).unwrap()).unwrap();
+    assert_eq!(restored.catalog().unwrap().folders[0].name, "Research");
+    assert_eq!(restored.organization(&id).unwrap().tags, vec![tag]);
+    assert_eq!(restored.load(&id).unwrap().unwrap().document, vec![2]);
+    restored
+        .rename_label("folder", &folder, "Projects")
+        .unwrap();
+    restored.delete_label("folder", &folder).unwrap();
+    let tag = &restored.catalog().unwrap().tags[0].id;
+    restored.delete_label("tag", tag).unwrap();
+    assert!(restored.organization(&id).unwrap().folder.is_none());
+    assert!(restored.organization(&id).unwrap().tags.is_empty());
+    assert_eq!(restored.list("", 0).unwrap().len(), 1);
+    assert_eq!(restored.load(&id).unwrap().unwrap().document, vec![2]);
+}
+
+#[test]
+fn invalid_organization_changes_roll_back() {
+    use crate::organization::Organization;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut w = Workspace::open(tmp.path().join("workspace")).unwrap();
+    let id = w.create("note").unwrap();
+    let folder = w.create_label("folder", "Work").unwrap();
+    let tag = w.create_label("tag", "Priority").unwrap();
+    assert!(w.create_label("folder", "work").is_err());
+    assert!(w.create_label("tag", "  ").is_err());
+    assert!(w.create_label("invalid", "Name").is_err());
+    assert!(w.create_label("folder", &"x".repeat(101)).is_err());
+    w.organize(
+        &id,
+        &Organization {
+            folder: Some(folder.clone()),
+            tags: vec![tag.clone(), tag.clone()],
+        },
+    )
+    .unwrap();
+    assert!(w
+        .organize(
+            &id,
+            &Organization {
+                folder: None,
+                tags: vec!["missing".into()]
+            }
+        )
+        .is_err());
+    assert_eq!(w.organization(&id).unwrap().folder, Some(folder));
+    assert_eq!(w.organization(&id).unwrap().tags, vec![tag]);
+    assert!(w
+        .organize(
+            &id,
+            &Organization {
+                folder: Some("missing".into()),
+                tags: vec![]
+            }
+        )
+        .is_err());
+    w.delete(&id).unwrap();
+    assert!(w
+        .organize(
+            &id,
+            &Organization {
+                folder: None,
+                tags: vec![]
+            }
+        )
+        .is_err());
+    assert!(w.filtered_list("", 0, None, None).unwrap().is_empty());
+}
+
+#[test]
+fn version_one_workspace_and_backup_migrate_without_losing_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("legacy");
+    std::fs::create_dir(&path).unwrap();
+    std::fs::write(
+        path.join("workspace.json"),
+        r#"{"id":"legacy","format_version":1}"#,
+    )
+    .unwrap();
+    let db = rusqlite::Connection::open(path.join("knot.db")).unwrap();
+    db.execute_batch(include_str!("../migrations/001_initial.sql"))
+        .unwrap();
+    db.execute_batch("PRAGMA user_version=1; INSERT INTO objects VALUES('legacy','Keep me','note',1,NULL); INSERT INTO documents VALUES('legacy',x'01',x'02',1);").unwrap();
+    drop(db);
+    // Restore an actual old-format archive to exercise the upgrade path too.
+    let archive = tmp.path().join("legacy.knot");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+    for file in ["workspace.json", "knot.db"] {
+        zip.start_file(file, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::copy(&mut std::fs::File::open(path.join(file)).unwrap(), &mut zip).unwrap();
+    }
+    zip.finish().unwrap();
+    let restored = Workspace::open(backup::restore(&archive, tmp.path()).unwrap()).unwrap();
+    assert_eq!(restored.load("legacy").unwrap().unwrap().document, vec![2]);
+    let w = Workspace::open(path).unwrap();
+    assert_eq!(w.list("Keep", 0).unwrap()[0].id, "legacy");
+    assert_eq!(w.load("legacy").unwrap().unwrap().collection, vec![1]);
+    assert!(w.organization("legacy").unwrap().folder.is_none());
+    assert!(w.catalog().unwrap().folders.is_empty());
+}
+
+#[test]
+fn organization_filters_paginate_and_combine_with_search() {
+    use crate::organization::Organization;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut w = Workspace::open(tmp.path().join("workspace")).unwrap();
+    let folder = w.create_label("folder", "Work").unwrap();
+    let tag = w.create_label("tag", "Read").unwrap();
+    for n in 0..105 {
+        let id = w.create("note").unwrap();
+        w.rename(&id, &format!("Match {n}")).unwrap();
+        w.organize(
+            &id,
+            &Organization {
+                folder: Some(folder.clone()),
+                tags: vec![tag.clone()],
+            },
+        )
+        .unwrap();
+    }
+    w.create("note").unwrap();
+    let a = w
+        .filtered_list("Match", 0, Some(&folder), Some(&tag))
+        .unwrap();
+    let b = w
+        .filtered_list("Match", 100, Some(&folder), Some(&tag))
+        .unwrap();
+    assert_eq!(a.len(), 100);
+    assert_eq!(b.len(), 5);
+    assert!(a.iter().all(|x| b.iter().all(|y| x.id != y.id)));
+    assert_eq!(w.filtered_list("", 0, Some(""), None).unwrap().len(), 1);
+    assert!(w
+        .filtered_list("absent", 0, Some(&folder), Some(&tag))
+        .unwrap()
+        .is_empty());
 }

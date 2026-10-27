@@ -1,4 +1,5 @@
 mod backup;
+mod organization;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -10,6 +11,54 @@ struct AppState {
     base: std::path::PathBuf,
 }
 type Reply<T> = Result<T, String>;
+#[tauri::command]
+async fn organization_catalog(state: State<'_, AppState>) -> Reply<organization::Catalog> {
+    with(&state, |w| w.catalog())
+}
+#[tauri::command]
+async fn create_label(state: State<'_, AppState>, kind: String, name: String) -> Reply<String> {
+    with(&state, |w| w.create_label(&kind, &name))
+}
+#[tauri::command]
+async fn rename_label(
+    state: State<'_, AppState>,
+    kind: String,
+    id: String,
+    name: String,
+) -> Reply<()> {
+    with(&state, |w| w.rename_label(&kind, &id, &name))
+}
+#[tauri::command]
+async fn delete_label(state: State<'_, AppState>, kind: String, id: String) -> Reply<()> {
+    with(&state, |w| w.delete_label(&kind, &id))
+}
+#[tauri::command]
+async fn get_organization(
+    state: State<'_, AppState>,
+    id: String,
+) -> Reply<organization::Organization> {
+    with(&state, |w| w.organization(&id))
+}
+#[tauri::command]
+async fn organize_object(
+    state: State<'_, AppState>,
+    id: String,
+    value: organization::Organization,
+) -> Reply<()> {
+    with(&state, |w| w.organize(&id, &value))
+}
+#[tauri::command]
+async fn filter_objects(
+    state: State<'_, AppState>,
+    search: String,
+    offset: i64,
+    folder: Option<String>,
+    tag: Option<String>,
+) -> Reply<Vec<Object>> {
+    with(&state, |w| {
+        w.filtered_list(&search, offset, folder.as_deref(), tag.as_deref())
+    })
+}
 fn with<T>(
     state: &State<AppState>,
     f: impl FnOnce(&mut Workspace) -> storage::Result<T>,
@@ -168,6 +217,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            organization_catalog,
+            create_label,
+            rename_label,
+            delete_label,
+            get_organization,
+            organize_object,
+            filter_objects,
             list_objects,
             create_object,
             rename_object,

@@ -15,7 +15,8 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+select {
   font: inherit;
 }
 button {
@@ -26,7 +27,8 @@ button:disabled {
   opacity: 0.5;
 }
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid #608f7a;
   outline-offset: 3px;
 }
@@ -43,6 +45,7 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   padding: 28px 16px 12px;
+  overflow-y: auto;
 }
 .brand {
   display: flex;
@@ -381,4 +384,126 @@ main {
   * {
     scroll-behavior: auto !important;
   }
+}
+.library-filters {
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+}
+.library-filters label,
+.organization-fields > label {
+  display: grid;
+  gap: 4px;
+}
+.library-filters select,
+.organization-fields select,
+.organization-manager input,
+.organization-manager select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #d9e1d4;
+  border-radius: 5px;
+  background: #fff;
+  padding: 6px 8px;
+}
+.manage-organization {
+  text-align: left;
+  font-size: 11px;
+  color: #426d57;
+  padding: 10px 0;
+}
+.library {
+  min-height: 90px;
+}
+.document-organization {
+  border-bottom: 1px solid #e3e7df;
+  padding: 9px 28px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.document-organization summary {
+  cursor: pointer;
+  color: #526a59;
+  overflow-wrap: anywhere;
+}
+.organization-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 12px 0 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+.organization-fields > label {
+  min-width: 180px;
+  max-width: 260px;
+}
+.organization-fields fieldset {
+  flex: 1;
+  min-width: 180px;
+}
+.organization-fields legend {
+  margin-bottom: 6px;
+}
+.tag-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 12px 8px 0;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: #788575;
+}
+.organization-manager {
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 16px 28px;
+  background: #f4f7f1;
+  border-bottom: 1px solid #d9e1d4;
+  font-size: 12px;
+}
+.manager-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.manager-heading h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.organization-manager p {
+  margin: 8px 0;
+  color: #65745f;
+}
+.organization-manager form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.organization-manager form select {
+  width: 90px;
+}
+.organization-manager form input {
+  flex: 1;
+  min-width: 120px;
+}
+.organization-manager button {
+  border: 1px solid #d0dbc9;
+  border-radius: 5px;
+  padding: 5px 10px;
+  background: white;
+}
+.organization-manager li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+}
+.organization-manager li span {
+  flex: 1;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
