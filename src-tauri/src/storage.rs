@@ -34,6 +34,12 @@ pub struct Snapshot {
     #[serde(default)]
     pub title: Option<String>,
 }
+#[derive(Deserialize)]
+pub struct DocumentWrite {
+    pub id: String,
+    pub snapshot: Snapshot,
+    pub create: bool,
+}
 #[derive(Serialize, Default)]
 pub struct IntegrityReport {
     pub checked: usize,
@@ -202,13 +208,29 @@ impl Workspace {
             .optional()?)
     }
     pub fn save(&mut self, id: &str, s: &Snapshot) -> Result<()> {
+        let tx = self.db.transaction()?;
+        Self::write_snapshot(&tx, id, s)?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub fn save_documents(&mut self, documents: &[DocumentWrite]) -> Result<()> {
+        let tx = self.db.transaction()?;
+        for entry in documents {
+            if entry.create {
+                tx.execute("INSERT OR IGNORE INTO objects(id,title,kind,updated_at) VALUES(?1,'Untitled note','note',?2)", params![entry.id, now()])?;
+            }
+            Self::write_snapshot(&tx, &entry.id, &entry.snapshot)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+    fn write_snapshot(tx: &rusqlite::Transaction<'_>, id: &str, s: &Snapshot) -> Result<()> {
         if s.collection.is_empty()
             || s.document.is_empty()
             || s.collection.len() + s.document.len() > 64 * 1024 * 1024
         {
             return Err("Invalid or oversized document snapshot".into());
         }
-        let tx = self.db.transaction()?;
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM objects WHERE id=?1 AND deleted_at IS NULL)",
             [id],
@@ -228,7 +250,6 @@ impl Workspace {
                     .map(|t| t.chars().take(500).collect::<String>())
             ],
         )?;
-        tx.commit()?;
         Ok(())
     }
     pub fn asset_path(&self, hash: &str) -> Result<PathBuf> {

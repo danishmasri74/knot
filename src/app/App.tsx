@@ -33,6 +33,9 @@ export function App() {
     tags: [],
   });
   const [managing, setManaging] = useState(false);
+  const [references, setReferences] = useState<KnowledgeObject[]>([]);
+  const [referenceTarget, setReferenceTarget] = useState("");
+  const [choosingReference, setChoosingReference] = useState(false);
   const [items, setItems] = useState<KnowledgeObject[]>([]),
     [active, setActive] = useState<KnowledgeObject | null>(null),
     [query, setQuery] = useState(""),
@@ -97,10 +100,24 @@ export function App() {
         )
           setTitle(savedTitle);
       },
+      (id) =>
+        void run(async () => {
+          await session.current?.flush();
+          const target = (await repository.catalog()).find(
+            (row) => row.id === id,
+          );
+          if (!target)
+            throw new Error("This document was deleted or is unavailable.");
+          await select(target);
+        }),
+      () => void refresh().catch(report),
     );
     session.current?.destroy();
     session.current = next;
     host.current?.replaceChildren(next.editor);
+    setReferences(next.catalog.filter((row) => row.id !== item.id));
+    setReferenceTarget("");
+    setChoosingReference(false);
     setActive(item);
     setOrganized(metadata);
     setTitle(item.title);
@@ -420,7 +437,7 @@ export function App() {
                 className={mode === m ? "current" : ""}
                 onClick={() => {
                   if (session.current) {
-                    session.current.editor.mode = m;
+                    session.current.setMode(m);
                     setMode(m);
                   }
                 }}
@@ -435,6 +452,12 @@ export function App() {
               : "Make room for the bigger picture."}
           </span>
           <div className="actions">
+            <button
+              disabled={!active || busy}
+              onClick={() => setChoosingReference(!choosingReference)}
+            >
+              ＋ Reference
+            </button>
             <button
               title="Undo (Ctrl+Z)"
               disabled={!active || busy}
@@ -484,6 +507,59 @@ export function App() {
             </button>
           </div>
         </div>
+        {choosingReference && active && (
+          <div className="notice-banner">
+            <label>
+              Workspace document{" "}
+              <select
+                aria-label="Reference document"
+                value={referenceTarget}
+                disabled={busy}
+                onChange={(event) => setReferenceTarget(event.target.value)}
+              >
+                <option value="">Choose a document…</option>
+                {references.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              disabled={busy || !referenceTarget}
+              onClick={() =>
+                void run(async () => {
+                  await session.current?.reference(referenceTarget, false);
+                  setChoosingReference(false);
+                })
+              }
+            >
+              Insert link
+            </button>
+            <button
+              disabled={
+                busy ||
+                !referenceTarget ||
+                references.find((item) => item.id === referenceTarget)?.kind !==
+                  "note"
+              }
+              onClick={() =>
+                void run(async () => {
+                  await session.current?.reference(referenceTarget, true);
+                  setChoosingReference(false);
+                })
+              }
+            >
+              Place shared note
+            </button>
+            <span>
+              Shared notes preview the original. Open a card to edit its source.
+            </span>
+            <button disabled={busy} onClick={() => setChoosingReference(false)}>
+              Close
+            </button>
+          </div>
+        )}
         {error && (
           <div role="alert" className="error-banner">
             {error}

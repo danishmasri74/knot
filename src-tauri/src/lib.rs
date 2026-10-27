@@ -99,6 +99,13 @@ async fn save_document(state: State<'_, AppState>, id: String, snapshot: Snapsho
     with(&state, |w| w.save(&id, &snapshot))
 }
 #[tauri::command]
+async fn save_documents(
+    state: State<'_, AppState>,
+    documents: Vec<storage::DocumentWrite>,
+) -> Reply<()> {
+    with(&state, |w| w.save_documents(&documents))
+}
+#[tauri::command]
 async fn put_blob(
     state: State<'_, AppState>,
     object: String,
@@ -230,6 +237,7 @@ pub fn run() {
             delete_object,
             load_document,
             save_document,
+            save_documents,
             put_blob,
             get_blob,
             list_blobs,

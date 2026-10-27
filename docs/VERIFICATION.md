@@ -1,4 +1,21 @@
-# Milestone 1 verification
+# Verification
+
+## Milestone 2 shared notes and references — 27 October 2026
+
+- TypeScript, ESLint, eight frontend tests, Rust Clippy with warnings denied, production frontend build and standalone debug desktop build passed.
+- Rust: 16 tests passed; two opt-in tests were excluded from the default run. The native archive round trip was then run separately and passed against the new shared-note workspace. The metadata benchmark was not rerun for this change.
+- New Rust coverage verifies atomic creation of a linked note with its parent, rollback of both documents on SQLite failure, successful retry, prevention of deleted-note resurrection, and retention of deleted bodies through backup/restore.
+- `node tests/native/shared-notes.mjs` passed against compiled Windows WebView2/Rust/SQLite. Two boards resolve the same note, source edits and title changes appear on both after switching and restarting, and board bodies contain the source ID without copied text. Native card navigation uses Back history. Removing a placement preserves the source and the other board; reciprocal links terminate; deleting a source leaves an unavailable card and its retained database row. Native-created collection documents commit with their parent and appear in the library.
+- `node tests/native/legacy-references.mjs test-results/acceptance-1793088828161/Workspace` passed against a disposable copy of a pre-change native fixture. The source UUID and complete block JSON were unchanged, and a newly placed shared card resolved the original content. This diagnostic accepts any closed workspace with a saved live note; it never edits the supplied fixture.
+- The existing native acceptance and organization suites passed again, including actual SQLite failure/retry, attachments, forced-termination recovery, offline editing, and folder/tag persistence.
+- Evidence: `test-results/shared-notes-1793106118303/`, `test-results/legacy-references-1793106220484/`, `test-results/acceptance-1793106118303/`, and `test-results/organization-1793106118300/`. Screenshots were inspected for shared-content rendering.
+- Shared placements are read-only previews; open the source to edit. The reference catalog materializes workspace metadata, while bodies load only for the active document and its reachable references. Large connected reference graphs and 10,000-document editor startup have not been performance-tested. No clean-machine installer test or new native backup-dialog test was performed for this change.
+
+Repeat the main new check after building the debug desktop app:
+
+```powershell
+node tests/native/shared-notes.mjs
+```
 
 ## Milestone 2 organization verification — 27 October 2026
 
@@ -87,4 +104,4 @@ These are single-run smoke measurements on this PC, not statistical benchmarks:
 - The installer and standalone executable were built and exercised; installation/uninstallation on a clean Windows VM remains unverified.
 - Offline testing covers WebView networking disabled and a standalone executable without a dev server. The machine's network adapter was not disabled.
 - Imports are bounded to 100 MiB and use in-memory IPC. PDF inline embedding is limited to 10 MiB. Multi-gigabyte library stress testing and streaming imports remain future work.
-- BlockSuite's online-dependent embeds are unavailable under the offline CSP. Standard Markdown/PDF/PNG export, folders, shared cross-board notes, trash UI and destructive asset cleanup are future milestones.
+- BlockSuite's online-dependent embeds are unavailable under the offline CSP. Standard Markdown/PDF/PNG export, trash UI and destructive asset cleanup remain future milestones. Folders and shared cross-board notes are covered by the Milestone 2 results above.

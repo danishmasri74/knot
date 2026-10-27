@@ -39,6 +39,17 @@ export const organization = {
     invoke<void>("delete_label", { kind, id }),
 };
 export const repository = {
+  saveMany: (
+    documents: { id: string; snapshot: Snapshot; create: boolean }[],
+  ) => invoke<void>("save_documents", { documents }),
+  async catalog() {
+    const rows: KnowledgeObject[] = [];
+    for (let offset = 0; ; offset += 100) {
+      const page = await repository.list("", offset);
+      rows.push(...page);
+      if (page.length < 100) return rows;
+    }
+  },
   integrity: () =>
     invoke<{
       checked: number;

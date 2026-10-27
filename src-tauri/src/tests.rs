@@ -483,3 +483,46 @@ fn organization_filters_paginate_and_combine_with_search() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn shared_document_batch_is_atomic_and_retained_in_backup() {
+    use crate::storage::DocumentWrite;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut w = Workspace::open(tmp.path().join("workspace")).unwrap();
+    let board = w.create("whiteboard").unwrap();
+    let note = "native-created-note".to_string();
+    let write = |id: &str, create, bytes| DocumentWrite {
+        id: id.into(),
+        create,
+        snapshot: Snapshot {
+            title: Some(id.into()),
+            collection: vec![1],
+            document: bytes,
+        },
+    };
+    w.save_documents(&[write(&note, true, vec![3]), write(&board, false, vec![])])
+        .unwrap_err();
+    assert!(w.load(&note).unwrap().is_none());
+    assert_eq!(w.list("", 0).unwrap().len(), 1);
+    w.save_documents(&[write(&note, true, vec![3]), write(&board, false, vec![4])])
+        .unwrap();
+    w.db.execute_batch("CREATE TRIGGER reject_board BEFORE UPDATE ON documents WHEN NEW.object_id != 'native-created-note' BEGIN SELECT RAISE(FAIL, 'disk failure'); END;").unwrap();
+    w.save_documents(&[write(&note, false, vec![5]), write(&board, false, vec![6])])
+        .unwrap_err();
+    assert_eq!(w.load(&note).unwrap().unwrap().document, vec![3]);
+    assert_eq!(w.load(&board).unwrap().unwrap().document, vec![4]);
+    w.db.execute_batch("DROP TRIGGER reject_board;").unwrap();
+    w.save_documents(&[write(&note, false, vec![5]), write(&board, false, vec![6])])
+        .unwrap();
+    w.delete(&note).unwrap();
+    w.save_documents(&[write(&note, true, vec![7])])
+        .unwrap_err();
+    assert_eq!(w.load(&note).unwrap().unwrap().document, vec![5]);
+    let archive = tmp.path().join("shared.knot");
+    backup::export(&w, &archive).unwrap();
+    let root = backup::restore(&archive, tmp.path()).unwrap();
+    let restored = Workspace::open(root).unwrap();
+    assert_eq!(restored.load(&note).unwrap().unwrap().document, vec![5]);
+    assert_eq!(restored.load(&board).unwrap().unwrap().document, vec![6]);
+    assert_eq!(restored.list("", 0).unwrap().len(), 1);
+}
