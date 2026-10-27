@@ -17,9 +17,11 @@ See VERIFICATION.md for the acceptance evidence and measured performance. Comple
 
 Streaming IPC for large files; trash restore; multi-window navigation; startup optimization; sustained canvas pan/zoom profiling; multi-gigabyte attachment testing; physical disk-full/power-loss tests; clean-machine installer testing. The 10,000-object query and 500-shape smoke benchmarks now exist.
 
-## Milestone 2
+## Milestone 2 — in progress
 
-Folders/tags, navigation history, shared note placements and workspace-level BlockSuite references, tested shared-note consistency. No duplicate authoritative note bodies.
+- Implemented: session navigation history with Back/Forward controls, save-before-switch behavior, deleted-document removal, and history reset when restoring a workspace. History keeps the latest 100 visits and is not persisted across restarts.
+- Remaining: folders/tags, shared note placements and workspace-level BlockSuite references, tested shared-note consistency. No duplicate authoritative note bodies.
+- Shared notes require a workspace collection/provider design; the current per-object BlockSuite collections are still authoritative until that migration is implemented and verified.
 
 ## Milestone 3
 

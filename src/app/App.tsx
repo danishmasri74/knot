@@ -7,6 +7,7 @@ import {
   type KnowledgeObject,
 } from "../services/workspace";
 import type { SaveStatus } from "../services/persistence";
+import { NavigationHistory } from "../services/navigation";
 import {
   openEditor,
   type EditorSession,
@@ -23,6 +24,7 @@ export function App() {
     [busy, setBusy] = useState(false),
     [title, setTitle] = useState("");
   const host = useRef<HTMLDivElement>(null),
+    history = useRef(new NavigationHistory<KnowledgeObject>()),
     session = useRef<EditorSession | null>(null),
     locked = useRef(false),
     file = useRef<HTMLInputElement>(null),
@@ -51,7 +53,7 @@ export function App() {
       setBusy(false);
     }
   }
-  async function select(item: KnowledgeObject) {
+  async function select(item: KnowledgeObject, record = true) {
     await session.current?.flush();
     const next = await openEditor(
       item,
@@ -60,6 +62,7 @@ export function App() {
         if (e) report(e);
       },
       (savedTitle) => {
+        history.current.update(item.id, { title: savedTitle });
         setItems((rows) =>
           rows.map((row) =>
             row.id === item.id ? { ...row, title: savedTitle } : row,
@@ -81,6 +84,7 @@ export function App() {
     setActive(item);
     setTitle(item.title);
     setMode(next.editor.mode);
+    if (record) history.current.visit(item);
   }
   useEffect(() => {
     if (!isTauri()) {
@@ -256,6 +260,7 @@ export function App() {
                 await session.current?.flush();
                 const path = await backups.restore();
                 if (path) {
+                  history.current.clear();
                   session.current?.destroy();
                   session.current = null;
                   host.current?.replaceChildren();
@@ -277,6 +282,28 @@ export function App() {
       </aside>
       <main>
         <header className="topbar">
+          <button
+            aria-label="Go back"
+            disabled={busy || !history.current.canBack}
+            onClick={() =>
+              void run(() =>
+                history.current.move(-1, (item) => select(item, false)),
+              )
+            }
+          >
+            ←
+          </button>
+          <button
+            aria-label="Go forward"
+            disabled={busy || !history.current.canForward}
+            onClick={() =>
+              void run(() =>
+                history.current.move(1, (item) => select(item, false)),
+              )
+            }
+          >
+            →
+          </button>
           <span className="breadcrumb">
             Workspace <span>/</span>
           </span>
@@ -372,6 +399,7 @@ export function App() {
                     return;
                   await session.current?.flush();
                   await repository.delete(active.id);
+                  history.current.remove(active.id);
                   session.current?.destroy();
                   session.current = null;
                   host.current?.replaceChildren();
