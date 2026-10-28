@@ -36,8 +36,39 @@ function fixture(id: string, targets: string[] = []): AuditDocument {
 it("accepts cycles and self references without modifying snapshots", () => {
   const rows = [fixture("a", ["a", "b"]), fixture("b", ["a"])];
   const before = JSON.stringify(rows);
-  expect(auditDocuments(rows)).toEqual({ checked: 2, issues: [] });
+  expect(auditDocuments(rows)).toEqual({
+    checked: 2,
+    issues: [],
+    recoverableTargets: [],
+  });
   expect(JSON.stringify(rows)).toBe(before);
+});
+
+it("offers one recovery action per healthy trashed target and counts distinct sources", () => {
+  const target = fixture("target");
+  target.deleted = true;
+  const damaged = fixture("damaged");
+  damaged.deleted = true;
+  damaged.snapshot!.document = [255];
+  const unopened: AuditDocument = {
+    id: "unopened",
+    title: "unopened",
+    deleted: true,
+    snapshot: null,
+  };
+  const sources = [
+    fixture("a", ["target", "damaged", "unopened", "absent"]),
+    fixture("b", ["target"]),
+  ];
+  sources[1].deleted = true;
+  const rows = [...sources, target, damaged, unopened];
+  const before = JSON.stringify(rows);
+  expect(auditDocuments(rows).recoverableTargets).toEqual([
+    { id: "target", title: "target", sources: 2 },
+  ]);
+  expect(JSON.stringify(rows)).toBe(before);
+  target.deleted = false;
+  expect(auditDocuments(rows).recoverableTargets).toEqual([]);
 });
 
 it("distinguishes absent, trashed and unreadable targets and includes trashed sources", () => {

@@ -34,6 +34,7 @@ Streaming IPC for large files; multi-window navigation; startup optimization; su
 - Implemented integrity report: SQLite integrity and relationship checks, missing/corrupt attachment details with live and trashed document associations, retained unindexed-file inventory, refresh and backup recovery guidance.
 - Implemented recoverable orphan quarantine: explicit file/byte preview, up to 100 selected files per operation, index/content revalidation, persistent recovery copies and no-overwrite restoration. Indexed attachment names and bytes remain protected regardless of document or Trash associations. Quarantine does not free disk space and is excluded from backups/relocation.
 - Implemented document/reference integrity slice: isolated saved Yjs decoding, collection identity and page-root checks, incomplete-update detection, and missing/trashed/unreadable card and inline targets across live documents and Trash. Findings preserve all stored bytes and reference IDs.
+- Implemented guided reference recovery: the integrity report offers deduplicated restore actions for referenced Trash targets whose saved snapshots pass basic checks. Actions flush edits, revalidate current findings, retain original identities and content, refresh shared previews and rerun the report; failed saves/restores remain retryable.
 - Remaining: broader recovery UI, permanent orphan disposal, full block-schema/rendering validation and format migrations. Trash remains soft-delete only.
 
 ## Milestone 4

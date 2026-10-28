@@ -1,5 +1,13 @@
 # Verification
 
+## Milestone 3 guided reference recovery — 28 October 2026
+
+- TypeScript, ESLint, 13 frontend tests, production frontend and standalone debug desktop builds passed. Rust storage is unchanged; the previous 32-test Rust result remains the latest full backend run. Release executable and installer remain at the icon refresh.
+- Frontend coverage checks one action per target, distinct referring-document counts including trashed sources, exclusion of missing/damaged snapshots, removal of actions after restoration and unchanged input bytes.
+- `node tests/native/reference-recovery.mjs` passed against the Windows app: changed snapshots invalidate old actions, real SQLite save and restore failures block mutation, retry retains exact document rows/IDs/metadata (except the deletion flag), attachment rows/associations/bytes remain unchanged, shared previews recover immediately, the report refreshes and content survives restart. Ordinary Trash restoration into an empty library also passed. Evidence: `test-results/reference-recovery-1793178915044/`; recovery-action screenshot inspected. Initial test runs exposed a CDP page-startup race and a Node SQLite null-prototype assertion mismatch; both test issues were corrected before the passing run.
+- Existing native integrity and Trash regressions passed: `test-results/integrity-1793178933614/` and `test-results/trash-1793178933591/`.
+- This is explicit restoration of existing Trash targets, not missing-document reconstruction or damaged-body repair. Snapshot checks remain structural, not complete schema/rendering validation. No format migration, new native dialog, installer test or physical disk-failure test was performed. Recovery revalidation still reads all snapshots and has no external-writer race guarantee.
+
 ## Milestone 3 document and shared-reference integrity — 28 October 2026
 
 - TypeScript, ESLint, 12 frontend tests, 32 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. The extended Rust query-only audit test passed again after adding snapshot assertions. Release executable and installer remain at the icon refresh.

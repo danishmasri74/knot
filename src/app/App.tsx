@@ -56,6 +56,38 @@ export function App() {
     await session.current?.flush();
     setIntegrity(await repository.integrity());
   }
+  async function restoreDocument(
+    item: { id: string; title: string },
+    auditAfter = integrity !== null,
+  ) {
+    await session.current?.flush();
+    await repository.restore(item.id);
+    setIntegrity(null);
+    setNotice(
+      `Restored “${item.title}”. It is available in your library; current filters may hide it.`,
+    );
+    try {
+      if (trash !== null) await loadTrash();
+      await refresh();
+      if (active) await select(active, false);
+    } finally {
+      if (auditAfter) await checkWorkspace();
+    }
+  }
+  async function restoreReferenceTarget(id: string) {
+    await session.current?.flush();
+    setIntegrity(null);
+    const latest = await repository.integrity();
+    setIntegrity(latest);
+    const target = latest.documents.recoverableTargets.find(
+      (entry) => entry.id === id,
+    );
+    if (!target)
+      throw new Error(
+        "This target is no longer eligible for direct recovery. Review the refreshed report or open Trash & recovery.",
+      );
+    await restoreDocument(target, true);
+  }
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("markdown");
   const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalog>({
@@ -819,6 +851,7 @@ export function App() {
             busy={busy}
             onClose={() => setIntegrity(null)}
             onCheck={() => void run(checkWorkspace)}
+            onRestoreTarget={(id) => void run(() => restoreReferenceTarget(id))}
             onBackups={() =>
               void run(async () => setBackupEntries(await backups.list()))
             }
@@ -952,18 +985,7 @@ export function App() {
                   <button
                     disabled={busy}
                     aria-label={`Restore ${item.title}`}
-                    onClick={() =>
-                      void run(async () => {
-                        await session.current?.flush();
-                        await repository.restore(item.id);
-                        await loadTrash();
-                        await refresh();
-                        if (active) await select(active, false);
-                        setNotice(
-                          `Restored “${item.title}”. It is available in your library; current filters may hide it.`,
-                        );
-                      })
-                    }
+                    onClick={() => void run(() => restoreDocument(item))}
                   >
                     Restore
                   </button>

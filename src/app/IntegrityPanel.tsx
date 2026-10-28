@@ -6,12 +6,14 @@ export function IntegrityPanel({
   onClose,
   onCheck,
   onBackups,
+  onRestoreTarget,
 }: {
   report: IntegrityReport;
   busy: boolean;
   onClose: () => void;
   onCheck: () => void;
   onBackups: () => void;
+  onRestoreTarget: (id: string) => void;
 }) {
   return (
     <section
@@ -48,6 +50,35 @@ export function IntegrityPanel({
         <p>SQLite integrity and stored relationships passed.</p>
       )}
       <h3>Documents and shared references</h3>
+      {report.documents.recoverableTargets.length > 0 && (
+        <div>
+          <h3>Recover referenced documents</h3>
+          <p>
+            These targets are in Trash and their saved snapshots pass the basic
+            document checks. Restoring retains their original IDs and content,
+            making them available to every referring document. Other content or
+            attachment issues may still need recovery.
+          </p>
+          {report.documents.recoverableTargets.map((target) => (
+            <div className="trash-row" key={target.id}>
+              <span>
+                <strong>{target.title}</strong>
+                <small>
+                  {target.sources} referring documents, including Trash ·{" "}
+                  <code>{target.id}</code>
+                </small>
+              </span>
+              <button
+                disabled={busy}
+                aria-label={`Restore reference target ${target.title}`}
+                onClick={() => onRestoreTarget(target.id)}
+              >
+                Restore from Trash
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <p>
         {report.documents.checked} documents checked, including Trash;{" "}
         {report.documents.issues.length} findings.

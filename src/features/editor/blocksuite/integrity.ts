@@ -11,14 +11,23 @@ export interface AuditDocument {
 export interface DocumentAudit {
   checked: number;
   issues: { id: string; title: string; deleted: boolean; message: string }[];
+  recoverableTargets: { id: string; title: string; sources: number }[];
 }
 
 /** Decode isolated copies only: no BlockSuite initialization, migrations or saves. */
 export function auditDocuments(rows: AuditDocument[]): DocumentAudit {
-  const result: DocumentAudit = { checked: rows.length, issues: [] };
+  const result: DocumentAudit = {
+    checked: rows.length,
+    issues: [],
+    recoverableTargets: [],
+  };
   const catalog = new Map(rows.map((row) => [row.id, row]));
   const unreadable = new Set<string>();
   const references = new Map<string, Set<string>>();
+  const recoverable = new Map<
+    string,
+    { id: string; title: string; sources: number }
+  >();
   function issue(row: AuditDocument, message: string) {
     result.issues.push({
       id: row.id,
@@ -81,10 +90,21 @@ export function auditDocuments(rows: AuditDocument[]): DocumentAudit {
   for (const row of rows) {
     for (const id of references.get(row.id) ?? []) {
       const target = catalog.get(id);
+      if (target?.deleted && !unreadable.has(id)) {
+        const entry = recoverable.get(id) ?? {
+          id,
+          title: target.title,
+          sources: 0,
+        };
+        entry.sources++;
+        recoverable.set(id, entry);
+      }
       const reason = !target
         ? "missing from the catalog"
         : target.deleted
-          ? "in Trash; restore it to resolve this reference"
+          ? unreadable.has(id)
+            ? "in Trash with snapshot issues; inspect its document issues and recovery backups"
+            : "in Trash; restore it to resolve this reference"
           : unreadable.has(id)
             ? "without a readable saved snapshot; inspect its document issues"
             : null;
@@ -97,5 +117,8 @@ export function auditDocuments(rows: AuditDocument[]): DocumentAudit {
         });
     }
   }
+  result.recoverableTargets = [...recoverable.values()].sort((a, b) =>
+    a.id.localeCompare(b.id),
+  );
   return result;
 }
