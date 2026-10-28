@@ -48,6 +48,8 @@ pub struct DocumentWrite {
 }
 #[derive(Serialize, Default)]
 pub struct IntegrityReport {
+    pub database_version: i64,
+    pub migration_backups: Vec<String>,
     pub document_snapshots: Vec<AuditDocument>,
     pub checked_at: i64,
     pub database_issues: Vec<String>,
@@ -88,6 +90,10 @@ impl Workspace {
     pub fn integrity(&self) -> Result<IntegrityReport> {
         let mut report = IntegrityReport {
             checked_at: now(),
+            database_version: self
+                .db
+                .pragma_query_value(None, "user_version", |r| r.get(0))?,
+            migration_backups: crate::migrations::recovery_archives(&self.root)?,
             ..Default::default()
         };
         let mut check = self.db.prepare("PRAGMA integrity_check")?;
@@ -239,30 +245,24 @@ impl Workspace {
             fs::create_dir_all(root.join(dir))?;
         }
         let db = Connection::open(root.join("knot.db"))?;
-        db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;")?;
         let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        if version > 2 {
+        if !(0..=crate::migrations::CURRENT_SCHEMA).contains(&version) {
             return Err("Database is newer than this Knot version".into());
         }
-        if version == 0 {
-            db.execute_batch("BEGIN IMMEDIATE;")?;
-            db.execute_batch(include_str!("../migrations/001_initial.sql"))?;
-            db.execute_batch("PRAGMA user_version=1; COMMIT;")?;
-        }
-        if version < 2 {
-            db.execute_batch("BEGIN IMMEDIATE;")?;
-            db.execute_batch(include_str!("../migrations/002_organization.sql"))?;
-            db.execute_batch("PRAGMA user_version=2; COMMIT;")?;
-        }
-        let check: String = db.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
-        if check != "ok" {
-            return Err("Workspace database failed integrity check".into());
-        }
-        Ok(Self {
+        db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;")?;
+        let workspace = Self {
             root,
             db,
             _lock: lock,
-        })
+        };
+        crate::migrations::upgrade(&workspace, version)?;
+        let check: String = workspace
+            .db
+            .query_row("PRAGMA quick_check", [], |r| r.get(0))?;
+        if check != "ok" {
+            return Err("Workspace database failed integrity check".into());
+        }
+        Ok(workspace)
     }
     pub fn list(&self, search: &str, offset: i64) -> Result<Vec<Object>> {
         self.filtered_list(search, offset, None, None)

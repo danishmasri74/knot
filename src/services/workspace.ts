@@ -40,6 +40,8 @@ export interface TrashedObject extends KnowledgeObject {
   deleted_at: number;
 }
 export interface IntegrityReport {
+  database_version: number;
+  migration_backups: string[];
   documents: DocumentAudit;
   checked_at: number;
   checked: number;

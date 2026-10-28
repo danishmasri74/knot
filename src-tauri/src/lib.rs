@@ -1,6 +1,7 @@
 mod backup;
 mod exports;
 mod managed_backups;
+mod migrations;
 mod organization;
 mod quarantine;
 mod storage;

@@ -40,6 +40,30 @@ export function IntegrityPanel({
         files.
       </p>
       <h3>Database and relationships</h3>
+      <p>Database schema: {report.database_version}.</p>
+      {report.migration_backups.length > 0 && (
+        <details>
+          <summary>
+            Pre-migration recovery archives ({report.migration_backups.length})
+          </summary>
+          <p>
+            These archives retain the catalog, document snapshots and indexed
+            attachments from before an upgrade. Use “Restore backup” in the
+            sidebar and choose an archive below to recover into a separate
+            workspace. Restoration upgrades the recovered copy. These local
+            archives are excluded from regular backups and relocation; copy them
+            elsewhere for protection against disk loss. This report lists them
+            without re-verifying their contents.
+          </p>
+          <ul>
+            {report.migration_backups.map((path) => (
+              <li key={path}>
+                <code>{path}</code>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {report.database_issues.length ? (
         <ul>
           {report.database_issues.map((issue, i) => (
