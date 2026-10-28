@@ -58,3 +58,18 @@ These are explicit follow-up scope, not unfinished Milestone 3 acceptance criter
 ## Milestone 4
 
 PDF highlight cards, Office previews, backlinks, advanced search, Jot integration. No custom Office editor or second canvas engine.
+
+### Completion criteria
+
+- PDF highlight cards retain the original attachment identity, selected text and page/location, survive restart/backup, and navigate back to the source PDF.
+- Office attachments have read-only previews for explicitly documented supported formats, with clear unsupported-file/error states and original bytes retained. No custom Office editor.
+- Backlinks identify live referring documents by stable ID and open their source through save-before-navigation; refresh reflects removed links and Trash.
+- Advanced search finds supported document body text as well as titles, combines organization filters, and opens results by stable ID. Supported content and indexing freshness must be documented.
+- Jot capture creates durable content through the existing workspace/editor model, with an explicit destination and retry on failed saves. No second canvas engine.
+- Closure requires frontend/Rust tests, TypeScript, ESLint, Clippy, relevant native acceptance plus existing regression suites, production/debug/release/NSIS builds, and recorded evidence/limitations. All five capabilities must meet their stated criteria before Milestone 4 is closed. Clean-machine installation and Milestone 3's explicit deferrals remain separate follow-up work.
+
+### First bounded slice: on-demand backlinks
+
+Implemented and verified on 28 October 2026. Milestone 4 remains open for PDF highlight cards, Office previews, advanced search and Jot integration.
+
+Acceptance: show one result per other live source document containing a shared card, link card or inline reference to the active ID; exclude Trash and self references; sort deterministically by title/ID. Flush before scanning and before source navigation, retain normal Back/Forward behavior, and clear results on document/workspace transitions. Explicit refresh must reflect saved link removal, renames and deletion. Unreadable/incomplete snapshots must produce a visible partial-results warning; failed scans must clear stale results and allow retry. Scanning must not write bodies, metadata or attachment associations. Verify extraction/deduplication/error handling with frontend tests and native save-failure, navigation, refresh, restart and preservation checks. Workspace format 1/schema 2 remain unchanged; no Yjs conversion or persistent index in this slice.

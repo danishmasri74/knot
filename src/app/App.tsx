@@ -1,4 +1,9 @@
 import { BackupManager } from "./BackupManager";
+import { BacklinksPanel } from "./BacklinksPanel";
+import {
+  findBacklinks,
+  type BacklinkReport,
+} from "../features/editor/blocksuite/backlinks";
 import { IntegrityPanel } from "./IntegrityPanel";
 import { QuarantinePanel } from "./QuarantinePanel";
 import { useEffect, useRef, useState } from "react";
@@ -38,6 +43,21 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [showBacklinks, setShowBacklinks] = useState(false);
+  const [backlinks, setBacklinks] = useState<BacklinkReport | null>(null);
+  async function scanBacklinks() {
+    setShowBacklinks(true);
+    setBacklinks(null);
+    await session.current?.flush();
+    if (active)
+      setBacklinks(
+        await findBacklinks(
+          active.id,
+          await repository.catalog(),
+          repository.load,
+        ),
+      );
+  }
   const [cleanup, setCleanup] = useState<{
     candidates: OrphanCandidate[] | null;
     catalog: QuarantineCatalog;
@@ -208,12 +228,16 @@ export function App() {
     setReferenceTarget("");
     setChoosingReference(false);
     setActive(item);
+    setShowBacklinks(false);
+    setBacklinks(null);
     setOrganized(metadata);
     setTitle(item.title);
     setMode(next.editor.mode);
     if (record) history.current.visit(item);
   }
   async function reloadWorkspace() {
+    setShowBacklinks(false);
+    setBacklinks(null);
     setCleanup(null);
     setIntegrity(null);
     setExporting(false);
@@ -601,6 +625,12 @@ export function App() {
           <div className="actions">
             <button
               disabled={!active || busy}
+              onClick={() => void run(scanBacklinks)}
+            >
+              Backlinks
+            </button>
+            <button
+              disabled={!active || busy}
               onClick={() => setExporting(!exporting)}
             >
               Export
@@ -645,6 +675,8 @@ export function App() {
                     return;
                   await session.current?.flush();
                   await repository.delete(active.id);
+                  setShowBacklinks(false);
+                  setBacklinks(null);
                   if (trash !== null) await loadTrash();
                   history.current.remove(active.id);
                   session.current?.destroy();
@@ -661,6 +693,32 @@ export function App() {
             </button>
           </div>
         </div>
+        {showBacklinks && active && (
+          <BacklinksPanel
+            report={backlinks}
+            busy={busy}
+            onRefresh={() => void run(scanBacklinks)}
+            onClose={() => {
+              setShowBacklinks(false);
+              setBacklinks(null);
+            }}
+            onOpen={(source) =>
+              void run(async () => {
+                await session.current?.flush();
+                const current = (await repository.catalog()).find(
+                  (row) => row.id === source.id,
+                );
+                if (!current) {
+                  setBacklinks(null);
+                  throw new Error(
+                    "This source is no longer available. Refresh backlinks.",
+                  );
+                }
+                await select(current);
+              })
+            }
+          />
+        )}
         {choosingReference && active && (
           <div className="notice-banner">
             <label>
