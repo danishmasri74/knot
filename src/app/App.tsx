@@ -1,4 +1,12 @@
 import { BackupManager } from "./BackupManager";
+import { lazy, Suspense } from "react";
+import type {
+  PdfLocation,
+  PdfSource,
+} from "../features/editor/blocksuite/pdf-highlights";
+const PdfReader = lazy(() =>
+  import("./PdfReader").then((module) => ({ default: module.PdfReader })),
+);
 import { BacklinksPanel } from "./BacklinksPanel";
 import {
   findBacklinks,
@@ -43,6 +51,20 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [pdfReader, setPdfReader] = useState<{
+    sources: PdfSource[];
+    initial?: PdfLocation;
+    id: string;
+  } | null>(null);
+  async function openPdf(location?: PdfLocation) {
+    await session.current?.flush();
+    const sources = session.current?.pdfSources() ?? [];
+    if (location && !sources.some((entry) => entry.key === location.key))
+      sources.push(location);
+    if (!sources.length)
+      throw new Error("Attach a PDF to this document first.");
+    setPdfReader({ sources, initial: location, id: crypto.randomUUID() });
+  }
   const [showBacklinks, setShowBacklinks] = useState(false);
   const [backlinks, setBacklinks] = useState<BacklinkReport | null>(null);
   async function scanBacklinks() {
@@ -220,6 +242,7 @@ export function App() {
           await select(target);
         }),
       () => void refresh().catch(report),
+      (location) => void run(() => openPdf(location)),
     );
     session.current?.destroy();
     session.current = next;
@@ -228,6 +251,7 @@ export function App() {
     setReferenceTarget("");
     setChoosingReference(false);
     setActive(item);
+    setPdfReader(null);
     setShowBacklinks(false);
     setBacklinks(null);
     setOrganized(metadata);
@@ -236,6 +260,7 @@ export function App() {
     if (record) history.current.visit(item);
   }
   async function reloadWorkspace() {
+    setPdfReader(null);
     setShowBacklinks(false);
     setBacklinks(null);
     setCleanup(null);
@@ -631,6 +656,12 @@ export function App() {
             </button>
             <button
               disabled={!active || busy}
+              onClick={() => void run(() => openPdf())}
+            >
+              PDF highlights
+            </button>
+            <button
+              disabled={!active || busy}
               onClick={() => setExporting(!exporting)}
             >
               Export
@@ -675,6 +706,7 @@ export function App() {
                     return;
                   await session.current?.flush();
                   await repository.delete(active.id);
+                  setPdfReader(null);
                   setShowBacklinks(false);
                   setBacklinks(null);
                   if (trash !== null) await loadTrash();
@@ -693,6 +725,29 @@ export function App() {
             </button>
           </div>
         </div>
+        {pdfReader && active && (
+          <Suspense fallback={<p>Loading PDF reader…</p>}>
+            <PdfReader
+              key={pdfReader.id}
+              sources={pdfReader.sources}
+              initial={pdfReader.initial}
+              busy={busy}
+              onClose={() => setPdfReader(null)}
+              onCreate={async (highlight) => {
+                let completed = false;
+                await run(async () => {
+                  if (!session.current)
+                    throw new Error("Document is unavailable");
+                  await session.current.flush();
+                  await session.current.pdfHighlight(highlight);
+                  completed = true;
+                });
+                if (!completed)
+                  throw new Error("Resolve the save error and retry.");
+              }}
+            />
+          </Suspense>
+        )}
         {showBacklinks && active && (
           <BacklinksPanel
             report={backlinks}

@@ -70,6 +70,14 @@ PDF highlight cards, Office previews, backlinks, advanced search, Jot integratio
 
 ### First bounded slice: on-demand backlinks
 
-Implemented and verified on 28 October 2026. Milestone 4 remains open for PDF highlight cards, Office previews, advanced search and Jot integration.
+Implemented and verified on 28 October 2026. This slice does not close Milestone 4.
 
 Acceptance: show one result per other live source document containing a shared card, link card or inline reference to the active ID; exclude Trash and self references; sort deterministically by title/ID. Flush before scanning and before source navigation, retain normal Back/Forward behavior, and clear results on document/workspace transitions. Explicit refresh must reflect saved link removal, renames and deletion. Unreadable/incomplete snapshots must produce a visible partial-results warning; failed scans must clear stale results and allow retry. Scanning must not write bodies, metadata or attachment associations. Verify extraction/deduplication/error handling with frontend tests and native save-failure, navigation, refresh, restart and preservation checks. Workspace format 1/schema 2 remain unchanged; no Yjs conversion or persistent index in this slice.
+
+### Second bounded slice: PDF text highlight cards
+
+Implemented and verified on 28 October 2026 under the bounds below. Milestone 4 remains open for Office previews, advanced search and Jot integration.
+
+Acceptance defined before implementation: choose an existing PDF attachment in the active document, read a locally rendered page, select text on that page and create a native BlockSuite note card with the quote and a source link. The source link retains the original attachment key, filename, one-based page and normalized selection rectangles; opening it returns to that PDF/page and marks the selection. Cards and original attachments survive restart and native archive restore without copied PDF bytes or rewritten source blocks. Card insertion participates in ordinary undo/save/retry and Page/Canvas rendering. Flush before opening the reader or inserting a card, prevent duplicate insertion on retry after a failed save, and clear reader state across document/workspace transitions. Missing/corrupt/encrypted or oversized PDFs must produce explicit errors without losing saved cards. Verify native selection, location reopening, failed-save retry, undo, offline use, restart and backup preservation alongside frontend validation tests and the relevant regressions.
+
+This slice supports text-bearing PDFs up to 10 MiB, one page/selection at a time, with bounded page rendering and quote length. OCR, cross-page highlights, editing PDF bytes, annotation round-tripping, custom Office editing and a second canvas engine are excluded. Workspace format 1/schema 2 remain unchanged; no Yjs body conversion.

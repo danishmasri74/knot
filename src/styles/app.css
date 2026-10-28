@@ -626,3 +626,87 @@ main {
   margin: 8px 0;
   padding-left: 20px;
 }
+.pdf-reader {
+  padding: 16px 24px;
+  border-bottom: 1px solid #ddd;
+  max-height: 65vh;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.pdf-reader .actions {
+  flex-wrap: wrap;
+}
+.pdf-reader select {
+  max-width: 230px;
+}
+.pdf-scroll {
+  overflow: auto;
+  max-height: 42vh;
+  margin-top: 12px;
+  background: #e5e7e5;
+}
+.pdf-page {
+  position: relative;
+  background: white;
+  margin: 0 auto;
+}
+.pdf-page canvas {
+  display: block;
+}
+.pdf-highlight {
+  position: absolute;
+  background: #ffd54f66;
+  pointer-events: none;
+}
+.pdf-quote {
+  max-height: 80px;
+  overflow: auto;
+  margin: 8px 0;
+  padding: 8px;
+  background: #fff8db;
+  white-space: pre-wrap;
+}
+.pdf-reader p {
+  margin: 8px 0;
+}
+/* PDF.js 6 text-layer layout, scoped to the reader so viewer chrome cannot
+   override Knot's sidebar or editor styles. */
+.pdf-page .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-page .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.pdf-page .textLayer > :not(.markedContent),
+.pdf-page .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+.pdf-page .textLayer .markedContent {
+  display: contents;
+}
+.pdf-page .textLayer ::selection {
+  background: #4477bb66;
+}

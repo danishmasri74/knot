@@ -13,6 +13,8 @@ import {
   RefNodeSlotsExtension,
   MarkdownAdapter,
   ExportManager,
+  type AttachmentBlockModel,
+  type NoteBlockModel,
 } from "@blocksuite/blocks";
 import { AffineEditorContainer } from "@blocksuite/presets";
 import * as Y from "yjs";
@@ -29,6 +31,14 @@ import {
 } from "../../../services/persistence";
 
 import { referenceIds } from "./references";
+import {
+  parsePdfSourceUrl,
+  pdfSourceUrl,
+  validatePdfHighlight,
+  type PdfHighlight,
+  type PdfLocation,
+  type PdfSource,
+} from "./pdf-highlights";
 
 registerBlocks();
 registerEditors();
@@ -39,6 +49,7 @@ export async function openEditor(
   onTitle: (title: string) => void = () => {},
   onNavigate: (id: string) => void = () => {},
   onCatalogChanged: () => void = () => {},
+  onPdfNavigate: (location: PdfLocation) => void = () => {},
 ) {
   const catalog = await repository.catalog();
   const known = new Map(catalog.map((item) => [item.id, item]));
@@ -261,6 +272,24 @@ export async function openEditor(
     });
     const editor = new AffineEditorContainer();
     editor.doc = doc;
+    const pdfClick = (event: MouseEvent) => {
+      const anchor = event
+        .composedPath()
+        .find(
+          (node): node is HTMLAnchorElement =>
+            node instanceof HTMLAnchorElement,
+        );
+      if (!anchor || !anchor.href.startsWith("https://knot.invalid/pdf"))
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      try {
+        const location = parsePdfSourceUrl(anchor.href);
+        if (location) onPdfNavigate(location);
+      } catch (e) {
+        onStatus("failed", e);
+      }
+    };
     const refExtension = RefNodeSlotsExtension();
     editor.pageSpecs = [...editor.pageSpecs, refExtension];
     editor.edgelessSpecs = [...editor.edgelessSpecs, refExtension];
@@ -272,11 +301,68 @@ export async function openEditor(
     let navigationSubscription = navigation();
     if (dirty.size) await persistence.flush();
     else onStatus("saved");
+    // Include BlockSuite's link popup, which may be mounted outside the editor.
+    document.addEventListener("click", pdfClick, true);
+    document.addEventListener("auxclick", pdfClick, true);
     return {
       editor,
       doc,
       collection,
       catalog,
+      pdfSources(): PdfSource[] {
+        const result = new Map<string, PdfSource>();
+        for (const { model } of doc.getBlocksByFlavour("affine:attachment")) {
+          const attachment = model as AttachmentBlockModel;
+          if (attachment.type === "application/pdf" && attachment.sourceId)
+            result.set(attachment.sourceId, {
+              key: attachment.sourceId,
+              name: attachment.name,
+              documentId: doc.id,
+            });
+        }
+        return [...result.values()];
+      },
+      async pdfHighlight(value: PdfHighlight) {
+        validatePdfHighlight(value);
+        // Save earlier edits first. A rejected card save keeps the same block ID
+        // for a retry, so the reader cannot accidentally insert a duplicate.
+        await persistence.flush();
+        if (!doc.getBlockById(value.id)) {
+          if (!doc.root) throw new Error("Document is unavailable");
+          let x = 0;
+          for (const { model } of doc.getBlocksByFlavour("affine:note")) {
+            const bounds: unknown = JSON.parse((model as NoteBlockModel).xywh);
+            if (
+              Array.isArray(bounds) &&
+              bounds.length === 4 &&
+              bounds.every(Number.isFinite)
+            )
+              x = Math.max(x, bounds[0] + bounds[2] + 40);
+          }
+          doc.captureSync();
+          doc.transact(() => {
+            const props = { id: value.id, xywh: `[${x},0,448,240]` as const };
+            const note = doc.addBlock("affine:note", props, doc.root);
+            doc.addBlock(
+              "affine:paragraph",
+              { type: "quote", text: new Text(value.quote) },
+              note,
+            );
+            const link = new Text([
+              {
+                insert: `PDF source: ${value.name} · page ${value.page}`,
+                attributes: { link: pdfSourceUrl(value) },
+              },
+            ]);
+            doc.addBlock("affine:paragraph", { text: link }, note);
+          });
+          doc.captureSync();
+          editor
+            .querySelector("affine-edgeless-root")
+            ?.service.viewport.setCenter(x + 224, 120);
+        }
+        await persistence.flush();
+      },
       async exportFiles(format: ExportFormat): Promise<ExportFile[]> {
         if (format === "markdown") {
           const job = new Job({
@@ -494,6 +580,8 @@ export async function openEditor(
       },
       destroy() {
         disposed = true;
+        document.removeEventListener("click", pdfClick, true);
+        document.removeEventListener("auxclick", pdfClick, true);
         editor.remove();
         created.dispose();
         navigationSubscription.dispose();
