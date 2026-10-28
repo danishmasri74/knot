@@ -147,8 +147,7 @@ fn known(w: &Workspace) -> Result<HashSet<String>> {
     }
     Ok(hashes)
 }
-pub fn preview(w: &Workspace) -> Result<Vec<Candidate>> {
-    let known = known(w)?;
+fn asset_names(w: &Workspace) -> Result<Vec<String>> {
     let root = w.root.join("assets");
     regular(&root, true)?;
     let mut names = Vec::new();
@@ -170,6 +169,12 @@ pub fn preview(w: &Workspace) -> Result<Vec<Candidate>> {
             }
         }
     }
+    names.sort();
+    Ok(names)
+}
+pub fn preview(w: &Workspace) -> Result<Vec<Candidate>> {
+    let known = known(w)?;
+    let names = asset_names(w)?;
     let mut result = Vec::new();
     for name in names {
         if relative(&name).is_err() {
@@ -373,6 +378,58 @@ pub fn dispose(w: &Workspace, expected: &Entry) -> Result<Option<String>> {
         .map(|e| format!("Payload permanently deleted, but recovery metadata cleanup failed: {e}")))
 }
 
+/// Restore only absent indexed assets from exact local copies. No index writes.
+pub fn recover_missing(w: &Workspace, hash: &str) -> Result<String> {
+    let target = w.asset_path(hash)?;
+    if !known(w)?.contains(hash) {
+        return Err("Attachment is no longer indexed; refresh the integrity report".into());
+    }
+    let sizes =
+        w.db.prepare("SELECT DISTINCT size FROM attachments WHERE sha256=?1")?
+            .query_map([hash], |r| r.get::<_, u64>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+    if sizes.len() != 1 {
+        return Err("Attachment index has conflicting sizes; no files changed".into());
+    }
+    let expected = (sizes[0], hash.to_string());
+    // asset() checks every parent, including Windows redirects.
+    let relative_target = format!("{}/{hash}", &hash[..2]);
+    asset(w, &relative_target, true)?;
+    match fs::symlink_metadata(&target) {
+        Ok(_) => {
+            return Err("Attachment destination already exists; nothing was overwritten".into())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+        Err(e) => return Err(e.into()),
+    }
+    let mut sources = Vec::new();
+    for name in asset_names(w)? {
+        if let Ok(path) = asset(w, &name, false) {
+            if fingerprint(&path).is_ok_and(|value| value == expected) {
+                sources.push((path, format!("assets/{name}")));
+            }
+        }
+    }
+    for entry in catalog(w)?.entries {
+        if (entry.size, entry.digest) == expected {
+            sources.push((
+                entry_dir(w, &entry.id)?.join("payload"),
+                format!("quarantine/{}", entry.id),
+            ));
+        }
+    }
+    let (source, label) = sources.first().ok_or("No exact local recovery copy found. Restore a known backup into a separate workspace to inspect it.")?;
+    regular(source, false)?;
+    let mut temp = tempfile::NamedTempFile::new_in(target.parent().ok_or("Missing parent")?)?;
+    std::io::copy(&mut File::open(source)?, temp.as_file_mut())?;
+    temp.as_file().sync_all()?;
+    if fingerprint(temp.path())? != expected {
+        return Err("Recovery source changed while copying; no attachment was published".into());
+    }
+    temp.persist_noclobber(&target).map_err(|e| e.error)?;
+    Ok(label.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,6 +440,70 @@ mod tests {
             size: c.size,
             digest: c.digest.clone(),
         }
+    }
+    #[test]
+    fn missing_attachment_recovery_preserves_shared_trash_and_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut w = Workspace::open(tmp.path().join("workspace")).unwrap();
+        let a = w.create("note").unwrap();
+        let b = w.create("whiteboard").unwrap();
+        for doc in [&a, &b] {
+            w.put_blob(doc, "shared", b"original", "asset", "text/plain")
+                .unwrap();
+        }
+        w.delete(&b).unwrap();
+        let hash = format!("{:x}", Sha256::digest(b"original"));
+        let target = w.asset_path(&hash).unwrap();
+        fs::remove_file(&target).unwrap();
+        assert!(recover_missing(&w, &hash).is_err());
+        let source = file(&w, "misplaced", b"original");
+        w.db.execute_batch("PRAGMA query_only=ON").unwrap();
+        assert_eq!(recover_missing(&w, &hash).unwrap(), "assets/misplaced");
+        assert_eq!(w.get_blob("shared").unwrap(), b"original");
+        assert_eq!(fs::read(&source).unwrap(), b"original");
+        assert_eq!(w.blobs(&a).unwrap(), vec!["shared"]);
+        assert_eq!(w.blobs(&b).unwrap(), vec!["shared"]);
+        assert_eq!(w.trash("", 0).unwrap()[0].object.id, b);
+        assert!(recover_missing(&w, &hash).is_err());
+        fs::write(&target, b"damaged").unwrap();
+        assert!(recover_missing(&w, &hash).is_err());
+        assert_eq!(fs::read(target).unwrap(), b"damaged");
+        assert!(recover_missing(&w, "../escape").is_err());
+        assert!(recover_missing(&w, &"a".repeat(64)).is_err());
+    }
+    #[test]
+    fn missing_attachment_recovers_quarantine_but_refuses_inconsistent_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("workspace");
+        let mut w = Workspace::open(root.clone()).unwrap();
+        file(&w, "orphan", b"recovery bytes");
+        quarantine(&w, &[select(&preview(&w).unwrap()[0])]).unwrap();
+        let entry = catalog(&w).unwrap().entries.remove(0);
+        let doc = w.create("note").unwrap();
+        w.put_blob(&doc, "key", b"recovery bytes", "asset", "text/plain")
+            .unwrap();
+        fs::remove_file(w.asset_path(&entry.digest).unwrap()).unwrap();
+        w.db.execute(
+            "INSERT INTO attachments VALUES ('conflict',?1,'bad','text/plain',1)",
+            [&entry.digest],
+        )
+        .unwrap();
+        assert!(recover_missing(&w, &entry.digest).is_err());
+        w.db.execute("DELETE FROM attachments WHERE id='conflict'", [])
+            .unwrap();
+        let payload = entry_dir(&w, &entry.id).unwrap().join("payload");
+        fs::write(&payload, b"damaged").unwrap();
+        assert!(recover_missing(&w, &entry.digest).is_err());
+        fs::write(&payload, b"recovery bytes").unwrap();
+        assert_eq!(
+            recover_missing(&w, &entry.digest).unwrap(),
+            format!("quarantine/{}", entry.id)
+        );
+        assert_eq!(fs::read(payload).unwrap(), b"recovery bytes");
+        drop(w);
+        let w = Workspace::open(root).unwrap();
+        assert_eq!(w.get_blob("key").unwrap(), b"recovery bytes");
+        assert_eq!(catalog(&w).unwrap().entries.len(), 1);
     }
     #[test]
     fn disposal_revalidates_and_preserves_restored_files_and_database() {

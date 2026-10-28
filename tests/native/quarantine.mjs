@@ -285,6 +285,59 @@ try {
   );
   await page.screenshot({ path: path.join(root, "disposed.png") });
   await click("Close quarantine");
+  // Missing indexed attachments can be recovered from misplaced exact copies.
+  const indexedPath = path.join(assets, hash.slice(0, 2), hash);
+  await unlink(indexedPath);
+  await unlink(path.join(assets, "duplicate.tmp"));
+  await click("✓ Check workspace");
+  const recoverButton = `Recover missing attachment ${hash}`;
+  await click(recoverButton);
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "No exact local recovery copy" })
+    .waitFor();
+  const recoverySource = path.join(assets, "misplaced-recovery.tmp");
+  await writeFile(recoverySource, "shared and trashed attachment");
+  // A stale missing report must not overwrite a newly occupied destination.
+  await writeFile(indexedPath, "retain damaged bytes");
+  await click(recoverButton);
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "destination already exists" })
+    .waitFor();
+  assert.equal(await readFile(indexedPath, "utf8"), "retain damaged bytes");
+  await unlink(indexedPath);
+  await click("Check again");
+  db.exec(
+    "CREATE TRIGGER reject_recovery BEFORE UPDATE ON documents BEGIN SELECT RAISE(FAIL, 'attachment recovery save failure'); END",
+  );
+  await page
+    .getByLabel("Document title", { exact: true })
+    .fill("Attachment recovery retry");
+  await click(recoverButton);
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "attachment recovery save failure" })
+    .waitFor();
+  await assert.rejects(access(indexedPath));
+  db.exec("DROP TRIGGER reject_recovery");
+  await save();
+  const beforeRecovery = rows();
+  await click(recoverButton);
+  await page
+    .getByText("No missing or corrupt indexed attachments found.")
+    .waitFor();
+  assert.deepEqual(rows(), beforeRecovery);
+  assert.equal(
+    await readFile(indexedPath, "utf8"),
+    "shared and trashed attachment",
+  );
+  assert.equal(
+    await readFile(recoverySource, "utf8"),
+    "shared and trashed attachment",
+  );
+  await page.screenshot({ path: path.join(root, "attachment-recovered.png") });
+  await click("Close report");
   await page.waitForFunction(() =>
     [
       ...document.querySelectorAll("affine-embed-edgeless-synced-doc-block"),
@@ -318,7 +371,7 @@ try {
     "recover me",
   );
   console.log(
-    "PASS quarantine preview, cancellation, save failure/retry, stale/newly indexed protection, partial outcomes, shared/Trash preservation, junction rejection, restart, restore, no overwrite and confirmed copy-only disposal",
+    "PASS quarantine preview, cancellation, save failure/retry, stale/newly indexed protection, partial outcomes, shared/Trash preservation, junction rejection, restart, restore, no overwrite, confirmed copy-only disposal and missing-attachment recovery",
     root,
   );
 } finally {

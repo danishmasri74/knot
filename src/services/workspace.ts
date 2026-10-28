@@ -123,6 +123,8 @@ export const repository = {
     invoke<void>("save_document", { id, snapshot }),
 };
 export const attachments = {
+  recoverMissing: (hash: string) =>
+    invoke<string>("recover_missing_attachment", { hash }),
   put: (
     object: string,
     key: string,

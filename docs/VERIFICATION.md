@@ -1,5 +1,13 @@
 # Verification
 
+## Milestone 3 local missing-attachment recovery — 28 October 2026
+
+- TypeScript, ESLint, 13 frontend tests, 41 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. Release executable and installer remain at the icon refresh.
+- Rust coverage verifies exact recovery from misplaced assets and retained quarantine payloads, shared/live/Trash associations, query-only database operation, restart persistence, absent-copy errors, malformed/unindexed hashes, occupied and corrupt destination refusal, conflicting index sizes and damaged recovery-copy rejection. Recovery verifies the synced temporary copy before no-replace publication.
+- Extended `node tests/native/quarantine.mjs` passed with real SQLite/filesystem fixtures: no-copy guidance, stale-report rejection after a destination becomes occupied, actual save-failure blocking and retry, exact recovered/source bytes, unchanged database rows, editor/shared-content refresh, and existing quarantine/disposal/backup-switch checks. Evidence: `test-results/quarantine-1793180354801/`; recovery success screenshot inspected. The initial test expected no copy while its earlier duplicate-attachment fixture still existed; recovery correctly found that duplicate. The no-copy fixture was corrected before the passing run.
+- Native integrity regression passed: `test-results/integrity-1793180286952/`. No new dialogs were introduced. Quarantine-source recovery and persistence after restart are covered by Rust; the new native recovery path uses a misplaced ordinary asset file.
+- This slice restores only missing indexed attachment files from exact local copies. It retains sources and refuses occupied/corrupt destinations; external-file/archive recovery and damaged-body repair remain future work. Scans are synchronous, unpaginated and limited to ordinary asset files directly in assets or one subfolder deep plus complete quarantine entries. Large-library performance, cancellation, hostile external writers, physical disk failure and publication-time fault injection are not acceptance-tested. Workspace format 1/database schema 2 and Yjs bodies remain unchanged.
+
 ## Milestone 3 permanent orphan disposal — 28 October 2026
 
 - TypeScript, ESLint, 13 frontend tests, 39 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. Release executable and installer remain at the icon refresh.

@@ -7,6 +7,7 @@ export function IntegrityPanel({
   onCheck,
   onBackups,
   onRestoreTarget,
+  onRecoverAttachment,
 }: {
   report: IntegrityReport;
   busy: boolean;
@@ -14,6 +15,7 @@ export function IntegrityPanel({
   onCheck: () => void;
   onBackups: () => void;
   onRestoreTarget: (id: string) => void;
+  onRecoverAttachment: (hash: string) => void;
 }) {
   return (
     <section
@@ -125,6 +127,35 @@ export function IntegrityPanel({
         No references are rewritten.
       </p>
       <h3>Attachment issues</h3>
+      {report.missing.length > 0 && (
+        <div>
+          <p>
+            Search misplaced asset files and quarantine for an exact copy of a
+            missing attachment. Recovery keeps the source copy and never
+            replaces an existing file.
+          </p>
+          {report.missing.map((hash) => (
+            <div className="trash-row" key={hash}>
+              <span>
+                <strong>
+                  {report.affected_attachments.find((a) => a.hash === hash)
+                    ?.name ?? hash}
+                </strong>
+                <small>
+                  <code>{hash}</code>
+                </small>
+              </span>
+              <button
+                disabled={busy || report.database_issues.length > 0}
+                aria-label={`Recover missing attachment ${hash}`}
+                onClick={() => onRecoverAttachment(hash)}
+              >
+                Find local recovery copy
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {!report.affected_attachments.length && (
         <p>No missing or corrupt indexed attachments found.</p>
       )}

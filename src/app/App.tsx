@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import {
   repository,
+  attachments,
   quarantine,
   type OrphanCandidate,
   type QuarantineCatalog,
@@ -872,6 +873,20 @@ export function App() {
             onClose={() => setIntegrity(null)}
             onCheck={() => void run(checkWorkspace)}
             onRestoreTarget={(id) => void run(() => restoreReferenceTarget(id))}
+            onRecoverAttachment={(hash) =>
+              void run(async () => {
+                await session.current?.flush();
+                try {
+                  const source = await attachments.recoverMissing(hash);
+                  setNotice(
+                    `Recovered missing attachment from ${source}. The source copy is retained.`,
+                  );
+                  if (active) await select(active, false);
+                } finally {
+                  await checkWorkspace();
+                }
+              })
+            }
             onBackups={() =>
               void run(async () => setBackupEntries(await backups.list()))
             }
