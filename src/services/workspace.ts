@@ -97,7 +97,17 @@ export const attachments = {
   get: (key: string) => invoke<number[]>("get_blob", { key }),
   list: (object: string) => invoke<string[]>("list_blobs", { object }),
 };
+export interface BackupEntry {
+  id: string;
+  size: number;
+  modified: number;
+}
 export const backups = {
+  list: () => invoke<BackupEntry[]>("list_backups"),
+  create: () => invoke<string>("create_backup"),
+  validate: (id: string) => invoke<void>("validate_backup", { id }),
+  delete: (id: string) => invoke<void>("delete_backup", { id }),
+  open: (id: string) => invoke<string>("restore_managed_backup", { id }),
   export: () => invoke<string | null>("export_backup"),
   restore: () => invoke<string | null>("restore_backup"),
 };

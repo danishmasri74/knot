@@ -1,3 +1,4 @@
+import { BackupManager } from "./BackupManager";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
@@ -6,6 +7,7 @@ import {
   backups,
   workspaces,
   type WorkspaceCatalog,
+  type BackupEntry,
   organization,
   type Catalog,
   type Organization,
@@ -31,6 +33,9 @@ export function App() {
     active: null,
     entries: [],
   });
+  const [backupEntries, setBackupEntries] = useState<BackupEntry[] | null>(
+    null,
+  );
   const [pickingWorkspace, setPickingWorkspace] = useState(false);
   const [catalog, setCatalog] = useState<Catalog>({ folders: [], tags: [] });
   const [filter, setFilter] = useState<LibraryFilter>({
@@ -167,6 +172,7 @@ export function App() {
     setFilter(all);
     setManaging(false);
     setTrash(null);
+    setBackupEntries(null);
     setPickingWorkspace(false);
     setWorkspaceCatalog(await workspaces.catalog());
     setCatalog(await organization.catalog());
@@ -369,6 +375,16 @@ export function App() {
           )}
         </nav>
         <div className="sidebar-footer">
+          <button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                setBackupEntries(await backups.list());
+              })
+            }
+          >
+            Manage backups
+          </button>
           <button
             disabled={busy}
             onClick={() =>
@@ -639,6 +655,50 @@ export function App() {
             run={run}
             onChanged={reloadOrganization}
             onClose={() => setManaging(false)}
+          />
+        )}
+        {backupEntries !== null && (
+          <BackupManager
+            entries={backupEntries}
+            busy={busy}
+            available={!!workspaceCatalog.active}
+            onClose={() => setBackupEntries(null)}
+            onAction={(action, id) =>
+              void run(async () => {
+                if (action === "create") {
+                  await session.current?.flush();
+                  const created = await backups.create();
+                  setNotice(`Backup created: ${created}`);
+                } else if (action === "validate" && id) {
+                  await backups.validate(id);
+                  setNotice(
+                    `Backup verified: ${id}. Database, relationships, and attachment hashes passed.`,
+                  );
+                } else if (action === "delete" && id) {
+                  if (
+                    !confirm(
+                      `Permanently delete backup “${id}”? This removes only this archive, not any workspace.`,
+                    )
+                  )
+                    return;
+                  await backups.delete(id);
+                  setNotice(`Deleted backup: ${id}`);
+                } else if (action === "restore" && id) {
+                  if (
+                    !confirm(
+                      "Restore this backup into a separate workspace and open it? Your current workspace will be retained.",
+                    )
+                  )
+                    return;
+                  await session.current?.flush();
+                  const path = await backups.open(id);
+                  await reloadWorkspace();
+                  setNotice(`Opened restored workspace: ${path}`);
+                  return;
+                }
+                setBackupEntries(await backups.list());
+              })
+            }
           />
         )}
         {pickingWorkspace && (

@@ -669,3 +669,80 @@ fn missing_selected_workspace_is_not_recreated_and_picker_recovers() {
         "broken"
     );
 }
+
+#[test]
+fn managed_backup_lifecycle_and_failures() {
+    use super::{managed_backups as managed, workspaces};
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+    let mut current = Ok(workspaces::startup(base).unwrap());
+    let original_id = current.as_ref().unwrap().list("", 0).unwrap()[0].id.clone();
+    let first = managed::create(base, current.as_ref().unwrap()).unwrap();
+    let second = managed::create(base, current.as_ref().unwrap()).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(managed::list(base).unwrap().len(), 2);
+    managed::validate(base, &first).unwrap();
+    assert_eq!(
+        workspaces::catalog(base, &current).unwrap().entries.len(),
+        1
+    );
+    assert_eq!(std::fs::read_dir(base.join("Backups")).unwrap().count(), 2);
+    for bad in ["../Workspace/knot.db", "../test.knot", "missing.knot"] {
+        assert!(managed::delete(base, bad).is_err());
+        assert!(managed::validate(base, bad).is_err());
+        assert!(managed::restore(base, &mut current, bad).is_err());
+    }
+    std::fs::write(base.join("Backups/broken.knot"), b"broken").unwrap();
+    assert!(managed::validate(base, "broken.knot").is_err());
+    assert!(managed::restore(base, &mut current, "broken.knot").is_err());
+    assert_eq!(current.as_ref().unwrap().root, base.join("Workspace"));
+    assert_eq!(
+        workspaces::catalog(base, &current).unwrap().entries.len(),
+        1
+    );
+    std::fs::create_dir(base.join("active-workspace.txt")).unwrap();
+    assert!(managed::restore(base, &mut current, &first).is_err());
+    assert_eq!(current.as_ref().unwrap().root, base.join("Workspace"));
+    assert!(Workspace::open(base.join("Workspace")).is_err());
+    std::fs::remove_dir(base.join("active-workspace.txt")).unwrap();
+    let restored = managed::restore(base, &mut current, &first).unwrap();
+    assert_eq!(
+        current.as_ref().unwrap().list("", 0).unwrap()[0].id,
+        original_id
+    );
+    drop(current);
+    assert_eq!(
+        workspaces::startup(base)
+            .unwrap()
+            .root
+            .display()
+            .to_string(),
+        restored
+    );
+    managed::delete(base, &first).unwrap();
+    assert!(managed::resolve(base, &first).is_err());
+    assert!(base.join("Workspace/knot.db").is_file());
+    assert!(managed::resolve(base, &second).is_ok());
+}
+
+#[test]
+fn failed_managed_backup_leaves_no_archive() {
+    use super::{managed_backups as managed, workspaces};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut w = workspaces::startup(tmp.path()).unwrap();
+    let id = w.list("", 0).unwrap()[0].id.clone();
+    w.put_blob(&id, "asset", b"content", "file", "text/plain")
+        .unwrap();
+    let hash: String =
+        w.db.query_row("SELECT sha256 FROM attachments LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+    std::fs::write(w.asset_path(&hash).unwrap(), b"corrupt").unwrap();
+    assert!(managed::create(tmp.path(), &w).is_err());
+    assert!(managed::list(tmp.path()).unwrap().is_empty());
+    assert_eq!(
+        std::fs::read_dir(tmp.path().join("Backups"))
+            .unwrap()
+            .count(),
+        0
+    );
+}

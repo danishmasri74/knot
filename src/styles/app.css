@@ -569,3 +569,12 @@ main {
 .recovery-panel button:hover:not(:disabled) {
   background: #e9eee7;
 }
+
+.backup-row {
+  flex-wrap: wrap;
+}
+.backup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

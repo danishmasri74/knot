@@ -1,4 +1,5 @@
 mod backup;
+mod managed_backups;
 mod organization;
 mod storage;
 #[cfg(test)]
@@ -12,6 +13,42 @@ struct AppState {
     base: std::path::PathBuf,
 }
 type Reply<T> = Result<T, String>;
+#[tauri::command]
+async fn list_backups(state: State<'_, AppState>) -> Reply<Vec<managed_backups::Entry>> {
+    let _guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    managed_backups::list(&state.base).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn create_backup(state: State<'_, AppState>) -> Reply<String> {
+    with(&state, |w| managed_backups::create(&state.base, w))
+}
+#[tauri::command]
+async fn validate_backup(state: State<'_, AppState>, id: String) -> Reply<()> {
+    let _guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    managed_backups::validate(&state.base, &id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn delete_backup(state: State<'_, AppState>, id: String) -> Reply<()> {
+    let _guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    managed_backups::delete(&state.base, &id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn restore_managed_backup(state: State<'_, AppState>, id: String) -> Reply<String> {
+    let mut guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    managed_backups::restore(&state.base, &mut guard, &id).map_err(|e| e.to_string())
+}
 #[tauri::command]
 async fn workspace_catalog(state: State<'_, AppState>) -> Reply<workspaces::Catalog> {
     let guard = state
@@ -222,6 +259,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            list_backups,
+            create_backup,
+            validate_backup,
+            delete_backup,
+            restore_managed_backup,
             workspace_catalog,
             switch_workspace,
             organization_catalog,

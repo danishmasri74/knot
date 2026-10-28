@@ -1,5 +1,13 @@
 # Verification
 
+## Milestone 3 backup management — 28 October 2026
+
+- TypeScript, ESLint, eight frontend tests, 22 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend build and standalone debug desktop build passed.
+- Rust coverage includes unique archive creation, complete validation with temporary-copy cleanup, invalid and missing IDs, corrupt archive rejection, failed selection persistence retaining the current workspace lock, restored identity and persistent selection, archive-only deletion, and corrupt-asset export cleanup. Existing archive tests cover attachments, organization and shared document snapshots.
+- `node tests/native/backups.mjs` passed in the compiled Windows app against an isolated workspace. It verifies save-before-backup failure/retry using a real SQLite trigger, creation/listing, full archive verification, restoration of the exact original ID and block JSON, retention of newer edits in the source workspace, deletion, and restart persistence.
+- Evidence: `test-results/backups-1793170507348/`; the backup panel screenshot was inspected. Native external file dialogs were not retested; managed backups use the existing archive engine. Release executable and installer remain older.
+- Managed backups are manual local archives; scheduling, automatic retention, catalog pagination and external-archive tracking are not implemented. Verification extracts a temporary copy and requires corresponding free disk space.
+
 ## Milestone 3 managed workspace picker — 27 October 2026
 
 - TypeScript, ESLint, eight frontend tests, 20 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend build and standalone debug desktop build passed.
