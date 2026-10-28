@@ -15,7 +15,7 @@ See VERIFICATION.md for the acceptance evidence and measured performance. Comple
 
 ## Further hardening / performance
 
-Streaming IPC for large files; trash restore; multi-window navigation; startup optimization; sustained canvas pan/zoom profiling; multi-gigabyte attachment testing; physical disk-full/power-loss tests; clean-machine installer testing. The 10,000-object query and 500-shape smoke benchmarks now exist.
+Streaming IPC for large files; multi-window navigation; startup optimization; sustained canvas pan/zoom profiling; multi-gigabyte attachment testing; physical disk-full/power-loss tests; clean-machine installer testing. The 10,000-object query and 500-shape smoke benchmarks now exist.
 
 ## Milestone 2 — complete
 
@@ -26,7 +26,9 @@ Streaming IPC for large files; trash restore; multi-window navigation; startup o
 
 ## Milestone 3
 
-Workspace picker/moving, backup management, standard exports, recovery UI, orphan cleanup, richer integrity tooling and format migrations.
+- Implemented first slice: searchable, paginated Trash & recovery panel with deletion dates and individual restore. Restoring retains the original ID, snapshots, attachments and surviving organization assignments, and refreshes active shared references.
+- Implemented managed workspace picker: return to the personal workspace or reopen a restored backup, persist selection across restarts, flush before switching and retain the current workspace on opening/selection failure. Missing startup selections are recoverable without creating an empty replacement.
+- Remaining: external workspace selection/moving, backup management, standard exports, broader recovery UI, orphan cleanup, richer integrity tooling and format migrations. No permanent deletion or asset cleanup is included in the Trash slice.
 
 ## Milestone 4
 

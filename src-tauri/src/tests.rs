@@ -526,3 +526,146 @@ fn shared_document_batch_is_atomic_and_retained_in_backup() {
     assert_eq!(restored.load(&board).unwrap().unwrap().document, vec![6]);
     assert_eq!(restored.list("", 0).unwrap().len(), 1);
 }
+
+#[test]
+fn trash_restore_preserves_identity_and_data() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("workspace");
+    let mut w = Workspace::open(root.clone()).unwrap();
+    let id = w.create("note").unwrap();
+    w.save(
+        &id,
+        &Snapshot {
+            title: Some("Recovered note".into()),
+            collection: vec![1, 2],
+            document: vec![3, 4],
+        },
+    )
+    .unwrap();
+    w.put_blob(&id, "asset", b"retained", "file", "text/plain")
+        .unwrap();
+    let folder = w.create_label("folder", "Folder").unwrap();
+    let tag = w.create_label("tag", "Tag").unwrap();
+    w.organize(
+        &id,
+        &super::organization::Organization {
+            folder: Some(folder.clone()),
+            tags: vec![tag.clone()],
+        },
+    )
+    .unwrap();
+    let updated = w.list("", 0).unwrap()[0].updated_at;
+    w.delete(&id).unwrap();
+    assert!(w.list("", 0).unwrap().is_empty());
+    assert_eq!(w.trash("RECOVERED", 0).unwrap()[0].object.id, id);
+    assert!(w.trash("absent", 0).unwrap().is_empty());
+    assert!(w.trash("", -1).is_err());
+    w.db.execute_batch("CREATE TRIGGER reject_restore BEFORE UPDATE ON objects BEGIN SELECT RAISE(FAIL,'failure'); END;").unwrap();
+    assert!(w.restore_object(&id).is_err());
+    assert_eq!(w.trash("", 0).unwrap().len(), 1);
+    w.db.execute_batch("DROP TRIGGER reject_restore;").unwrap();
+    let archive = tmp.path().join("trash.knot");
+    backup::export(&w, &archive).unwrap();
+    let restored_root = backup::restore(&archive, tmp.path()).unwrap();
+    let restored = Workspace::open(restored_root).unwrap();
+    restored.restore_object(&id).unwrap();
+    assert_eq!(restored.load(&id).unwrap().unwrap().document, vec![3, 4]);
+    drop(w);
+    let w = Workspace::open(root).unwrap();
+    w.restore_object(&id).unwrap();
+    assert!(w.restore_object(&id).is_err());
+    assert!(w.restore_object("missing").is_err());
+    assert!(w.trash("", 0).unwrap().is_empty());
+    assert_eq!(w.list("", 0).unwrap()[0].updated_at, updated);
+    let snapshot = w.load(&id).unwrap().unwrap();
+    assert_eq!(snapshot.document, vec![3, 4]);
+    assert_eq!(snapshot.collection, vec![1, 2]);
+    assert_eq!(w.get_blob("asset").unwrap(), b"retained");
+    let organized = w.organization(&id).unwrap();
+    assert_eq!(organized.folder, Some(folder));
+    assert_eq!(organized.tags, vec![tag]);
+}
+
+#[test]
+fn trash_paginates_stably() {
+    let tmp = tempfile::tempdir().unwrap();
+    let w = Workspace::open(tmp.path().join("workspace")).unwrap();
+    for _ in 0..105 {
+        let id = w.create("whiteboard").unwrap();
+        w.delete(&id).unwrap();
+    }
+    w.db.execute("UPDATE objects SET deleted_at=1", []).unwrap();
+    let first = w.trash("", 0).unwrap();
+    let second = w.trash("", 100).unwrap();
+    assert_eq!(first.len(), 100);
+    assert_eq!(second.len(), 5);
+    assert!(first.last().unwrap().object.id < second[0].object.id);
+}
+
+#[test]
+fn managed_workspace_switch_and_failure_preservation() {
+    use super::workspaces;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+    let original = workspaces::startup(base).unwrap();
+    let id = original.list("", 0).unwrap()[0].id.clone();
+    let archive = base.join("copy.knot");
+    backup::export(&original, &archive).unwrap();
+    let restored_root = backup::restore(&archive, base).unwrap();
+    let restored_id = restored_root.file_name().unwrap().to_str().unwrap();
+    let mut current = Ok(original);
+    assert_eq!(
+        workspaces::catalog(base, &current).unwrap().entries.len(),
+        2
+    );
+    workspaces::switch(base, &mut current, "Workspace").unwrap();
+    let held = Workspace::open(restored_root.clone()).unwrap();
+    assert!(workspaces::switch(base, &mut current, restored_id).is_err());
+    assert_eq!(current.as_ref().unwrap().root, base.join("Workspace"));
+    drop(held);
+    // A failed selection-file replacement must retain the old workspace/lock.
+    std::fs::create_dir(base.join("active-workspace.txt")).unwrap();
+    assert!(workspaces::switch(base, &mut current, restored_id).is_err());
+    assert!(Workspace::open(base.join("Workspace")).is_err());
+    assert!(Workspace::open(restored_root.clone()).is_ok());
+    std::fs::remove_dir(base.join("active-workspace.txt")).unwrap();
+    workspaces::switch(base, &mut current, restored_id).unwrap();
+    assert_eq!(current.as_ref().unwrap().list("", 0).unwrap()[0].id, id);
+    assert!(Workspace::open(base.join("Workspace")).is_ok());
+    assert!(workspaces::switch(base, &mut current, "../Workspace").is_err());
+    assert!(workspaces::switch(base, &mut current, "missing").is_err());
+    assert!(!base.join("missing").exists());
+    drop(current);
+    let reopened = workspaces::startup(base).unwrap();
+    assert_eq!(reopened.root, restored_root);
+    let mut current = Ok(reopened);
+    workspaces::switch(base, &mut current, "Workspace").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(base.join("active-workspace.txt")).unwrap(),
+        "Workspace"
+    );
+}
+
+#[test]
+fn missing_selected_workspace_is_not_recreated_and_picker_recovers() {
+    use super::workspaces;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+    drop(workspaces::startup(base).unwrap());
+    std::fs::write(base.join("active-workspace.txt"), "missing").unwrap();
+    assert!(workspaces::startup(base).is_err());
+    assert!(!base.join("missing").exists());
+    let mut current = Err("Unavailable workspace".to_string());
+    let catalog = workspaces::catalog(base, &current).unwrap();
+    assert!(catalog.active.is_none());
+    assert_eq!(catalog.entries.len(), 1);
+    workspaces::switch(base, &mut current, "Workspace").unwrap();
+    assert!(current.is_ok());
+    drop(current);
+    std::fs::write(base.join("Workspace/workspace.json"), "broken").unwrap();
+    assert!(workspaces::startup(base).is_err());
+    assert_eq!(
+        std::fs::read_to_string(base.join("Workspace/workspace.json")).unwrap(),
+        "broken"
+    );
+}

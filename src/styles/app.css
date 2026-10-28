@@ -507,3 +507,65 @@ main {
   overflow-wrap: anywhere;
   min-width: 0;
 }
+
+.recovery-panel {
+  padding: 16px 24px;
+  border-bottom: 1px solid #ddd;
+  background: #faf9f6;
+  max-height: 50vh;
+  overflow: auto;
+}
+.recovery-panel h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.recovery-panel p {
+  font-size: 13px;
+  color: #60645f;
+}
+.recovery-panel form {
+  display: flex;
+  gap: 8px;
+}
+.trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e2e3de;
+}
+.trash-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.trash-row small {
+  display: block;
+  color: #60645f;
+}
+.recovery-panel {
+  flex-shrink: 0;
+}
+.recovery-panel form {
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.recovery-panel input {
+  flex: 1;
+  min-width: 140px;
+  border: 1px solid #cbd3ca;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: white;
+}
+.recovery-panel button {
+  border: 1px solid #cbd3ca;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: white;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.recovery-panel button:hover:not(:disabled) {
+  background: #e9eee7;
+}

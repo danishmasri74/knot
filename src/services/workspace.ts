@@ -1,4 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
+export interface WorkspaceCatalog {
+  active: string | null;
+  entries: { id: string; path: string }[];
+}
+export const workspaces = {
+  catalog: () => invoke<WorkspaceCatalog>("workspace_catalog"),
+  switch: (id: string) => invoke<void>("switch_workspace", { id }),
+};
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -9,6 +17,9 @@ export interface Snapshot {
   title?: string;
   collection: number[];
   document: number[];
+}
+export interface TrashedObject extends KnowledgeObject {
+  deleted_at: number;
 }
 export interface Label {
   id: string;
@@ -39,6 +50,9 @@ export const organization = {
     invoke<void>("delete_label", { kind, id }),
 };
 export const repository = {
+  trash: (search = "", offset = 0) =>
+    invoke<TrashedObject[]>("list_trash", { search, offset }),
+  restore: (id: string) => invoke<void>("restore_object", { id }),
   saveMany: (
     documents: { id: string; snapshot: Snapshot; create: boolean }[],
   ) => invoke<void>("save_documents", { documents }),

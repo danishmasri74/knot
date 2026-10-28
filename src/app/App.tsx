@@ -4,13 +4,17 @@ import { isTauri } from "@tauri-apps/api/core";
 import {
   repository,
   backups,
+  workspaces,
+  type WorkspaceCatalog,
   organization,
   type Catalog,
   type Organization,
   type LibraryFilter,
   type KnowledgeObject,
+  type TrashedObject,
 } from "../services/workspace";
 import type { SaveStatus } from "../services/persistence";
+import { WorkspacePicker, workspaceName } from "./WorkspacePicker";
 import { NavigationHistory } from "../services/navigation";
 import {
   LibraryFilters,
@@ -23,6 +27,11 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalog>({
+    active: null,
+    entries: [],
+  });
+  const [pickingWorkspace, setPickingWorkspace] = useState(false);
   const [catalog, setCatalog] = useState<Catalog>({ folders: [], tags: [] });
   const [filter, setFilter] = useState<LibraryFilter>({
     folder: null,
@@ -33,6 +42,19 @@ export function App() {
     tags: [],
   });
   const [managing, setManaging] = useState(false);
+  const [trash, setTrash] = useState<TrashedObject[] | null>(null);
+  const [trashQuery, setTrashQuery] = useState("");
+  const [trashSearch, setTrashSearch] = useState("");
+  const [moreTrash, setMoreTrash] = useState(false);
+  async function loadTrash(search = trashSearch, append = false) {
+    const rows = await repository.trash(
+      search,
+      append ? (trash?.length ?? 0) : 0,
+    );
+    setTrash(append ? [...(trash ?? []), ...rows] : rows);
+    setTrashSearch(search);
+    setMoreTrash(rows.length === 100);
+  }
   const [references, setReferences] = useState<KnowledgeObject[]>([]);
   const [referenceTarget, setReferenceTarget] = useState("");
   const [choosingReference, setChoosingReference] = useState(false);
@@ -124,6 +146,33 @@ export function App() {
     setMode(next.editor.mode);
     if (record) history.current.visit(item);
   }
+  async function reloadWorkspace() {
+    ++searchGeneration.current;
+    history.current.clear();
+    session.current?.destroy();
+    session.current = null;
+    host.current?.replaceChildren();
+    setActive(null);
+    setItems([]);
+    setTitle("");
+    setQuery("");
+    setStatus("saved");
+    setNotice("");
+    setReferences([]);
+    setReferenceTarget("");
+    setChoosingReference(false);
+    setOrganized({ folder: null, tags: [] });
+    setCatalog({ folders: [], tags: [] });
+    const all = { folder: null, tag: null };
+    setFilter(all);
+    setManaging(false);
+    setTrash(null);
+    setPickingWorkspace(false);
+    setWorkspaceCatalog(await workspaces.catalog());
+    setCatalog(await organization.catalog());
+    const rows = await refresh("", all);
+    if (rows[0]) await select(rows[0]);
+  }
   useEffect(() => {
     if (!isTauri()) {
       setError(
@@ -132,6 +181,7 @@ export function App() {
       return;
     }
     void run(async () => {
+      setWorkspaceCatalog(await workspaces.catalog());
       setCatalog(await organization.catalog());
       const rows = await refresh("");
       if (rows[0]) await select(rows[0]);
@@ -213,9 +263,24 @@ export function App() {
           </span>
         </div>
         <div className="workspace-label">
-          <span className="workspace-dot" /> Personal workspace{" "}
+          <span className="workspace-dot" />{" "}
+          {workspaceCatalog.active
+            ? workspaceName(workspaceCatalog.active)
+            : "Workspace unavailable"}{" "}
           <span className="local-label">LOCAL</span>
         </div>
+        <button
+          className="manage-organization"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              setWorkspaceCatalog(await workspaces.catalog());
+              setPickingWorkspace(!pickingWorkspace);
+            })
+          }
+        >
+          Switch workspace
+        </button>
         <button
           className="primary"
           disabled={busy}
@@ -308,6 +373,17 @@ export function App() {
             disabled={busy}
             onClick={() =>
               void run(async () => {
+                await loadTrash("");
+                setTrashQuery("");
+              })
+            }
+          >
+            Trash & recovery
+          </button>
+          <button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
                 await session.current?.flush();
                 const result = await repository.integrity();
                 setNotice(
@@ -343,18 +419,7 @@ export function App() {
                 await session.current?.flush();
                 const path = await backups.restore();
                 if (path) {
-                  history.current.clear();
-                  session.current?.destroy();
-                  session.current = null;
-                  host.current?.replaceChildren();
-                  setActive(null);
-                  setQuery("");
-                  const all = { folder: null, tag: null };
-                  setFilter(all);
-                  setManaging(false);
-                  setCatalog(await organization.catalog());
-                  const rows = await refresh("", all);
-                  if (rows[0]) await select(rows[0]);
+                  await reloadWorkspace();
                   setNotice(`Opened restored workspace: ${path}`);
                 }
               })
@@ -486,12 +551,13 @@ export function App() {
                   if (
                     !active ||
                     !confirm(
-                      `Move “${active.title}” out of your library? Its data will be retained in the workspace.`,
+                      `Move “${active.title}” to Trash? You can restore it later from Trash & recovery.`,
                     )
                   )
                     return;
                   await session.current?.flush();
                   await repository.delete(active.id);
+                  if (trash !== null) await loadTrash();
                   history.current.remove(active.id);
                   session.current?.destroy();
                   session.current = null;
@@ -574,6 +640,103 @@ export function App() {
             onChanged={reloadOrganization}
             onClose={() => setManaging(false)}
           />
+        )}
+        {pickingWorkspace && (
+          <WorkspacePicker
+            catalog={workspaceCatalog}
+            busy={busy}
+            onClose={() => setPickingWorkspace(false)}
+            onSwitch={(id) =>
+              void run(async () => {
+                await session.current?.flush();
+                await workspaces.switch(id);
+                await reloadWorkspace();
+                setNotice(`Opened ${workspaceName(id)}.`);
+              })
+            }
+          />
+        )}
+        {trash !== null && (
+          <section className="recovery-panel" aria-label="Trash and recovery">
+            <h2>Trash & recovery</h2>
+            <p>
+              Restore notes and whiteboards with their original content,
+              attachments, and remaining folder and tag assignments. Existing
+              references reconnect to the same document.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void run(() => loadTrash(trashQuery));
+              }}
+            >
+              <input
+                aria-label="Search Trash"
+                value={trashQuery}
+                disabled={busy}
+                onChange={(event) => setTrashQuery(event.target.value)}
+              />
+              <button disabled={busy}>Search Trash</button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setTrash(null)}
+              >
+                Close Trash
+              </button>
+            </form>
+            <div className="trash-list">
+              {trash.map((item) => (
+                <div className="trash-row" key={item.id}>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>
+                      {item.kind === "note" ? "Note" : "Whiteboard"} · Deleted{" "}
+                      {new Date(item.deleted_at).toLocaleString()}
+                    </small>
+                  </span>
+                  <button
+                    disabled={busy}
+                    aria-label={`Restore ${item.title}`}
+                    onClick={() =>
+                      void run(async () => {
+                        await session.current?.flush();
+                        await repository.restore(item.id);
+                        await loadTrash();
+                        await refresh();
+                        if (active) await select(active, false);
+                        setNotice(
+                          `Restored “${item.title}”. It is available in your library; current filters may hide it.`,
+                        );
+                      })
+                    }
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+              {!trash.length && (
+                <p>
+                  {trashSearch
+                    ? "No deleted documents match this search."
+                    : "Trash is empty."}
+                </p>
+              )}
+            </div>
+            {moreTrash && (
+              <button
+                disabled={busy}
+                onClick={() => void run(() => loadTrash(trashSearch, true))}
+              >
+                Load more deleted documents
+              </button>
+            )}
+            <p>
+              For missing or damaged files, use Check workspace. To recover an
+              archived workspace, use Restore backup; it opens a separate
+              workspace.
+            </p>
+          </section>
         )}
         {active && (
           <DocumentOrganization

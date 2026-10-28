@@ -27,6 +27,12 @@ pub struct Object {
     pub kind: String,
     pub updated_at: i64,
 }
+#[derive(Serialize)]
+pub struct TrashedObject {
+    #[serde(flatten)]
+    pub object: Object,
+    pub deleted_at: i64,
+}
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {
     pub collection: Vec<u8>,
@@ -186,9 +192,41 @@ impl Workspace {
     }
     pub fn delete(&self, id: &str) -> Result<()> {
         self.db.execute(
-            "UPDATE objects SET deleted_at=?2 WHERE id=?1",
+            "UPDATE objects SET deleted_at=?2 WHERE id=?1 AND deleted_at IS NULL",
             params![id, now()],
         )?;
+        Ok(())
+    }
+    pub fn trash(&self, search: &str, offset: i64) -> Result<Vec<TrashedObject>> {
+        if offset < 0 {
+            return Err("Invalid trash offset".into());
+        }
+        let mut query = self.db.prepare(
+            "SELECT id,title,kind,updated_at,deleted_at FROM objects
+             WHERE deleted_at IS NOT NULL AND instr(lower(title),lower(?1))>0
+             ORDER BY deleted_at DESC,id LIMIT 100 OFFSET ?2",
+        )?;
+        let rows = query.query_map(params![search, offset], |r| {
+            Ok(TrashedObject {
+                object: Object {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    kind: r.get(2)?,
+                    updated_at: r.get(3)?,
+                },
+                deleted_at: r.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+    pub fn restore_object(&self, id: &str) -> Result<()> {
+        let changed = self.db.execute(
+            "UPDATE objects SET deleted_at=NULL WHERE id=?1 AND deleted_at IS NOT NULL",
+            [id],
+        )?;
+        if changed != 1 {
+            return Err("Document is not in Trash. Refresh and try again.".into());
+        }
         Ok(())
     }
     pub fn load(&self, id: &str) -> Result<Option<Snapshot>> {

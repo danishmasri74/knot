@@ -1,5 +1,19 @@
 # Verification
 
+## Milestone 3 managed workspace picker — 27 October 2026
+
+- TypeScript, ESLint, eight frontend tests, 20 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend build and standalone debug desktop build passed.
+- New Rust tests cover switching to an archive-restored workspace, persisted selection, returning to the original, destination lock failure, failed selection-file replacement, rejected traversal/missing targets, retained workspace locks, and recovery from a missing startup selection. Missing selected workspaces are never silently recreated.
+- `node tests/native/workspaces.mjs` passed in the compiled Windows app. A closed native workspace was copied into a managed restored-workspace fixture with identical document IDs. The UI test verifies independent edits, save-before-switch failure/retry using a real SQLite trigger, restart selection, history/Trash reset, and recovery through the picker after startup fails.
+- Evidence: `test-results/workspaces-1793107768609/`; the picker screenshot was inspected. The test uses a copied fixture, not the native restore dialog; archive restore and selection are covered together by Rust tests. External workspace paths/moving, workspace naming and release/installer rebuilding are outside this slice.
+
+## Milestone 3 Trash & recovery — 27 October 2026
+
+- TypeScript, ESLint, eight frontend tests, 18 Rust tests (two opt-in tests excluded), and Rust Clippy with warnings denied passed. Production frontend and standalone debug desktop builds passed; release executable and installer were not rebuilt.
+- New Rust coverage checks original snapshot bytes, ID, edit timestamp, attachments and folder/tag preservation, restoration after restart and from a backup, rejected writes and retry, invalid restore requests, and stable pagination of 105 deleted documents.
+- `node tests/native/trash.mjs` passed against Windows WebView2/Rust/SQLite in an isolated workspace. It exercises Trash search and empty results, a real SQLite restore failure and retry, unchanged original ID/block JSON, immediate shared-preview recovery in the active board, restart persistence, and restoration into an empty library.
+- Final evidence: `test-results/trash-1793107336304/`; screenshots were inspected. This is the first Milestone 3 slice, not validation of workspace moving, exports, permanent deletion or asset cleanup.
+
 ## Milestone 2 shared notes and references — 27 October 2026
 
 - TypeScript, ESLint, eight frontend tests, Rust Clippy with warnings denied, production frontend build and standalone debug desktop build passed.
@@ -104,4 +118,4 @@ These are single-run smoke measurements on this PC, not statistical benchmarks:
 - The installer and standalone executable were built and exercised; installation/uninstallation on a clean Windows VM remains unverified.
 - Offline testing covers WebView networking disabled and a standalone executable without a dev server. The machine's network adapter was not disabled.
 - Imports are bounded to 100 MiB and use in-memory IPC. PDF inline embedding is limited to 10 MiB. Multi-gigabyte library stress testing and streaming imports remain future work.
-- BlockSuite's online-dependent embeds are unavailable under the offline CSP. Standard Markdown/PDF/PNG export, trash UI and destructive asset cleanup remain future milestones. Folders and shared cross-board notes are covered by the Milestone 2 results above.
+- BlockSuite's online-dependent embeds are unavailable under the offline CSP. Standard Markdown/PDF/PNG export and destructive asset cleanup remain future milestones. Trash restoration is covered by the Milestone 3 results above; folders and shared cross-board notes are covered by Milestone 2.

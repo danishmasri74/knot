@@ -3,6 +3,7 @@ mod organization;
 mod storage;
 #[cfg(test)]
 mod tests;
+mod workspaces;
 use std::sync::Mutex;
 use storage::{Object, Snapshot, Workspace};
 use tauri::{Manager, State};
@@ -11,6 +12,22 @@ struct AppState {
     base: std::path::PathBuf,
 }
 type Reply<T> = Result<T, String>;
+#[tauri::command]
+async fn workspace_catalog(state: State<'_, AppState>) -> Reply<workspaces::Catalog> {
+    let guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    workspaces::catalog(&state.base, &guard).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn switch_workspace(state: State<'_, AppState>, id: String) -> Reply<()> {
+    let mut guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    workspaces::switch(&state.base, &mut guard, &id).map_err(|e| e.to_string())
+}
 #[tauri::command]
 async fn organization_catalog(state: State<'_, AppState>) -> Reply<organization::Catalog> {
     with(&state, |w| w.catalog())
@@ -91,6 +108,18 @@ async fn delete_object(state: State<'_, AppState>, id: String) -> Reply<()> {
     with(&state, |w| w.delete(&id))
 }
 #[tauri::command]
+async fn list_trash(
+    state: State<'_, AppState>,
+    search: String,
+    offset: i64,
+) -> Reply<Vec<storage::TrashedObject>> {
+    with(&state, |w| w.trash(&search, offset))
+}
+#[tauri::command]
+async fn restore_object(state: State<'_, AppState>, id: String) -> Reply<()> {
+    with(&state, |w| w.restore_object(&id))
+}
+#[tauri::command]
 async fn load_document(state: State<'_, AppState>, id: String) -> Reply<Option<Snapshot>> {
     with(&state, |w| w.load(&id))
 }
@@ -158,19 +187,12 @@ async fn restore_backup(state: State<'_, AppState>) -> Reply<Option<String>> {
             let result = (|| -> storage::Result<String> {
                 let root = backup::restore(p.path(), &state.base)?;
                 let next = Workspace::open(root.clone())?;
-                let selection_tmp = state.base.join("active-workspace.tmp");
-                std::fs::write(
-                    &selection_tmp,
+                workspaces::persist_selection(
+                    &state.base,
                     root.file_name()
-                        .ok_or("Missing folder name")?
-                        .to_string_lossy()
-                        .as_bytes(),
+                        .and_then(|name| name.to_str())
+                        .ok_or("Invalid workspace name")?,
                 )?;
-                std::fs::OpenOptions::new()
-                    .write(true)
-                    .open(&selection_tmp)?
-                    .sync_all()?;
-                std::fs::rename(selection_tmp, state.base.join("active-workspace.txt"))?;
                 *guard = Ok(next);
                 Ok(root.display().to_string())
             })();
@@ -190,31 +212,7 @@ pub fn run() {
                 .map(std::path::PathBuf::from)
                 .unwrap_or(base);
             std::fs::create_dir_all(&base)?;
-            let workspace = (|| -> storage::Result<Workspace> {
-                let selected = match std::fs::read_to_string(base.join("active-workspace.txt")) {
-                    Ok(value) => value,
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                        "Workspace".into()
-                    }
-                    Err(error) => return Err(error.into()),
-                };
-                if selected.is_empty()
-                    || !selected
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
-                {
-                    return Err("Invalid workspace selection. Restore a backup to recover.".into());
-                }
-                let root = base.join(selected);
-                let first_launch = !root.join("workspace.json").exists();
-                let ws = Workspace::open(root)?;
-                if first_launch {
-                    let id = ws.create("note")?;
-                    ws.rename(&id, "Welcome to Knot")?;
-                }
-                Ok(ws)
-            })()
-            .map_err(|error| {
+            let workspace = workspaces::startup(&base).map_err(|error| {
                 format!("Workspace could not open: {error}. Existing data has been preserved.")
             });
             app.manage(AppState {
@@ -224,6 +222,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            workspace_catalog,
+            switch_workspace,
             organization_catalog,
             create_label,
             rename_label,
@@ -235,6 +235,8 @@ pub fn run() {
             create_object,
             rename_object,
             delete_object,
+            list_trash,
+            restore_object,
             load_document,
             save_document,
             save_documents,

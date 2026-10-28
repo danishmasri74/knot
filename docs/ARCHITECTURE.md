@@ -11,6 +11,8 @@ React owns navigation, title editing, library queries, status, and application a
 - `src/app/Organization.tsx`: organization management, document assignment and library filter controls.
 - `src-tauri/src/backup.rs`: consistent SQLite snapshots and validated archive restoration.
 - `src-tauri/src/lib.rs`: narrow commands and default workspace selection.
+- `src-tauri/src/workspaces.rs`: managed workspace discovery, persisted selection and safe switching.
+- `src/app/WorkspacePicker.tsx`: managed workspace picker and location display.
 
 The editor projects live workspace metadata into a session-scoped BlockSuite collection. Only the active document and its transitively referenced documents have their bodies loaded; cycles are visited once. Library reads are paginated in batches of 100, with indexed ordering and title substring filtering. The reference catalog reads all metadata pages, so collection metadata memory grows with library size. A future FTS migration can replace the substring scan. React retains no attachment payloads in state. BlobSource loads a requested asset only when needed.
 
@@ -22,6 +24,10 @@ One SaveCoordinator observes every loaded subdocument. A save transaction commit
 
 The Rust workspace mutex serializes storage operations, so a backup contains a coherent metadata/asset view. Tauri async commands keep database work off the WebView rendering thread, though long backup operations currently delay subsequent commands. A dedicated blocking worker is a future refinement.
 
+Trash queries read soft-deleted catalog rows in stable deletion-date/ID order, with title search and 100-row pages. Explicit restore clears only `objects.deleted_at`; snapshots, edit timestamps, attachments, IDs and remaining organization assignments are preserved. Normal saves still cannot resurrect deleted objects. The shell flushes pending changes before restoring, then reconstructs the active editor collection so references to the restored ID resolve immediately. Restore does not add a navigation-history visit or change library filters. No schema migration or destructive cleanup is involved.
+
 No arbitrary path-based file commands are exposed. Backup paths come from Rust native dialogs; asset paths are derived from validated SHA-256 strings. Network embeds are intentionally restricted by the production CSP.
+
+The workspace picker accepts only validated directory IDs within the managed application data folder, including the original `Workspace` and restored backup directories. Candidates must have a manifest and database; canonical-parent checks exclude redirects outside the managed folder. Opening validates the database and acquires the destination lock while the current lock remains held. Selection is written through a synced temporary file and renamed before replacing the active workspace. A failed open or selection write retains the old workspace. Startup never recreates a missing explicitly selected workspace; the picker remains available when startup fails. Restore-backup and picker transitions share the frontend reset path for editor sessions, history, organization filters, Trash and reference state. External paths, workspace moving and user-defined workspace names remain future work.
 
 Workspace ownership is protected by a process-held OS file lock. A second process refuses to open the same workspace; the lock is released after process termination. The title edited inside BlockSuite is saved with its snapshot and mirrored to library metadata. The application temporarily disables editor interaction during switching, importing, and backup/restore dialogs.
