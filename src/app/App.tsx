@@ -796,6 +796,26 @@ export function App() {
             busy={busy}
             onClose={() => setCleanup(null)}
             onRefresh={() => void run(loadCleanup)}
+            onDispose={(entry) =>
+              void run(async () => {
+                if (
+                  !confirm(
+                    `Permanently delete the quarantine copy of ${entry.original} (${entry.size.toLocaleString()} bytes)? Recovery ID: ${entry.id}. This cannot be undone. Backups do not include this copy. Any restored original will remain.`,
+                  )
+                )
+                  return;
+                await session.current?.flush();
+                setIntegrity(null);
+                try {
+                  const warning = await quarantine.dispose(entry);
+                  setNotice(
+                    `Permanently deleted the quarantine copy of ${entry.original} (${entry.size.toLocaleString()} bytes). ${warning ?? ""}`,
+                  );
+                } finally {
+                  await loadCleanup().catch(report);
+                }
+              })
+            }
             onMove={(selected) =>
               void run(async () => {
                 if (

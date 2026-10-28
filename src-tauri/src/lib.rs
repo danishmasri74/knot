@@ -269,6 +269,13 @@ async fn restore_quarantined(state: State<'_, AppState>, id: String) -> Reply<()
     with(&state, |w| quarantine::restore(w, &id))
 }
 #[tauri::command]
+async fn dispose_quarantined(
+    state: State<'_, AppState>,
+    entry: quarantine::Entry,
+) -> Reply<Option<String>> {
+    with(&state, |w| quarantine::dispose(w, &entry))
+}
+#[tauri::command]
 async fn export_backup(state: State<'_, AppState>) -> Reply<Option<String>> {
     let path = rfd::AsyncFileDialog::new()
         .add_filter("Knot workspace", &["knot"])
@@ -367,6 +374,7 @@ pub fn run() {
             quarantine_catalog,
             quarantine_orphans,
             restore_quarantined,
+            dispose_quarantined,
             export_backup,
             restore_backup
         ])

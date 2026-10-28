@@ -225,6 +225,65 @@ try {
   );
   db = new DatabaseSync(path.join(root, "Workspace/knot.db"));
   assert.deepEqual(rows(), before);
+  // Permanent disposal is explicit, save-gated, revalidated and copy-only.
+  await writeFile(
+    path.join(assets, "disposable.tmp"),
+    "dispose only this copy",
+  );
+  await click("Refresh quarantine");
+  await page.getByLabel("Select disposable.tmp", { exact: true }).check();
+  await click("Quarantine selected files");
+  const disposalButton = "Permanently delete copy disposable.tmp";
+  accept = false;
+  await click(disposalButton);
+  assert.equal(
+    await page
+      .getByRole("button", { name: disposalButton, exact: true })
+      .count(),
+    1,
+  );
+  accept = true;
+  await click("Restore file disposable.tmp");
+  db.exec(
+    "CREATE TRIGGER reject_disposal BEFORE UPDATE ON documents BEGIN SELECT RAISE(FAIL, 'disposal save failure'); END",
+  );
+  await page
+    .getByLabel("Document title", { exact: true })
+    .fill("Disposal save retry");
+  await click(disposalButton);
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "disposal save failure" })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: disposalButton, exact: true })
+      .count(),
+    1,
+  );
+  db.exec("DROP TRIGGER reject_disposal");
+  await save();
+  const beforeDisposal = rows();
+  await click(disposalButton);
+  await page
+    .getByText(/Permanently deleted the quarantine copy of disposable.tmp/)
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: disposalButton, exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await readFile(path.join(assets, "disposable.tmp"), "utf8"),
+    "dispose only this copy",
+  );
+  assert.deepEqual(rows(), beforeDisposal);
+  assert.deepEqual(
+    await readdir(path.join(root, "Workspace/quarantine")),
+    copies,
+  );
+  await page.screenshot({ path: path.join(root, "disposed.png") });
   await click("Close quarantine");
   await page.waitForFunction(() =>
     [
@@ -259,7 +318,7 @@ try {
     "recover me",
   );
   console.log(
-    "PASS quarantine preview, cancellation, save failure/retry, stale/newly indexed protection, partial outcomes, shared/Trash preservation, junction rejection, restart, restore and no overwrite",
+    "PASS quarantine preview, cancellation, save failure/retry, stale/newly indexed protection, partial outcomes, shared/Trash preservation, junction rejection, restart, restore, no overwrite and confirmed copy-only disposal",
     root,
   );
 } finally {

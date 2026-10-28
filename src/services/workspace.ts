@@ -171,4 +171,6 @@ export const quarantine = {
       selected,
     }),
   restore: (id: string) => invoke<void>("restore_quarantined", { id }),
+  dispose: (entry: QuarantineCatalog["entries"][number]) =>
+    invoke<string | null>("dispose_quarantined", { entry }),
 };

@@ -22,7 +22,7 @@ pub struct Selection {
     pub size: u64,
     pub digest: String,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct Entry {
     pub id: String,
     pub original: String,
@@ -339,6 +339,40 @@ pub fn restore(w: &Workspace, id: &str) -> Result<()> {
     Ok(())
 }
 
+// Delete only the explicitly reviewed payload. Never traverse or remove a tree.
+// Metadata cleanup failures are warnings after the irreversible payload removal.
+pub fn dispose(w: &Workspace, expected: &Entry) -> Result<Option<String>> {
+    let entry = read_entry(w, &expected.id)?;
+    if &entry != expected {
+        return Err("Recovery copy changed; refresh before permanently deleting it".into());
+    }
+    let hashes = known(w)?;
+    if hashes.contains(&entry.digest) || hashes.contains(entry.original.rsplit('/').next().unwrap())
+    {
+        return Err(
+            "Recovery copy is protected by the attachment index; retained for recovery".into(),
+        );
+    }
+    let dir = entry_dir(w, &entry.id)?;
+    // Unexpected files may be recovery material. Leave the entire entry alone.
+    for child in fs::read_dir(&dir)? {
+        let child = child?;
+        if child.file_name() != "entry.json" && child.file_name() != "payload" {
+            return Err(
+                "Recovery folder contains unexpected files; retained for inspection".into(),
+            );
+        }
+    }
+    if read_entry(w, &entry.id)? != entry {
+        return Err("Recovery copy changed during validation; retained".into());
+    }
+    fs::remove_file(dir.join("payload"))?;
+    let cleanup = fs::remove_file(dir.join("entry.json")).and_then(|()| fs::remove_dir(&dir));
+    Ok(cleanup
+        .err()
+        .map(|e| format!("Payload permanently deleted, but recovery metadata cleanup failed: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,6 +383,61 @@ mod tests {
             size: c.size,
             digest: c.digest.clone(),
         }
+    }
+    #[test]
+    fn disposal_revalidates_and_preserves_restored_files_and_database() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = Workspace::open(tmp.path().join("workspace")).unwrap();
+        let source = file(&w, "orphan", b"recover me");
+        quarantine(&w, &[select(&preview(&w).unwrap()[0])]).unwrap();
+        let mut entry = catalog(&w).unwrap().entries.remove(0);
+        entry.size += 1;
+        assert!(dispose(&w, &entry).is_err());
+        entry.size -= 1;
+        let dir = entry_dir(&w, &entry.id).unwrap();
+        fs::write(dir.join("extra"), b"retain").unwrap();
+        assert!(dispose(&w, &entry).is_err());
+        fs::remove_file(dir.join("extra")).unwrap();
+        restore(&w, &entry.id).unwrap();
+        w.db.execute_batch("PRAGMA query_only=ON").unwrap();
+        assert!(dispose(&w, &entry).unwrap().is_none());
+        assert!(!dir.exists());
+        assert_eq!(fs::read(source).unwrap(), b"recover me");
+        assert!(catalog(&w).unwrap().entries.is_empty());
+        assert!(dispose(&w, &entry).is_err());
+        entry.id = "../outside".into();
+        assert!(dispose(&w, &entry).is_err());
+    }
+    #[test]
+    fn disposal_protects_new_index_trash_corruption_and_broken_relationships() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut w = Workspace::open(tmp.path().join("workspace")).unwrap();
+        file(&w, "orphan", b"indexed later");
+        quarantine(&w, &[select(&preview(&w).unwrap()[0])]).unwrap();
+        let entry = catalog(&w).unwrap().entries.remove(0);
+        let doc = w.create("note").unwrap();
+        w.put_blob(&doc, "key", b"indexed later", "asset", "text/plain")
+            .unwrap();
+        w.delete(&doc).unwrap();
+        // Even a missing indexed asset must not allow destroying its recovery copy.
+        fs::remove_file(w.asset_path(&entry.digest).unwrap()).unwrap();
+        assert!(dispose(&w, &entry)
+            .unwrap_err()
+            .to_string()
+            .contains("protected"));
+        let dir = entry_dir(&w, &entry.id).unwrap();
+        assert_eq!(fs::read(dir.join("payload")).unwrap(), b"indexed later");
+        w.db.execute_batch("DELETE FROM object_attachments; DELETE FROM attachments;")
+            .unwrap();
+        fs::write(dir.join("payload"), b"damaged").unwrap();
+        assert!(dispose(&w, &entry).is_err());
+        fs::write(dir.join("payload"), b"indexed later").unwrap();
+        w.db.execute_batch(
+            "PRAGMA foreign_keys=OFF; INSERT INTO object_attachments VALUES ('missing','missing')",
+        )
+        .unwrap();
+        assert!(dispose(&w, &entry).is_err());
+        assert!(dir.join("payload").exists());
     }
     #[test]
     fn restore_protects_a_newly_indexed_original_path() {

@@ -7,6 +7,7 @@ export function QuarantinePanel({
   busy,
   onMove,
   onRestore,
+  onDispose,
   onRefresh,
   onClose,
 }: {
@@ -15,6 +16,7 @@ export function QuarantinePanel({
   busy: boolean;
   onMove: (selected: OrphanCandidate[]) => void;
   onRestore: (id: string) => void;
+  onDispose: (entry: QuarantineCatalog["entries"][number]) => void;
   onRefresh: () => void;
   onClose: () => void;
 }) {
@@ -99,6 +101,12 @@ export function QuarantinePanel({
         </>
       )}
       <h3>Recovery copies</h3>
+      <p>
+        Permanently delete removes one recovery copy from disk and cannot be
+        undone. Any restored original stays in place. Copies matching the
+        current attachment index are protected; damaged or incomplete copies are
+        retained.
+      </p>
       {catalog.warnings.map((w) => (
         <p role="alert" key={w}>
           {w}
@@ -121,6 +129,13 @@ export function QuarantinePanel({
             onClick={() => onRestore(entry.id)}
           >
             Restore file
+          </button>
+          <button
+            disabled={busy}
+            aria-label={`Permanently delete copy ${entry.original}`}
+            onClick={() => onDispose(entry)}
+          >
+            Permanently delete
           </button>
         </div>
       ))}
