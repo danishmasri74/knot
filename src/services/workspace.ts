@@ -132,3 +132,28 @@ export const backups = {
   export: () => invoke<string | null>("export_backup"),
   restore: () => invoke<string | null>("restore_backup"),
 };
+export interface OrphanCandidate {
+  id: string;
+  path: string;
+  size: number;
+  digest: string;
+}
+export interface QuarantineCatalog {
+  entries: {
+    id: string;
+    original: string;
+    size: number;
+    digest: string;
+    created_at: number;
+  }[];
+  warnings: string[];
+}
+export const quarantine = {
+  preview: () => invoke<OrphanCandidate[]>("preview_orphans"),
+  catalog: () => invoke<QuarantineCatalog>("quarantine_catalog"),
+  move: (selected: Pick<OrphanCandidate, "id" | "size" | "digest">[]) =>
+    invoke<{ id: string; error: string | null }[]>("quarantine_orphans", {
+      selected,
+    }),
+  restore: (id: string) => invoke<void>("restore_quarantined", { id }),
+};

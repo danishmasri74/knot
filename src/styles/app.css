@@ -594,3 +594,21 @@ main {
 .integrity-panel summary {
   cursor: pointer;
 }
+.quarantine-files {
+  max-height: 220px;
+  overflow: auto;
+}
+.quarantine-files label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.quarantine-files input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  min-width: auto;
+}

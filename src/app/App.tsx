@@ -1,10 +1,14 @@
 import { BackupManager } from "./BackupManager";
 import { IntegrityPanel } from "./IntegrityPanel";
+import { QuarantinePanel } from "./QuarantinePanel";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import {
   repository,
+  quarantine,
+  type OrphanCandidate,
+  type QuarantineCatalog,
   backups,
   workspaces,
   type WorkspaceCatalog,
@@ -33,6 +37,19 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [cleanup, setCleanup] = useState<{
+    candidates: OrphanCandidate[] | null;
+    catalog: QuarantineCatalog;
+  } | null>(null);
+  const [cleanupVersion, setCleanupVersion] = useState(0);
+  async function loadCleanup() {
+    setCleanupVersion((v) => v + 1);
+    setCleanup({ candidates: null, catalog: { entries: [], warnings: [] } });
+    const catalog = await quarantine.catalog();
+    setCleanup({ candidates: null, catalog });
+    const candidates = await quarantine.preview();
+    setCleanup({ candidates, catalog });
+  }
   const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
   async function checkWorkspace() {
     setIntegrity(null);
@@ -164,6 +181,7 @@ export function App() {
     if (record) history.current.visit(item);
   }
   async function reloadWorkspace() {
+    setCleanup(null);
     setIntegrity(null);
     setExporting(false);
     ++searchGeneration.current;
@@ -418,6 +436,12 @@ export function App() {
           </button>
           <button disabled={busy} onClick={() => void run(checkWorkspace)}>
             ✓ Check workspace
+          </button>
+          <button
+            disabled={busy || !workspaceCatalog.active}
+            onClick={() => void run(loadCleanup)}
+          >
+            Orphan quarantine
           </button>
           <button
             disabled={busy}
@@ -732,6 +756,62 @@ export function App() {
               megapixels.
             </p>
           </section>
+        )}
+        {cleanup !== null && (
+          <QuarantinePanel
+            key={cleanupVersion}
+            {...cleanup}
+            busy={busy}
+            onClose={() => setCleanup(null)}
+            onRefresh={() => void run(loadCleanup)}
+            onMove={(selected) =>
+              void run(async () => {
+                if (
+                  !confirm(
+                    `Quarantine ${selected.length} files (${selected.reduce((sum, c) => sum + c.size, 0).toLocaleString()} bytes)? Recovery copies stay in this workspace. No disk space will be freed.`,
+                  )
+                )
+                  return;
+                await session.current?.flush();
+                setIntegrity(null);
+                try {
+                  const outcomes = await quarantine.move(
+                    selected.map(({ id, size, digest }) => ({
+                      id,
+                      size,
+                      digest,
+                    })),
+                  );
+                  const failed = outcomes.filter((o) => o.error);
+                  setNotice(
+                    `Quarantined ${outcomes.length - failed.length} files. ${failed.length} failed. ` +
+                      failed
+                        .map(
+                          (o) =>
+                            `${selected.find((c) => c.id === o.id)?.path}: ${o.error}`,
+                        )
+                        .join(" "),
+                  );
+                } finally {
+                  await loadCleanup().catch(report);
+                }
+              })
+            }
+            onRestore={(id) =>
+              void run(async () => {
+                await session.current?.flush();
+                setIntegrity(null);
+                try {
+                  await quarantine.restore(id);
+                  setNotice(
+                    "Restored file to its original location. The quarantine copy is retained.",
+                  );
+                } finally {
+                  await loadCleanup().catch(report);
+                }
+              })
+            }
+          />
         )}
         {integrity !== null && (
           <IntegrityPanel

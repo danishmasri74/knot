@@ -2,6 +2,7 @@ mod backup;
 mod exports;
 mod managed_backups;
 mod organization;
+mod quarantine;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -248,6 +249,25 @@ async fn check_workspace(state: State<'_, AppState>) -> Reply<storage::Integrity
     with(&state, |w| w.integrity())
 }
 #[tauri::command]
+async fn preview_orphans(state: State<'_, AppState>) -> Reply<Vec<quarantine::Candidate>> {
+    with(&state, |w| quarantine::preview(w))
+}
+#[tauri::command]
+async fn quarantine_catalog(state: State<'_, AppState>) -> Reply<quarantine::Catalog> {
+    with(&state, |w| quarantine::catalog(w))
+}
+#[tauri::command]
+async fn quarantine_orphans(
+    state: State<'_, AppState>,
+    selected: Vec<quarantine::Selection>,
+) -> Reply<Vec<quarantine::Outcome>> {
+    with(&state, |w| quarantine::quarantine(w, &selected))
+}
+#[tauri::command]
+async fn restore_quarantined(state: State<'_, AppState>, id: String) -> Reply<()> {
+    with(&state, |w| quarantine::restore(w, &id))
+}
+#[tauri::command]
 async fn export_backup(state: State<'_, AppState>) -> Reply<Option<String>> {
     let path = rfd::AsyncFileDialog::new()
         .add_filter("Knot workspace", &["knot"])
@@ -342,6 +362,10 @@ pub fn run() {
             get_blob,
             list_blobs,
             check_workspace,
+            preview_orphans,
+            quarantine_catalog,
+            quarantine_orphans,
+            restore_quarantined,
             export_backup,
             restore_backup
         ])
