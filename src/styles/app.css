@@ -57,9 +57,10 @@ select:focus-visible {
   letter-spacing: -1px;
 }
 .brand-mark {
-  font-size: 38px;
-  color: #47775e;
-  line-height: 1;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .brand small {
   display: block;

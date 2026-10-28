@@ -263,7 +263,13 @@ export function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">⌘</span>
+          <img
+            className="brand-mark"
+            src="/knot-icon.png"
+            alt=""
+            width="40"
+            height="40"
+          />
           <span>
             Knot<small>YOUR LOCAL WORKSPACE</small>
           </span>

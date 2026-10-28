@@ -1,5 +1,11 @@
 # Verification
 
+## Knot icon refresh — 28 October 2026
+
+- Generated a new ivory woven-knot mark on a forest-green rounded tile. Original artwork is stored in `public/knot-icon.png`; prompt and regeneration instructions are in `BRANDING.md`. Tauri platform icons, sidebar branding and favicon now use the same artwork.
+- TypeScript and ESLint passed. Production frontend, debug desktop, release desktop and x64 NSIS installer builds passed. An initial concurrent frontend build collided on the shared output file; the release build was rerun sequentially using the completed frontend output. Both executables and the installer now include current Milestone 3 work. Installation on a clean machine was not tested.
+- Inspected the 32-pixel icon, transparent source corners, icon extracted from the debug executable, and the native sidebar screenshot. Native backup regression passed: `test-results/backups-1793174974561/`; extracted-icon evidence: `test-results/icon-review/embedded-icon.png`.
+
 ## Milestone 3 external workspaces and relocation — 28 October 2026
 
 - TypeScript, ESLint, eight frontend tests, 25 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. Release executable and installer remain older.
