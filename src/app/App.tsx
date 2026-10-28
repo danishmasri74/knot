@@ -1,4 +1,5 @@
 import { BackupManager } from "./BackupManager";
+import { IntegrityPanel } from "./IntegrityPanel";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
@@ -7,6 +8,7 @@ import {
   backups,
   workspaces,
   type WorkspaceCatalog,
+  type IntegrityReport,
   type BackupEntry,
   exportDocument,
   type ExportFormat,
@@ -31,6 +33,12 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
+  async function checkWorkspace() {
+    setIntegrity(null);
+    await session.current?.flush();
+    setIntegrity(await repository.integrity());
+  }
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("markdown");
   const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalog>({
@@ -156,6 +164,7 @@ export function App() {
     if (record) history.current.visit(item);
   }
   async function reloadWorkspace() {
+    setIntegrity(null);
     setExporting(false);
     ++searchGeneration.current;
     history.current.clear();
@@ -407,18 +416,7 @@ export function App() {
           >
             Trash & recovery
           </button>
-          <button
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                await session.current?.flush();
-                const result = await repository.integrity();
-                setNotice(
-                  `Workspace check: ${result.checked} assets checked; ${result.missing.length} missing, ${result.corrupt.length} corrupt, ${result.orphan_files.length} unreferenced files. No files were removed.`,
-                );
-              })
-            }
-          >
+          <button disabled={busy} onClick={() => void run(checkWorkspace)}>
             ✓ Check workspace
           </button>
           <button
@@ -734,6 +732,17 @@ export function App() {
               megapixels.
             </p>
           </section>
+        )}
+        {integrity !== null && (
+          <IntegrityPanel
+            report={integrity}
+            busy={busy}
+            onClose={() => setIntegrity(null)}
+            onCheck={() => void run(checkWorkspace)}
+            onBackups={() =>
+              void run(async () => setBackupEntries(await backups.list()))
+            }
+          />
         )}
         {backupEntries !== null && (
           <BackupManager

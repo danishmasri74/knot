@@ -34,6 +34,20 @@ export interface Snapshot {
 export interface TrashedObject extends KnowledgeObject {
   deleted_at: number;
 }
+export interface IntegrityReport {
+  checked_at: number;
+  checked: number;
+  missing: string[];
+  corrupt: string[];
+  orphan_files: string[];
+  database_issues: string[];
+  affected_attachments: {
+    hash: string;
+    key: string;
+    name: string;
+    documents: { id: string; title: string; deleted: boolean }[];
+  }[];
+}
 export interface Label {
   id: string;
   name: string;
@@ -77,13 +91,7 @@ export const repository = {
       if (page.length < 100) return rows;
     }
   },
-  integrity: () =>
-    invoke<{
-      checked: number;
-      missing: string[];
-      corrupt: string[];
-      orphan_files: string[];
-    }>("check_workspace"),
+  integrity: () => invoke<IntegrityReport>("check_workspace"),
   list: (
     search = "",
     offset = 0,

@@ -579,3 +579,18 @@ main {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.integrity-panel {
+  overflow-wrap: anywhere;
+}
+.integrity-panel h3 {
+  font-size: 14px;
+  margin: 16px 0 8px;
+}
+.integrity-panel details {
+  margin: 10px 0;
+  font-size: 13px;
+}
+.integrity-panel summary {
+  cursor: pointer;
+}

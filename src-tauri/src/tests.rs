@@ -1004,3 +1004,50 @@ fn document_exports_validate_and_publish_without_overwriting() {
     assert_eq!(exports::filename("CON", "md"), "Knot-CON.md");
     assert_eq!(exports::filename("a/b: title", "md"), "Knot-a-b- title.md");
 }
+
+#[test]
+fn integrity_reports_shared_and_trashed_associations_without_writes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut w = Workspace::open(tmp.path().join("audit")).unwrap();
+    let a = w.create("note").unwrap();
+    let b = w.create("whiteboard").unwrap();
+    w.save(
+        &a,
+        &Snapshot {
+            collection: vec![1],
+            document: vec![2],
+            title: None,
+        },
+    )
+    .unwrap();
+    w.put_blob(&a, "shared", b"original", "photo.png", "image/png")
+        .unwrap();
+    w.put_blob(&b, "shared", b"original", "photo.png", "image/png")
+        .unwrap();
+    w.delete(&b).unwrap();
+    let hash: String =
+        w.db.query_row("SELECT sha256 FROM attachments", [], |r| r.get(0))
+            .unwrap();
+    let wrong = w.root.join("assets/wrong");
+    std::fs::create_dir_all(&wrong).unwrap();
+    std::fs::write(wrong.join(&hash), b"original").unwrap();
+    std::fs::write(w.root.join("assets/interrupted.tmp"), b"retained").unwrap();
+    std::fs::write(w.asset_path(&hash).unwrap(), b"modified").unwrap();
+    w.db.execute_batch("PRAGMA foreign_keys=OFF; INSERT INTO object_attachments VALUES ('absent','shared'); PRAGMA query_only=ON;").unwrap();
+    let report = w.integrity().unwrap();
+    assert_eq!(report.database_issues.len(), 1);
+    assert_eq!(report.corrupt, vec![hash.clone()]);
+    assert_eq!(
+        report.orphan_files,
+        vec!["interrupted.tmp".to_string(), format!("wrong/{hash}")]
+    );
+    assert_eq!(report.affected_attachments.len(), 1);
+    let asset = &report.affected_attachments[0];
+    assert_eq!(asset.name, "photo.png");
+    assert_eq!(asset.documents.len(), 2);
+    assert!(asset.documents.iter().any(|d| d.id == a && !d.deleted));
+    assert!(asset.documents.iter().any(|d| d.id == b && d.deleted));
+    assert_eq!(w.load(&a).unwrap().unwrap().document, vec![2]);
+    assert_eq!(std::fs::read(wrong.join(hash)).unwrap(), b"original");
+    assert_eq!(w.trash("", 0).unwrap().len(), 1);
+}

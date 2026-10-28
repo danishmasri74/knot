@@ -200,7 +200,7 @@ try {
   await page.getByRole("button", { name: "Check workspace" }).click();
   await page.waitForFunction(() =>
     document
-      .querySelector(".notice-banner")
+      .querySelector(".integrity-panel")
       ?.textContent.includes("0 missing, 0 corrupt"),
   );
   record("Workspace integrity UI");

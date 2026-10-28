@@ -1,5 +1,13 @@
 # Verification
 
+## Milestone 3 integrity report — 28 October 2026
+
+- TypeScript, ESLint, eight frontend tests, 27 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. The debug executable includes the integrity report; release executable and installer remain at the icon refresh.
+- Rust coverage adds shared attachment associations across live and trashed documents, SQLite foreign-key diagnostics, wrong-directory duplicate hashes, top-level unindexed files, unchanged snapshots and retained files. The audit succeeds under SQLite query-only mode.
+- `node tests/native/integrity.mjs` passed against the compiled Windows app with real SQLite/filesystem fixtures: healthy, missing and corrupt attachments; live/Trash associations; refresh after fixture repair; unchanged document rows; retained unindexed files; backup-management access; and clearing stale results after an audit failure. Evidence: `test-results/integrity-1793177124289/`; the report screenshot was visually inspected. An initial test fixture omitted the schema-2 folder column; it was corrected to use explicit columns before the passing run.
+- `node tests/native/acceptance.mjs` also passed, including formatting, canvas, attachment imports, SQLite save failure/retry, forced-termination recovery, offline saves and the updated integrity UI. Evidence: `test-results/acceptance-1793177133141/`.
+- This slice is diagnostic only: no cleanup, attachment replacement or format migration. Database checks do not decode Yjs bodies or validate shared-document targets. Stored attachment associations include import history, not necessarily current visible use. The unindexed-file scan covers regular files directly in assets and one subfolder deep; it does not recursively inventory directories or links. Large report pagination, audit cancellation, inaccessible-file recovery and physical disk failures remain untested. An unreadable database or asset can abort the audit and produce an error instead of a partial report.
+
 ## Milestone 3 document exports — 28 October 2026
 
 - TypeScript, ESLint, eight frontend tests, 26 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. The debug executable includes exports; the release executable and installer remain at the icon refresh below.

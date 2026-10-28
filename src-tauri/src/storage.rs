@@ -48,10 +48,26 @@ pub struct DocumentWrite {
 }
 #[derive(Serialize, Default)]
 pub struct IntegrityReport {
+    pub checked_at: i64,
+    pub database_issues: Vec<String>,
+    pub affected_attachments: Vec<AffectedAttachment>,
     pub checked: usize,
     pub missing: Vec<String>,
     pub corrupt: Vec<String>,
     pub orphan_files: Vec<String>,
+}
+#[derive(Serialize)]
+pub struct AffectedAttachment {
+    pub hash: String,
+    pub key: String,
+    pub name: String,
+    pub documents: Vec<AffectedDocument>,
+}
+#[derive(Serialize)]
+pub struct AffectedDocument {
+    pub id: String,
+    pub title: String,
+    pub deleted: bool,
 }
 pub struct Workspace {
     pub root: PathBuf,
@@ -62,7 +78,28 @@ pub struct Workspace {
 impl Workspace {
     /// Read-only audit. Never removes assets, including interrupted imports.
     pub fn integrity(&self) -> Result<IntegrityReport> {
-        let mut report = IntegrityReport::default();
+        let mut report = IntegrityReport {
+            checked_at: now(),
+            ..Default::default()
+        };
+        let mut check = self.db.prepare("PRAGMA integrity_check")?;
+        for result in check.query_map([], |row| row.get::<_, String>(0))? {
+            let result = result?;
+            if result != "ok" {
+                report.database_issues.push(result);
+            }
+        }
+        let mut check = self.db.prepare("PRAGMA foreign_key_check")?;
+        for result in check.query_map([], |row| {
+            Ok(format!(
+                "Broken relationship in {} (row {:?}) to {}",
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, String>(2)?
+            ))
+        })? {
+            report.database_issues.push(result?);
+        }
         let mut known = std::collections::HashSet::new();
         let mut query = self
             .db
@@ -83,12 +120,18 @@ impl Workspace {
         for directory in fs::read_dir(self.root.join("assets"))? {
             let directory = directory?;
             if !directory.file_type()?.is_dir() {
+                if directory.file_type()?.is_file() {
+                    report
+                        .orphan_files
+                        .push(directory.file_name().to_string_lossy().to_string());
+                }
                 continue;
             }
             for entry in fs::read_dir(directory.path())? {
                 let entry = entry?;
                 if entry.file_type()?.is_file()
-                    && !known.contains(&entry.file_name().to_string_lossy().to_string())
+                    && !(known.contains(&entry.file_name().to_string_lossy().to_string())
+                        && self.asset_path(&entry.file_name().to_string_lossy())? == entry.path())
                 {
                     report.orphan_files.push(format!(
                         "{}/{}",
@@ -96,6 +139,41 @@ impl Workspace {
                         entry.file_name().to_string_lossy()
                     ));
                 }
+            }
+        }
+        report.missing.sort();
+        report.missing.dedup();
+        report.corrupt.sort();
+        report.corrupt.dedup();
+        report.orphan_files.sort();
+        let mut attachments = self
+            .db
+            .prepare("SELECT id,name,sha256 FROM attachments ORDER BY sha256,id")?;
+        let mut documents = self.db.prepare("SELECT o.id,o.title,o.deleted_at IS NOT NULL FROM objects o JOIN object_attachments a ON a.object_id=o.id WHERE a.attachment_id=?1 ORDER BY o.id")?;
+        for row in attachments.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })? {
+            let (key, name, hash) = row?;
+            if report.missing.contains(&hash) || report.corrupt.contains(&hash) {
+                let documents = documents
+                    .query_map([&key], |row| {
+                        Ok(AffectedDocument {
+                            id: row.get(0)?,
+                            title: row.get(1)?,
+                            deleted: row.get(2)?,
+                        })
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                report.affected_attachments.push(AffectedAttachment {
+                    hash,
+                    key,
+                    name,
+                    documents,
+                });
             }
         }
         Ok(report)
