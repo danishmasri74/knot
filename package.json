@@ -19,6 +19,7 @@
     "@blocksuite/store": "0.19.5",
     "@tauri-apps/api": "^2.12.4",
     "@toeverything/theme": "1.1.23",
+    "fflate": "0.8.3",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.4.299",
     "react": "^18.3.1",

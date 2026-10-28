@@ -1,3 +1,11 @@
+import { OfficePreview } from "./OfficePreview";
+import { JotPanel } from "./JotPanel";
+import { SearchPanel } from "./SearchPanel";
+import {
+  searchSavedDocuments,
+  type SearchReport,
+} from "../features/editor/blocksuite/search";
+import type { OfficeSource } from "../features/editor/office";
 import { BackupManager } from "./BackupManager";
 import { lazy, Suspense } from "react";
 import type {
@@ -51,6 +59,65 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [jot, setJot] = useState<{
+    sources: KnowledgeObject[];
+    initial: string;
+  } | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [bodySearch, setBodySearch] = useState<SearchReport | null>(null);
+  async function scanSearch() {
+    setShowSearch(true);
+    setBodySearch(null);
+    await session.current?.flush();
+    let worker: Worker | undefined;
+    try {
+      setBodySearch(
+        await searchSavedDocuments(
+          query,
+          (offset) => repository.list("", offset, filter),
+          repository.load,
+          (id, snapshot) =>
+            new Promise<string>((resolve, reject) => {
+              worker ??= new Worker(
+                new URL(
+                  "../features/editor/blocksuite/search.worker.ts",
+                  import.meta.url,
+                ),
+                { type: "module" },
+              );
+              const fail = () => {
+                clearTimeout(timer);
+                worker?.terminate();
+                worker = undefined;
+                reject(new Error("Search decoding failed or timed out"));
+              };
+              const timer = setTimeout(fail, 5000);
+              worker.onerror = fail;
+              worker.onmessage = (
+                event: MessageEvent<{ text?: string; error?: string }>,
+              ) => {
+                clearTimeout(timer);
+                if (event.data.error) reject(new Error(event.data.error));
+                else resolve(event.data.text ?? "");
+              };
+              worker.postMessage({ id, snapshot });
+            }),
+        ),
+      );
+    } finally {
+      worker?.terminate();
+    }
+  }
+  const [officeSources, setOfficeSources] = useState<OfficeSource[] | null>(
+    null,
+  );
+  async function openOffice() {
+    await session.current?.flush();
+    const sources = session.current?.officeSources() ?? [];
+    if (!sources.length)
+      throw new Error("Attach an Office file to this document first.");
+    setOfficeSources(sources);
+  }
   const [pdfReader, setPdfReader] = useState<{
     sources: PdfSource[];
     initial?: PdfLocation;
@@ -251,7 +318,10 @@ export function App() {
     setReferenceTarget("");
     setChoosingReference(false);
     setActive(item);
+    setShowSearch(false);
+    setBodySearch(null);
     setPdfReader(null);
+    setOfficeSources(null);
     setShowBacklinks(false);
     setBacklinks(null);
     setOrganized(metadata);
@@ -260,7 +330,11 @@ export function App() {
     if (record) history.current.visit(item);
   }
   async function reloadWorkspace() {
+    setJot(null);
+    setShowSearch(false);
+    setBodySearch(null);
     setPdfReader(null);
+    setOfficeSources(null);
     setShowBacklinks(false);
     setBacklinks(null);
     setCleanup(null);
@@ -333,6 +407,10 @@ export function App() {
     if (!isTauri()) return;
     const timer = setTimeout(() => void refresh(query).catch(report), 180);
     return () => clearTimeout(timer);
+  }, [query, filter]);
+  useEffect(() => {
+    setShowSearch(false);
+    setBodySearch(null);
   }, [query, filter]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -434,6 +512,26 @@ export function App() {
             }}
           />
         </label>
+        <button
+          disabled={busy || !active}
+          onClick={() =>
+            void run(async () => {
+              await session.current?.flush();
+              setJot({
+                sources: await repository.catalog(),
+                initial: active?.id ?? "",
+              });
+            })
+          }
+        >
+          Jot
+        </button>
+        <button
+          disabled={busy || !query.trim()}
+          onClick={() => void run(scanSearch)}
+        >
+          Search titles & body
+        </button>
         <div className="section-label">
           YOUR LIBRARY{" "}
           <span>
@@ -650,6 +748,12 @@ export function App() {
           <div className="actions">
             <button
               disabled={!active || busy}
+              onClick={() => void run(openOffice)}
+            >
+              Office preview
+            </button>
+            <button
+              disabled={!active || busy}
               onClick={() => void run(scanBacklinks)}
             >
               Backlinks
@@ -706,7 +810,10 @@ export function App() {
                     return;
                   await session.current?.flush();
                   await repository.delete(active.id);
+                  setShowSearch(false);
+                  setBodySearch(null);
                   setPdfReader(null);
+                  setOfficeSources(null);
                   setShowBacklinks(false);
                   setBacklinks(null);
                   if (trash !== null) await loadTrash();
@@ -725,6 +832,75 @@ export function App() {
             </button>
           </div>
         </div>
+        {officeSources && active && (
+          <OfficePreview
+            key={officeSources.map((source) => source.key).join(",")}
+            sources={officeSources}
+            onClose={() => setOfficeSources(null)}
+          />
+        )}
+        {jot && (
+          <JotPanel
+            sources={jot.sources}
+            initial={jot.initial}
+            busy={busy}
+            onClose={() => setJot(null)}
+            onCapture={async (capture, started) => {
+              let completed = false;
+              let failure: unknown = new Error("Capture is busy. Retry.");
+              await run(async () => {
+                try {
+                  await session.current?.flush();
+                  const target = (await repository.catalog()).find(
+                    (row) => row.id === capture.destination,
+                  );
+                  if (!target)
+                    throw new Error(
+                      "Destination is no longer available. Choose another document.",
+                    );
+                  if (active?.id !== target.id) await select(target);
+                  if (!session.current)
+                    throw new Error("Destination editor is unavailable.");
+                  started();
+                  await session.current.appendJot(capture);
+                  completed = true;
+                  setJot(null);
+                  setNotice(`Captured text in “${target.title}”.`);
+                } catch (error) {
+                  failure = error;
+                  throw error;
+                }
+              });
+              if (!completed) throw failure;
+            }}
+          />
+        )}
+        {showSearch && (
+          <SearchPanel
+            report={bodySearch}
+            busy={busy}
+            onRefresh={() => void run(scanSearch)}
+            onClose={() => {
+              setShowSearch(false);
+              setBodySearch(null);
+            }}
+            onOpen={(source) =>
+              void run(async () => {
+                await session.current?.flush();
+                const current = (await repository.catalog()).find(
+                  (row) => row.id === source.id,
+                );
+                if (!current) {
+                  setBodySearch(null);
+                  throw new Error(
+                    "This document is no longer available. Refresh search.",
+                  );
+                }
+                await select(current);
+              })
+            }
+          />
+        )}
         {pdfReader && active && (
           <Suspense fallback={<p>Loading PDF reader…</p>}>
             <PdfReader
@@ -1202,7 +1378,7 @@ export function App() {
         ref={file}
         type="file"
         hidden
-        accept="image/*,application/pdf"
+        accept="image/*,application/pdf,.docx,.doc,.docm,.xlsx,.xls,.xlsm,.pptx,.ppt,.pptm"
         onChange={(e) => {
           const selected = e.target.files?.[0];
           e.target.value = "";

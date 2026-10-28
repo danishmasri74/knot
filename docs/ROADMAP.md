@@ -55,9 +55,11 @@ Completed on 28 October 2026: all closure checks passed, including 12 native reg
 
 These are explicit follow-up scope, not unfinished Milestone 3 acceptance criteria. Milestone 4 can now proceed.
 
-## Milestone 4
+## Milestone 4 — complete
 
 PDF highlight cards, Office previews, backlinks, advanced search, Jot integration. No custom Office editor or second canvas engine.
+
+Completed on 28 October 2026: all five bounded slices meet their documented acceptance criteria, including the user-confirmed in-app Jot workflow. Closure passed 29 frontend tests, 41 Rust tests, TypeScript, ESLint, Clippy, all 17 native regression suites and production/debug/release/NSIS builds. See VERIFICATION.md for evidence and artifact hashes. Clean-machine installation and the explicit Milestone 3 deferrals remain follow-up work.
 
 ### Completion criteria
 
@@ -70,14 +72,40 @@ PDF highlight cards, Office previews, backlinks, advanced search, Jot integratio
 
 ### First bounded slice: on-demand backlinks
 
-Implemented and verified on 28 October 2026. This slice does not close Milestone 4.
+Implemented and verified on 28 October 2026; included in the full milestone closure.
 
 Acceptance: show one result per other live source document containing a shared card, link card or inline reference to the active ID; exclude Trash and self references; sort deterministically by title/ID. Flush before scanning and before source navigation, retain normal Back/Forward behavior, and clear results on document/workspace transitions. Explicit refresh must reflect saved link removal, renames and deletion. Unreadable/incomplete snapshots must produce a visible partial-results warning; failed scans must clear stale results and allow retry. Scanning must not write bodies, metadata or attachment associations. Verify extraction/deduplication/error handling with frontend tests and native save-failure, navigation, refresh, restart and preservation checks. Workspace format 1/schema 2 remain unchanged; no Yjs conversion or persistent index in this slice.
 
 ### Second bounded slice: PDF text highlight cards
 
-Implemented and verified on 28 October 2026 under the bounds below. Milestone 4 remains open for Office previews, advanced search and Jot integration.
+Implemented and verified on 28 October 2026 under the bounds below; included in the full milestone closure.
 
 Acceptance defined before implementation: choose an existing PDF attachment in the active document, read a locally rendered page, select text on that page and create a native BlockSuite note card with the quote and a source link. The source link retains the original attachment key, filename, one-based page and normalized selection rectangles; opening it returns to that PDF/page and marks the selection. Cards and original attachments survive restart and native archive restore without copied PDF bytes or rewritten source blocks. Card insertion participates in ordinary undo/save/retry and Page/Canvas rendering. Flush before opening the reader or inserting a card, prevent duplicate insertion on retry after a failed save, and clear reader state across document/workspace transitions. Missing/corrupt/encrypted or oversized PDFs must produce explicit errors without losing saved cards. Verify native selection, location reopening, failed-save retry, undo, offline use, restart and backup preservation alongside frontend validation tests and the relevant regressions.
 
 This slice supports text-bearing PDFs up to 10 MiB, one page/selection at a time, with bounded page rendering and quote length. OCR, cross-page highlights, editing PDF bytes, annotation round-tripping, custom Office editing and a second canvas engine are excluded. Workspace format 1/schema 2 remain unchanged; no Yjs body conversion.
+
+### Third bounded slice: read-only Office preview
+
+Implemented and verified on 28 October 2026 under the bounds below; included in the full milestone closure.
+
+Scope and acceptance defined before implementation: support `.docx` (Word OOXML) main-body text only, including paragraphs and table-cell text in document order. Display a persistent fidelity notice: no page layout, formatting, images, headers/footers, comments, tracked-change interpretation or embedded objects. Legacy `.doc`, `.xls`/`.xlsx`, `.ppt`/`.pptx`, macro-enabled and encrypted files are unsupported. Keep their original attachments and report unsupported/error states.
+
+Limit input to 5 MiB, main document XML to 1 MiB, output to 100,000 characters and 5,000 paragraphs. Decompress only the main XML in a disposable worker with a timeout; never follow relationships or render supplied HTML. Flush before opening, allow load retry, clear on document/workspace transitions, and never save preview output. Verify supported text, malformed/oversized/unsupported input, offline use, failed-save gating, navigation clearing, unchanged identities/content/assets, restart and backup preservation with focused frontend/native checks. Workspace format 1/schema 2 and Yjs bodies remain unchanged. Full milestone regression and release/installer rebuild wait for closure.
+
+### Fourth bounded slice: explicit title and body search
+
+Implemented and verified on 28 October 2026. The scope and acceptance below were defined before implementation.
+
+Search live document titles plus native paragraph/heading, list and code `prop:text` values, including PDF quotes stored as paragraphs. Match one trimmed, case-insensitive literal substring (1–200 characters); no stemming, regex, Boolean syntax or ranking. Exclude attachment contents (including Office/PDF extraction), canvas-only elements, tables, captions and transcluded source bodies. Shared sources are searched independently by their own stable IDs. Combine the existing folder and tag filters, exclude Trash, deduplicate and order by title/ID, and show a bounded matching excerpt.
+
+Freshness: each explicit Search/Refresh flushes pending saves and reads current filtered metadata and saved snapshots; no persistent or incremental index. Results state their scan time and remain a snapshot until refreshed. Changing query/filter, document selection/deletion or workspace clears results. Failed saves/storage reads clear stale results and permit retry; navigation rechecks the live ID and uses normal save/history handling.
+
+Bounds: inspect at most 200 filtered documents, 1 MiB per snapshot pair, 16 MiB aggregate snapshot bytes and 100,000 extracted characters per document. Decode in a disposable worker with a five-second per-document timeout. Show explicit partial-results warnings for catalog limits and unreadable/oversized bodies; title matches remain available for skipped bodies. Never rewrite snapshots, metadata or asset associations. Verify supported/excluded text, limits, corruption, freshness, combined filters, stable-ID navigation, failed-save retry, offline/restart and unchanged persisted data through focused frontend/native checks. Workspace format 1/schema 2 remain unchanged. Full regression/release/installer builds wait for milestone closure; Jot workflow confirmation follows this slice.
+
+### Fifth bounded slice: in-app Jot capture
+
+Implemented and verified on 28 October 2026 under the acceptance defined below before implementation; included in the full milestone closure.
+
+User confirmed workflow on 28 October 2026: choose an existing live destination document, append text, and retry failed saves. A modal capture form accepts 1–10,000 characters of plain text, defaults to the current document and explicitly displays the destination. Submitting flushes earlier edits, rechecks the destination ID, opens it through normal history navigation, and appends a native note/paragraph at the end of the document (beside existing notes on Canvas). No separate inbox, global shortcut, background capture service or second canvas engine.
+
+Acceptance: a successful capture is committed through the existing SaveCoordinator, visible in Page/Canvas, searchable, undoable and durable across restart/backup. Failure retains the submitted text/destination and stable capture block ID, locks further draft changes and offers retry without duplicate insertion. Before submission a draft is session-only and closing explicitly discards it. Verify destination choice, Unicode/newlines, empty/oversized rejection, real save failure/retry, undo, navigation, offline use, restart, backup and preservation of existing content/references/attachments. No Rust/schema/workspace-format change or Yjs conversion. Full milestone regression and release/installer rebuilding remain separate closure work.

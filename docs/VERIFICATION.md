@@ -1,5 +1,65 @@
 # Verification
 
+## Milestone 4 closure and release — 28 October 2026
+
+Milestone 4 is complete under ROADMAP.md's bounded acceptance criteria: PDF text highlight cards, read-only DOCX body previews, on-demand backlinks, explicit title/body search and user-confirmed in-app Jot capture. This record supersedes historical slice statements that closure was pending or release artifacts were still at Milestone 3. Workspace format remains 1 and database schema remains 2; Rust application code and stored Yjs formats are unchanged. Milestone 3's explicit recovery deferrals remain deferred.
+
+- Passed TypeScript, ESLint, all 29 frontend tests, all 41 default Rust tests (two opt-in tests ignored), and all-target Clippy with warnings denied. Logs: `test-results/milestone-4-closure-{typescript,lint,frontend,rust,clippy}.log`.
+- Passed production frontend, standalone debug desktop, optimized release desktop and x64 NSIS installer builds. Logs: `test-results/milestone-4-closure-debug-build.log` and `test-results/milestone-4-closure-release-build.log`. The existing Vite chunk-size warning remains non-fatal.
+- All 17 native suites passed against the rebuilt debug executable using isolated workspaces and real WebView2/Rust/SQLite. Per-suite logs use `test-results/milestone-4-closure-<suite>.log`; evidence is listed below. Exports emitted the previously observed non-fatal Yjs event-handler warning. The first reference-recovery attempt ended with a Windows taskkill cleanup error (status 128), which can mask an earlier failure; its log is retained as `milestone-4-closure-reference-recovery-first.log`. A fresh complete run passed without code changes.
+
+| Native suite | Evidence under `test-results/` |
+| --- | --- |
+| Editing, attachments, retry, offline and restart | `acceptance-1793188492421/` |
+| Organization | `organization-1793188506859/` |
+| Shared notes and references | `shared-notes-1793188515681/` |
+| Trash | `trash-1793188529383/` |
+| Managed workspaces | `workspaces-1793188540134/` |
+| Managed backups | `backups-1793188558194/` |
+| External workspaces (seeded catalog) | `external-workspaces-1793188567862/` |
+| Exports (captured Save As handoff) | `exports-1793188586371/` |
+| Integrity | `integrity-1793188603746/` |
+| Quarantine, disposal and attachment recovery | `quarantine-1793188609064/` |
+| Guided reference recovery | `reference-recovery-1793188674953/` |
+| Migration safeguards | `migrations-1793188685936/` |
+| Backlinks | `backlinks-1793188701858/` |
+| PDF highlight cards | `pdf-highlights-1793188714345/` |
+| Office preview | `office-preview-1793188738388/` |
+| Advanced search | `search-1793188752530/` |
+| Jot capture | `jot-1793188763047/` |
+
+Release artifacts (version 0.1.0):
+
+- `src-tauri/target/release/knot.exe` — 19,444,736 bytes; SHA-256 `8ada98786878e063f2fabe672abe673ee3823a15eeaf286062342840fcd1f576`.
+- `src-tauri/target/release/bundle/nsis/Knot_0.1.0_x64-setup.exe` — 9,842,129 bytes; SHA-256 `643d2889e51321fd6faed5bf1a9f28b4b1f9f526082ce49079dc02c6629047ce`.
+- `src-tauri/target/debug/knot.exe` is current. Native automation exercised the debug executable, not an installed release instance; release builds omit the test-workspace override.
+
+No installer execution or clean-machine installation/uninstallation is claimed. Native file/folder dialogs, benchmarks, legacy-fixture diagnostics and opt-in Rust tests were not rerun; earlier evidence and limitations remain applicable. Physical disk-full/power-loss, very large libraries, external-writer races, complex Office/PDF fidelity and worker-timeout injection remain untested. Office stays DOCX main-body text only; search uses an explicitly refreshed bounded scan; Jot drafts remain memory-only until submitted. No scope expansion, custom Office editor, second canvas engine or Yjs conversion was introduced during closure.
+
+## Milestone 4 in-app Jot capture — 28 October 2026
+
+- Implemented the user-confirmed workflow: choose an existing destination, append plain text using native blocks, and retry failed saves. Passed TypeScript, ESLint, the existing 28 frontend tests and the new Jot boundary/preservation test (29 total). Production frontend and standalone debug desktop builds passed. Build log: `test-results/milestone-4-jot-build.log`; existing Vite chunk warning remains. Rust remains unchanged; 41 Rust tests and Clippy from Milestone 3 remain the latest backend checks.
+- `node tests/native/jot.mjs` passed against the final debug build. It checks explicit capture into a different stable-ID destination, default destination, empty-input gating and the input cap, Unicode/newline/HTML-like plain text, offline capture, native Page/Canvas content, single undo/redo, and a real SQLite rejection after insertion. Retry retains disabled text/destination fields and the same block ID, then commits exactly one copy. Original source snapshot, destination references, attachment records/associations and asset bytes remain intact. Captures are searchable and survive restart plus verified managed-backup restore.
+- Final evidence: `test-results/jot-1793185393931/`; retry dialog and the preceding passing run's Page screenshot (`test-results/jot-1793185268824/captured.png`) were visually inspected. Log: `test-results/milestone-4-jot-native.log`. Initial native run used an incorrect undecorated Page button selector; it was fixed before passing. Visual review prompted explicit modal centering/height and input borders, followed by rebuild and another passing native run.
+- Focused search regression passed after Jot integration: `test-results/search-1793185283873/`; log `test-results/milestone-4-jot-search-regression.log`. Office native regression passed during the preceding search slice. Full milestone regression was not run.
+- Jot is in-app plain-text capture only (10,000 characters), with no global hotkey, background service or separate inbox. Unsubmitted drafts are memory-only; failed inserted captures retain normal unsaved-editor durability until retry succeeds. Large destination catalogs, abrupt termination during submission and physical disk failure were not separately tested. Workspace format 1/schema 2 remain unchanged; no Yjs conversion or second canvas engine. All five bounded slices now have focused evidence, but Milestone 4 remains open for closure checks. Release executable/NSIS installer remain at Milestone 3 and clean-machine installation is untested.
+
+## Milestone 4 bounded advanced search — 28 October 2026
+
+- Passed TypeScript, ESLint, all 28 frontend tests, production frontend and standalone debug desktop builds. Five new frontend tests cover supported/excluded text, Unicode/literal matching, deterministic deduplication, immutable input, corrupt/incomplete/mismatched snapshots, per-body and aggregate limits, 200-document pagination bounds, freshness and storage-error propagation. Rust is unchanged; the previous 41 Rust tests and Clippy remain the latest backend checks. Build log: `test-results/milestone-4-search-build.log`; existing Vite chunk warning remains.
+- `node tests/native/search.mjs` passed in real WebView2/Rust/SQLite: body/title search, combined folder/tag filtering, shared-body non-duplication, source-ID navigation/Back, offline operation, exact database/asset preservation, real save rejection/retry, refresh after insertion/removal, corrupt-body partial warnings without rewriting bytes, Trash exclusion, restart and backup/workspace reset. Evidence: `test-results/search-1793184807388/`; `search.png` visually inspected. Log: `test-results/milestone-4-search-native.log`.
+- Office preview native regression passed against the same build: `test-results/office-preview-1793184844235/`; log `test-results/milestone-4-search-office-regression.log`. Existing uncommitted Office changes remain intact. Native test helper lint was corrected by removing an unused copied helper; the final lint passed.
+- Search is explicitly refreshed, not a persistent index. Decoding bounds are 200 filtered documents, 1 MiB per snapshot pair, 16 MiB aggregate and 100,000 characters; whole snapshot IPC precedes byte checks. No attachment extraction, canvas-only text, tables, stemming, regex or transcluded-text indexing. Large-library timing, worker-timeout injection and external-writer races remain untested. Workspace format 1/schema 2 and stored bodies are unchanged. Full regression/release/NSIS rebuilds remain reserved for closure; release artifacts remain at Milestone 3 and clean-machine installation is untested.
+
+## Milestone 4 read-only Office preview — 28 October 2026
+
+- Passed TypeScript, ESLint, all 23 frontend tests, production frontend and standalone debug desktop builds. Three new frontend tests cover selected XML extraction with unchanged input bytes, skipped media, format/corrupt/missing-part rejection and compressed/expanded size bounds. Rust code, workspace format 1 and database schema 2 are unchanged; the previous 41 Rust tests and Clippy remain the latest backend checks. Build log: `test-results/milestone-4-office-build.log`; the existing Vite chunk-size warning remains.
+- `node tests/native/office-preview.mjs` passed against the final compiled Windows app with real Rust/SQLite storage. A generated transitional OOXML DOCX fixture verifies Unicode, tabs/breaks, table text, escaped HTML-like text and offline loading. Opening/closing preserves exact document/catalog rows, attachment rows/associations and bytes. A real rejected SQLite save blocks opening until retry; document navigation clears the panel. The source ID/body and attachment bytes survive restart and managed backup verification/restore; restore clears the old preview. A missing asset produces an error and loads successfully after the file returns and Retry is clicked.
+- Native error coverage includes unsupported legacy Word, invalid ZIP, malformed XML, DTD/entity rejection, 5 MiB file/1 MiB XML limits, 100,000-character/5,000-paragraph limits and empty body text. Switching back from errors to the valid file succeeds. Evidence: `test-results/office-preview-1793184398337/`; `preview.png` was visually inspected. Log: `test-results/milestone-4-office-native.log`.
+- Existing shared-note native regression passed: `test-results/shared-notes-1793184276120/`, covering authoritative bodies, restart, source navigation, cycles, placement removal, native-created linked documents and soft deletion. Log: `test-results/milestone-4-office-shared-notes.log`. The initial Office launch accidentally used the previous executable before build completion and blocked its replacement; the sequential rebuild passed. Subsequent test corrections used real keyboard editing, decorated library selectors and explicit source selection after restart/restore. Final native checks passed without further application changes.
+- This is a body-text preview, not Office page rendering or editing. Only UTF-8 transitional OOXML `.docx` is supported; other Office formats, encrypted files and strict OOXML are unsupported. Layout, formatting, images, headers/footers, comments and embedded objects are omitted, and tracked changes are not interpreted. Real Microsoft Office/LibreOffice-produced complex-document fidelity, encrypted fixtures, worker-timeout injection and large-library performance were not tested. No remote Office service, custom editor, second canvas engine or Yjs conversion is introduced.
+- Focused slice verification only: full milestone regression and release/NSIS rebuilding remain reserved for closure. Release executable/installer remain at Milestone 3, and clean-machine installation remains untested. Milestone 4 remains open for advanced search and Jot integration; the Jot workflow must be confirmed before implementation.
+
 ## Milestone 4 PDF text highlight cards — 28 October 2026
 
 - Passed TypeScript, ESLint, all 20 frontend tests, production frontend and standalone debug desktop builds. Three new frontend tests cover source-key/document-ID/page/rectangle round trips, Unicode filenames, source URL recognition, invalid coordinates/pages/identities, quote bounds and stable retry IDs. Rust application code and schema are unchanged; the Milestone 3 Rust/Clippy checks remain the latest backend results. Build log: `test-results/milestone-4-pdf-build.log`; the existing Vite chunk-size warning remains.

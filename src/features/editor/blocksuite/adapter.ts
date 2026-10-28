@@ -31,6 +31,7 @@ import {
 } from "../../../services/persistence";
 
 import { referenceIds } from "./references";
+import { validateJot, type JotCapture } from "../jot";
 import {
   parsePdfSourceUrl,
   pdfSourceUrl,
@@ -309,6 +310,60 @@ export async function openEditor(
       doc,
       collection,
       catalog,
+      async appendJot(value: JotCapture) {
+        validateJot(value);
+        if (value.destination !== doc.id)
+          throw new Error("Jot destination changed.");
+        await persistence.flush();
+        if (!doc.getBlockById(value.id)) {
+          if (!doc.root)
+            throw new Error("Destination document is unavailable.");
+          let x = 0;
+          for (const { model } of doc.getBlocksByFlavour("affine:note")) {
+            const bounds: unknown = JSON.parse((model as NoteBlockModel).xywh);
+            if (
+              Array.isArray(bounds) &&
+              bounds.length === 4 &&
+              bounds.every(Number.isFinite)
+            )
+              x = Math.max(x, bounds[0] + bounds[2] + 40);
+          }
+          doc.captureSync();
+          doc.transact(() => {
+            const props = { id: value.id, xywh: `[${x},0,448,240]` as const };
+            const note = doc.addBlock("affine:note", props, doc.root);
+            doc.addBlock(
+              "affine:paragraph",
+              { text: new Text(value.text) },
+              note,
+            );
+          });
+          doc.captureSync();
+          editor
+            .querySelector("affine-edgeless-root")
+            ?.service.viewport.setCenter(x + 224, 120);
+        }
+        await persistence.flush();
+      },
+      officeSources() {
+        const result = new Map<
+          string,
+          { key: string; name: string; size: number }
+        >();
+        for (const { model } of doc.getBlocksByFlavour("affine:attachment")) {
+          const a = model as AttachmentBlockModel;
+          if (
+            a.sourceId &&
+            /\.(docx?|docm|xlsx?|xlsm|pptx?|pptm)$/i.test(a.name)
+          )
+            result.set(a.sourceId, {
+              key: a.sourceId,
+              name: a.name,
+              size: a.size,
+            });
+        }
+        return [...result.values()];
+      },
       pdfSources(): PdfSource[] {
         const result = new Map<string, PdfSource>();
         for (const { model } of doc.getBlocksByFlavour("affine:attachment")) {

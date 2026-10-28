@@ -619,6 +619,37 @@ main {
   overflow: auto;
   flex-shrink: 0;
 }
+.jot-dialog {
+  width: min(560px, 90vw);
+  margin: auto;
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid #ccd5cc;
+  border-radius: 12px;
+  padding: 24px;
+  color: #243b30;
+  background: #fff;
+}
+.jot-dialog::backdrop {
+  background: #13251c66;
+}
+.jot-dialog label {
+  display: block;
+  margin: 12px 0;
+}
+.jot-dialog select,
+.jot-dialog textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid #ccd5cc;
+  border-radius: 6px;
+  padding: 10px;
+}
+.jot-dialog textarea {
+  padding: 10px;
+  resize: vertical;
+}
 .backlinks-panel p {
   margin: 8px 0;
 }
@@ -709,4 +740,29 @@ main {
 }
 .pdf-page .textLayer ::selection {
   background: #4477bb66;
+}
+
+.office-preview {
+  flex-shrink: 0;
+  padding: 16px 24px;
+  border-bottom: 1px solid #d5d5cf;
+  max-height: 55vh;
+  overflow: auto;
+}
+.office-preview .actions {
+  flex-wrap: wrap;
+}
+.office-preview select {
+  max-width: 250px;
+}
+.office-preview > p {
+  font-size: 12px;
+  color: #666;
+}
+.office-text {
+  background: white;
+  padding: 16px;
+  user-select: text;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
