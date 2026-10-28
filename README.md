@@ -2,6 +2,8 @@
 
 A Windows-first, offline knowledge workspace built with Tauri 2, React, TypeScript, and BlockSuite. SQLite and local attachment files are authoritative; there are no accounts, telemetry, cloud services, or IndexedDB persistence providers.
 
+Milestones 1–3 are complete under the acceptance scope in [the roadmap](docs/ROADMAP.md). Milestone 4 is next. The current release includes recovery, backup management, workspace relocation, exports and guarded orphan cleanup; see [verification](docs/VERIFICATION.md) for tested coverage and deferred work.
+
 ## Development
 
 Prerequisites: Windows 10/11, Microsoft C++ Build Tools (Desktop development with C++ and Windows SDK), WebView2 Runtime, Node 22+, pnpm 10.13.1, and rustup. `rust-toolchain.toml` selects Rust 1.90.0 without changing your global toolchain.
@@ -35,9 +37,15 @@ Use **Manage folders & tags** in the sidebar to create, rename, or delete folder
 
 Edits save automatically after roughly 600 ms. **Saved** means the snapshot has committed to SQLite. Ctrl+S retries/flushes saves; switching documents and normal window closing flush pending edits. If a save fails, keep the window open and retry. Sudden process termination may lose changes that have not reached Saved.
 
-Back up workspace produces a versioned ZIP-based `.knot` file. Restore validates and opens a new sibling workspace; your previous workspace is retained. Deleted documents are soft-deleted and retained in backups; a trash-management UI is not yet implemented.
+**Trash & recovery** searches and restores deleted documents with their original identities, content and surviving organization assignments. Shared references resolve again after restoration. Documents remain soft-deleted until restored; permanent document deletion is not provided.
 
-Check workspace audits attachment hashes and reports missing, corrupt, and unreferenced files without deleting anything. If startup detects a damaged workspace, the shell remains available so you can restore a backup. A missing database is never silently replaced.
+**Manage backups** creates, lists, verifies, restores and deletes local `.knot` archives. **Back up workspace** and **Restore backup** use native file dialogs for external archives. Restore validates and opens a separate workspace; your previous workspace is retained. **Switch workspace** reopens managed or external workspaces. Relocation opens a validated copy while retaining the source.
+
+**Export** shares supported Page content as Markdown (with attachments bundled when needed), or the current Page/Canvas view as PNG or a single-image PDF. Exports are not lossless backups; linked documents remain workspace references and PDF text is not selectable.
+
+**Check workspace** reports database/relationship, attachment and basic document/reference issues without changing stored content. It offers recovery for eligible referenced Trash documents and missing attachments with exact local copies. **Orphan quarantine** moves selected unindexed files into retained recovery copies; individual copies can be restored or explicitly permanently deleted after revalidation. Quarantine, unindexed files and pre-migration recovery archives are excluded from ordinary backups and relocation. Quarantine alone does not free disk space.
+
+If startup detects a damaged workspace, the shell remains available so you can restore a backup. A missing database is never silently replaced. Supported database upgrades retain verified pre-migration archives and roll back on failure. Advanced damaged-document repair and exhaustive rendering validation are deferred; see the roadmap and verification limits.
 
 ## Native acceptance tests
 

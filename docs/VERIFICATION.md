@@ -1,5 +1,36 @@
 # Verification
 
+## Milestone 3 closure and release — 28 October 2026
+
+Milestone 3 is complete under the explicit acceptance criteria in ROADMAP.md. Advanced damaged-data repair, exhaustive block-schema/rendering validation and future format conversions are deferred rather than claimed as implemented. This release record supersedes the older executable/installer status in the historical slice reports below. Application code is commit `e71645d`; closure changes only documentation. Workspace format remains 1 and database schema remains 2, with no Yjs body conversion.
+
+- Passed: TypeScript, ESLint, all 13 frontend tests, all 41 default Rust tests (two opt-in tests excluded), and Clippy for all targets with warnings denied.
+- Passed: production frontend, standalone debug desktop, optimized release desktop and x64 NSIS installer builds. Build logs: `test-results/milestone-3-debug-build.log` and `test-results/milestone-3-release-build.log`. Vite retains its existing large-chunk warning; it did not fail either build.
+- All 12 automated native suites passed against the freshly rebuilt debug executable using isolated workspaces and real WebView2/Rust/SQLite. Logs are `test-results/milestone-3-<suite>.log`; evidence directories are listed below. Recovery-success screenshot inspected. The exports suite emitted the previously observed non-fatal Yjs event-handler warning; its assertions passed.
+
+| Native suite                                                            | Evidence under `test-results/`       |
+| ----------------------------------------------------------------------- | ------------------------------------ |
+| Editing, attachments, failed-save retry, offline and restart acceptance | `acceptance-1793180841505/`          |
+| Organization                                                            | `organization-1793180853473/`        |
+| Shared notes and references                                             | `shared-notes-1793180860977/`        |
+| Trash                                                                   | `trash-1793180870578/`               |
+| Managed workspaces                                                      | `workspaces-1793180879724/`          |
+| Backup management                                                       | `backups-1793180894438/`             |
+| External workspaces (seeded catalog, non-interactive)                   | `external-workspaces-1793180902774/` |
+| Exports (captured Save As handoff)                                      | `exports-1793180919169/`             |
+| Integrity                                                               | `integrity-1793180940737/`           |
+| Quarantine, disposal and missing-attachment recovery                    | `quarantine-1793180946535/`          |
+| Guided reference recovery                                               | `reference-recovery-1793180960536/`  |
+| Migration rollback/retry and recovery archives                          | `migrations-1793180979272/`          |
+
+Release artifacts (version 0.1.0):
+
+- `src-tauri/target/release/knot.exe` — 16,970,752 bytes; SHA-256 `17dea48e778fd36678a13f46268d862ce65403109c769535bdb324cbd83873bb`.
+- `src-tauri/target/release/bundle/nsis/Knot_0.1.0_x64-setup.exe` — 7,357,336 bytes; SHA-256 `3940ae314c1640a34944e9c5b78e8bb57d454a2dba1984a6debffecd87927105`.
+- `src-tauri/target/debug/knot.exe` is also current. Release builds omit the test-workspace environment override; native automation exercised the debug build, not an installed release instance.
+
+No installer execution or clean-machine installation/uninstallation is claimed in this pass. Native file/folder dialogs were not rerun; their prior evidence and limits below remain applicable. The external-workspace run used the seeded catalog; exports intercepted the dialog handoff while Rust tests exercised safe output writing. Physical disk-full/power-loss, cross-drive/removable/network storage, very large libraries and exhaustive content/rendering fidelity remain follow-up hardening. Benchmark, legacy-fixture and opt-in archive diagnostics were not rerun. Completion does not remove these limitations or promise arbitrary damaged-document repair.
+
 ## Milestone 3 local missing-attachment recovery — 28 October 2026
 
 - TypeScript, ESLint, 13 frontend tests, 41 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. Release executable and installer remain at the icon refresh.

@@ -24,7 +24,13 @@ Streaming IPC for large files; multi-window navigation; startup optimization; su
 - Implemented: native shared-note placements across boards and workspace-level link cards/inline references. A session workspace collection resolves stable IDs and loads referenced bodies on demand. Shared previews open their source for editing; board snapshots never duplicate authoritative note bodies.
 - Existing per-object snapshots open without a bulk rewrite. Dirty workspace documents (including native-created linked notes) commit atomically, with failed-write retry and backup preservation. See VERIFICATION.md for native consistency, restart, navigation, and deletion coverage.
 
-## Milestone 3
+## Milestone 3 — complete
+
+### Completion criteria
+
+This milestone delivers the recovery, portability and storage-maintenance features listed below. Closure requires passing TypeScript/ESLint, frontend and Rust tests, Clippy, the automated native regression suites for existing editing/shared references and Milestone 3 workflows, and production frontend/debug/release/NSIS builds. Verification records the tested artifacts, evidence and remaining limits. Existing manual-dialog evidence is retained; clean-machine installation, physical failure testing and exhaustive content fidelity are follow-up hardening, not closure gates.
+
+Completed on 28 October 2026: all closure checks passed, including 12 native regression suites and refreshed release executable/installer. See VERIFICATION.md for the release record. Completion uses this bounded scope; it does not claim the deferred capabilities below.
 
 - Implemented first slice: searchable, paginated Trash & recovery panel with deletion dates and individual restore. Restoring retains the original ID, snapshots, attachments and surviving organization assignments, and refreshes active shared references.
 - Implemented managed workspace picker: return to the personal workspace or reopen a restored backup, persist selection across restarts, flush before switching and retain the current workspace on opening/selection failure. Missing startup selections are recoverable without creating an empty replacement.
@@ -38,7 +44,16 @@ Streaming IPC for large files; multi-window navigation; startup optimization; su
 - Implemented database migration safeguards: schema 1→2 upgrades retain a pre-upgrade archive, validate database relationships and indexed assets, verify archive readability/restore limits, and commit schema changes atomically. Failed upgrades retain the old schema and archive; the integrity report lists recovery archive locations. New databases initialize atomically, while unknown and populated unversioned databases are refused.
 - Implemented permanent orphan disposal: individually confirmed deletion of validated quarantine copies, with fresh attachment-index protection, save-before-delete, changed-copy rejection and preservation of restored originals. Incomplete/damaged entries remain retained; there is no bulk or automatic disposal.
 - Implemented missing-attachment recovery: explicit integrity-panel actions search ordinary local asset files and complete quarantine copies for exact indexed hash/size matches. Recovery retains the source, publishes without overwriting, refreshes the editor/report and preserves all attachment keys and document associations. Occupied/corrupt destinations are refused.
-- Remaining: broader recovery UI, full block-schema/rendering validation and future document/workspace-format conversions. Current workspace format remains 1 and database schema remains 2; no Yjs body conversion is needed or performed. Trash remains soft-delete only.
+- Current workspace format remains 1 and database schema remains 2; no Yjs body conversion is needed or performed. Trash remains soft-delete only.
+
+### Deferred beyond Milestone 3
+
+- Advanced recovery: arbitrary missing/damaged document-body reconstruction, corrupt-attachment replacement, external-file/archive extraction into an existing workspace, and damaged/incomplete quarantine repair. Existing recovery paths and their limits remain supported.
+- Exhaustive block-schema and rendering validation across all BlockSuite content. Current structural/reference checks and tested rendering/export cases define this release's coverage.
+- Future document/workspace-format conversions when an actual format change requires them. No speculative body conversion is needed for the current release.
+- Portable linked-document exports, paginated/selectable-text PDF, large-library scan performance/cancellation, automatic retention and source-copy cleanup remain follow-up work alongside the hardening items above.
+
+These are explicit follow-up scope, not unfinished Milestone 3 acceptance criteria. Milestone 4 can now proceed.
 
 ## Milestone 4
 
