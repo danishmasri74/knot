@@ -1,5 +1,14 @@
 # Verification
 
+## Milestone 3 external workspaces and relocation — 28 October 2026
+
+- TypeScript, ESLint, eight frontend tests, 25 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. Release executable and installer remain older.
+- Rust coverage includes existing-folder validation, locked destinations, canonical alias deduplication, registry/selection-write failures, external selection across restart, missing folders without silent recreation, returning locations, malformed-registry recovery, backups from folder names containing spaces, and relocation preserving manifest/document identity, Trash, attachments, tags and the independent source. Failed relocation selection retains the original lock and the validated destination copy.
+- `node tests/native/external-workspaces.mjs` passed with a seeded external catalog: save-before-switch failure/retry, independent source/external edits, shared references, backup creation and verification, restart, missing-manifest startup recovery and retry when the manifest returns. Evidence: `test-results/external-workspaces-1793171145603/`.
+- The interactive `--dialogs` run used the actual Windows folder picker to open an external folder and relocate it. It compared every document row between source and destination, verified save-before-relocation and restarted into the persisted new location. Those checks passed in `test-results/external-workspaces-1793170972920/`, but the run later failed in its offline-fixture directory rename with Windows EPERM. The fixture now temporarily renames its manifest instead. Attempts to repeat the entire interactive run were stopped because the computer-use tool reported unavailable/14-by-14 dialog geometry; a complete passing `--dialogs` rerun is not claimed. The picker screenshot from the first interactive run was inspected.
+- The existing native managed-workspace and backup regression suites passed again: `test-results/workspaces-1793171434576/` and `test-results/backups-1793171434576/`.
+- Relocation retains the source as a recovery copy. It does not synchronize copies, remove the source, move caches/unindexed files, or move application-managed backups. Cross-drive/removable/network storage, physical disk-full/power-loss and dialog cancellation are not acceptance-tested in this slice.
+
 ## Milestone 3 backup management — 28 October 2026
 
 - TypeScript, ESLint, eight frontend tests, 22 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend build and standalone debug desktop build passed.

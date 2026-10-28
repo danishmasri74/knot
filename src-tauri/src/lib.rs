@@ -66,6 +66,39 @@ async fn switch_workspace(state: State<'_, AppState>, id: String) -> Reply<()> {
     workspaces::switch(&state.base, &mut guard, &id).map_err(|e| e.to_string())
 }
 #[tauri::command]
+async fn open_external_workspace(state: State<'_, AppState>) -> Reply<bool> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Open existing Knot workspace folder")
+        .pick_folder()
+        .await;
+    let Some(folder) = folder else {
+        return Ok(false);
+    };
+    let mut guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    workspaces::open_external(&state.base, &mut guard, folder.path()).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+#[tauri::command]
+async fn relocate_workspace(state: State<'_, AppState>) -> Reply<Option<String>> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Choose destination parent folder — source copy will be kept")
+        .pick_folder()
+        .await;
+    let Some(folder) = folder else {
+        return Ok(None);
+    };
+    let mut guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    workspaces::relocate(&state.base, &mut guard, folder.path())
+        .map(|p| Some(p.display().to_string()))
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
 async fn organization_catalog(state: State<'_, AppState>) -> Reply<organization::Catalog> {
     with(&state, |w| w.catalog())
 }
@@ -266,6 +299,8 @@ pub fn run() {
             restore_managed_backup,
             workspace_catalog,
             switch_workspace,
+            open_external_workspace,
+            relocate_workspace,
             organization_catalog,
             create_label,
             rename_label,

@@ -2,10 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 export interface WorkspaceCatalog {
   active: string | null;
   entries: { id: string; path: string }[];
+  warning?: string | null;
 }
 export const workspaces = {
   catalog: () => invoke<WorkspaceCatalog>("workspace_catalog"),
   switch: (id: string) => invoke<void>("switch_workspace", { id }),
+  openExternal: () => invoke<boolean>("open_external_workspace"),
+  relocate: () => invoke<string | null>("relocate_workspace"),
 };
 export interface KnowledgeObject {
   id: string;

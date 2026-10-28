@@ -706,6 +706,33 @@ export function App() {
             catalog={workspaceCatalog}
             busy={busy}
             onClose={() => setPickingWorkspace(false)}
+            onOpenExternal={() =>
+              void run(async () => {
+                await session.current?.flush();
+                if (await workspaces.openExternal()) {
+                  await reloadWorkspace();
+                  setNotice("Opened workspace folder.");
+                }
+              })
+            }
+            onRelocate={() =>
+              void run(async () => {
+                if (
+                  !confirm(
+                    "Create and open a copy in a new location? The source workspace will be retained as a recovery copy. Later edits to the two copies are independent.",
+                  )
+                )
+                  return;
+                await session.current?.flush();
+                const path = await workspaces.relocate();
+                if (path) {
+                  await reloadWorkspace();
+                  setNotice(
+                    `Workspace relocated to ${path}. The source remains as a recovery copy.`,
+                  );
+                }
+              })
+            }
             onSwitch={(id) =>
               void run(async () => {
                 await session.current?.flush();

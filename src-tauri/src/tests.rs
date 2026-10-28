@@ -746,3 +746,195 @@ fn failed_managed_backup_leaves_no_archive() {
         0
     );
 }
+
+#[test]
+fn external_workspace_selection_persists_and_preserves_failures() {
+    use super::{managed_backups, workspaces};
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().join("managed");
+    std::fs::create_dir(&base).unwrap();
+    let root = tmp.path().join("External notes with spaces");
+    let mut external = Workspace::open(root.clone()).unwrap();
+    let id = external.create("note").unwrap();
+    external
+        .save(
+            &id,
+            &Snapshot {
+                title: Some("External".into()),
+                collection: vec![1],
+                document: vec![2],
+            },
+        )
+        .unwrap();
+    let mut current = Ok(workspaces::startup(&base).unwrap());
+    assert!(workspaces::open_external(&base, &mut current, &root).is_err());
+    assert_eq!(current.as_ref().unwrap().root, base.join("Workspace"));
+    drop(external);
+    let empty = tmp.path().join("empty");
+    std::fs::create_dir(&empty).unwrap();
+    assert!(workspaces::open_external(&base, &mut current, &empty).is_err());
+    assert!(!empty.join("workspace.json").exists());
+    std::fs::create_dir(base.join("external-workspaces.json")).unwrap();
+    assert!(workspaces::open_external(&base, &mut current, &root).is_err());
+    assert!(Workspace::open(base.join("Workspace")).is_err());
+    assert!(Workspace::open(root.clone()).is_ok());
+    std::fs::remove_dir(base.join("external-workspaces.json")).unwrap();
+    std::fs::create_dir(base.join("active-workspace.txt")).unwrap();
+    assert!(workspaces::open_external(&base, &mut current, &root).is_err());
+    assert_eq!(current.as_ref().unwrap().root, base.join("Workspace"));
+    std::fs::remove_dir(base.join("active-workspace.txt")).unwrap();
+    workspaces::open_external(&base, &mut current, &root).unwrap();
+    let catalog = workspaces::catalog(&base, &current).unwrap();
+    let external_id = catalog.active.unwrap();
+    assert!(external_id.starts_with("external-"));
+    assert_eq!(catalog.entries.len(), 2);
+    // Canonical aliases must not attempt to reacquire the current lock or duplicate entries.
+    workspaces::open_external(&base, &mut current, &root.join(".")).unwrap();
+    assert_eq!(
+        workspaces::catalog(&base, &current).unwrap().entries.len(),
+        2
+    );
+    let archive = managed_backups::create(&base, current.as_ref().unwrap()).unwrap();
+    managed_backups::validate(&base, &archive).unwrap();
+    assert_eq!(managed_backups::list(&base).unwrap().len(), 1);
+    drop(current);
+    let mut current = Ok(workspaces::startup(&base).unwrap());
+    assert_eq!(
+        current
+            .as_ref()
+            .unwrap()
+            .load(&id)
+            .unwrap()
+            .unwrap()
+            .document,
+        vec![2]
+    );
+    workspaces::switch(&base, &mut current, "Workspace").unwrap();
+    workspaces::switch(&base, &mut current, &external_id).unwrap();
+    drop(current);
+    let offline = tmp.path().join("offline");
+    std::fs::rename(&root, &offline).unwrap();
+    assert!(workspaces::startup(&base).is_err());
+    assert!(!root.exists());
+    let mut current = Err("Offline".into());
+    assert_eq!(
+        workspaces::catalog(&base, &current).unwrap().entries.len(),
+        2
+    );
+    workspaces::switch(&base, &mut current, "Workspace").unwrap();
+    assert!(workspaces::switch(&base, &mut current, &external_id).is_err());
+    assert!(current.is_ok());
+    std::fs::rename(&offline, &root).unwrap();
+    workspaces::switch(&base, &mut current, &external_id).unwrap();
+    assert_eq!(
+        current
+            .as_ref()
+            .unwrap()
+            .load(&id)
+            .unwrap()
+            .unwrap()
+            .document,
+        vec![2]
+    );
+}
+
+#[test]
+fn relocation_preserves_identity_trash_assets_and_source() {
+    use super::workspaces;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().join("managed");
+    std::fs::create_dir(&base).unwrap();
+    let mut original = workspaces::startup(&base).unwrap();
+    let id = original.list("", 0).unwrap()[0].id.clone();
+    original
+        .save(
+            &id,
+            &Snapshot {
+                title: Some("Retained".into()),
+                collection: vec![1, 2],
+                document: vec![3, 4],
+            },
+        )
+        .unwrap();
+    original
+        .put_blob(&id, "asset", b"attachment", "file", "text/plain")
+        .unwrap();
+    let tag = original.create_label("tag", "Tag").unwrap();
+    original
+        .organize(
+            &id,
+            &super::organization::Organization {
+                folder: None,
+                tags: vec![tag.clone()],
+            },
+        )
+        .unwrap();
+    original.delete(&id).unwrap();
+    let source_manifest = std::fs::read(original.root.join("workspace.json")).unwrap();
+    let parent = tmp.path().join("Destination");
+    std::fs::create_dir(&parent).unwrap();
+    std::fs::write(parent.join("unrelated.txt"), "keep").unwrap();
+    let mut current = Ok(original);
+    assert!(workspaces::relocate(&base, &mut current, &base.join("Workspace/assets")).is_err());
+    let target = workspaces::relocate(&base, &mut current, &parent).unwrap();
+    assert_eq!(
+        target.parent(),
+        Some(parent.canonicalize().unwrap().as_path())
+    );
+    let next = current.as_ref().unwrap();
+    assert_eq!(
+        std::fs::read(next.root.join("workspace.json")).unwrap(),
+        source_manifest
+    );
+    assert_eq!(next.trash("", 0).unwrap()[0].object.id, id);
+    next.restore_object(&id).unwrap();
+    assert_eq!(next.load(&id).unwrap().unwrap().document, vec![3, 4]);
+    assert_eq!(next.organization(&id).unwrap().tags, vec![tag]);
+    assert_eq!(next.get_blob("asset").unwrap(), b"attachment");
+    next.rename(&id, "New location").unwrap();
+    let old = Workspace::open(base.join("Workspace")).unwrap();
+    assert_eq!(old.trash("", 0).unwrap()[0].object.title, "Retained");
+    assert_eq!(old.get_blob("asset").unwrap(), b"attachment");
+    assert_eq!(
+        std::fs::read_to_string(parent.join("unrelated.txt")).unwrap(),
+        "keep"
+    );
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 2);
+    drop(current);
+    assert_eq!(workspaces::startup(&base).unwrap().root, target);
+}
+
+#[test]
+fn relocation_and_registry_failures_are_recoverable() {
+    use super::workspaces;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().join("managed");
+    std::fs::create_dir(&base).unwrap();
+    let mut current = Ok(workspaces::startup(&base).unwrap());
+    let parent = tmp.path().join("Destination");
+    std::fs::create_dir(&parent).unwrap();
+    std::fs::create_dir(base.join("active-workspace.txt")).unwrap();
+    assert!(workspaces::relocate(&base, &mut current, &parent).is_err());
+    assert_eq!(current.as_ref().unwrap().root, base.join("Workspace"));
+    assert!(Workspace::open(base.join("Workspace")).is_err());
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 1);
+    let target_id = workspaces::catalog(&base, &current)
+        .unwrap()
+        .entries
+        .into_iter()
+        .find(|e| e.id.starts_with("external-"))
+        .unwrap()
+        .id;
+    std::fs::remove_dir(base.join("active-workspace.txt")).unwrap();
+    workspaces::switch(&base, &mut current, &target_id).unwrap();
+    std::fs::write(base.join("external-workspaces.json"), "broken").unwrap();
+    let catalog = workspaces::catalog(&base, &current).unwrap();
+    assert!(catalog.warning.is_some());
+    workspaces::switch(&base, &mut current, "Workspace").unwrap();
+    drop(current);
+    assert!(workspaces::startup(&base).is_ok());
+    assert_eq!(
+        std::fs::read_to_string(base.join("external-workspaces.json")).unwrap(),
+        "broken"
+    );
+}

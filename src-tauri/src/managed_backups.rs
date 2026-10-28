@@ -63,11 +63,21 @@ pub fn list(base: &Path) -> Result<Vec<Entry>> {
 }
 
 pub fn create(base: &Path, ws: &Workspace) -> Result<String> {
-    let source = ws
+    let source: String = ws
         .root
         .file_name()
         .and_then(|v| v.to_str())
-        .ok_or("Invalid workspace name")?;
+        .unwrap_or("Workspace")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(48)
+        .collect();
     let id = format!(
         "{}-{}-{}.knot",
         source,
