@@ -1036,6 +1036,21 @@ fn integrity_reports_shared_and_trashed_associations_without_writes() {
     w.db.execute_batch("PRAGMA foreign_keys=OFF; INSERT INTO object_attachments VALUES ('absent','shared'); PRAGMA query_only=ON;").unwrap();
     let report = w.integrity().unwrap();
     assert_eq!(report.database_issues.len(), 1);
+    assert_eq!(report.document_snapshots.len(), 2);
+    let live = report
+        .document_snapshots
+        .iter()
+        .find(|d| d.id == a)
+        .unwrap();
+    assert!(!live.deleted);
+    assert_eq!(live.snapshot.as_ref().unwrap().document, vec![2]);
+    let trash = report
+        .document_snapshots
+        .iter()
+        .find(|d| d.id == b)
+        .unwrap();
+    assert!(trash.deleted);
+    assert!(trash.snapshot.is_none());
     assert_eq!(report.corrupt, vec![hash.clone()]);
     assert_eq!(
         report.orphan_files,

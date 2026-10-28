@@ -48,6 +48,7 @@ pub struct DocumentWrite {
 }
 #[derive(Serialize, Default)]
 pub struct IntegrityReport {
+    pub document_snapshots: Vec<AuditDocument>,
     pub checked_at: i64,
     pub database_issues: Vec<String>,
     pub affected_attachments: Vec<AffectedAttachment>,
@@ -55,6 +56,13 @@ pub struct IntegrityReport {
     pub missing: Vec<String>,
     pub corrupt: Vec<String>,
     pub orphan_files: Vec<String>,
+}
+#[derive(Serialize)]
+pub struct AuditDocument {
+    pub id: String,
+    pub title: String,
+    pub deleted: bool,
+    pub snapshot: Option<Snapshot>,
 }
 #[derive(Serialize)]
 pub struct AffectedAttachment {
@@ -175,6 +183,25 @@ impl Workspace {
                     documents,
                 });
             }
+        }
+        let mut query = self
+            .db
+            .prepare("SELECT id,title,deleted_at IS NOT NULL FROM objects ORDER BY id")?;
+        for row in query.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, bool>(2)?,
+            ))
+        })? {
+            let (id, title, deleted) = row?;
+            let snapshot = self.load(&id)?;
+            report.document_snapshots.push(AuditDocument {
+                id,
+                title,
+                deleted,
+                snapshot,
+            });
         }
         Ok(report)
     }

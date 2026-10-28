@@ -1,5 +1,13 @@
 # Verification
 
+## Milestone 3 document and shared-reference integrity — 28 October 2026
+
+- TypeScript, ESLint, 12 frontend tests, 32 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. The extended Rust query-only audit test passed again after adding snapshot assertions. Release executable and installer remain at the icon refresh.
+- Frontend coverage includes valid cycles/self references, card and inline targets, missing/trashed/unreadable targets, trashed sources, corrupt updates, incomplete Yjs dependencies, mismatched identity metadata, absent snapshots and empty bodies. Input snapshot bytes remain unchanged. Rust verifies live/Trash snapshot transport under SQLite query-only mode.
+- Extended `node tests/native/integrity.mjs` passed: actual BlockSuite snapshots produce zero findings when healthy; injected missing/trashed/unreadable reference targets are distinguished; refresh preserves exact stored document rows, attachment diagnostics and recovery navigation. Evidence: `test-results/integrity-1793178450656/`; screenshot inspected. An initial run hit an ambiguous test text locator because the same Trash title now appears in both report sections; the locator was narrowed before the passing run.
+- `node tests/native/shared-notes.mjs` passed again: two-board source consistency, restart, navigation, reciprocal references, placement removal, native-created linked documents and retained deleted sources. Evidence: `test-results/shared-notes-1793178460231/`.
+- This slice performs no repair, migration or rewrite. Checks cover Yjs decoding/dependencies, collection identity, page-root count and target availability, not all block schemas, rendering, or attachment use inside bodies. Missing snapshots may be never-opened objects. All snapshot bytes cross IPC together and decoding is synchronous; large-library memory, cancellation and pagination remain untested/unimplemented. No new native dialogs, installer or physical disk-failure testing was performed.
+
 ## Milestone 3 recoverable orphan quarantine — 28 October 2026
 
 - TypeScript, ESLint, eight frontend tests, 32 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. After the final restore-conflict guard, the five quarantine Rust tests and Clippy passed again. The debug executable includes quarantine; release executable and installer remain at the icon refresh.

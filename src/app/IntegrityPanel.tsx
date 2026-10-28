@@ -47,6 +47,28 @@ export function IntegrityPanel({
       ) : (
         <p>SQLite integrity and stored relationships passed.</p>
       )}
+      <h3>Documents and shared references</h3>
+      <p>
+        {report.documents.checked} documents checked, including Trash;{" "}
+        {report.documents.issues.length} findings.
+      </p>
+      {report.documents.issues.map((issue, i) => (
+        <details key={i}>
+          <summary>
+            {issue.title}
+            {issue.deleted ? " (in Trash)" : ""}: {issue.message}
+          </summary>
+          <p>
+            Source document: <code>{issue.id}</code>
+          </p>
+        </details>
+      ))}
+      <p>
+        Checks cover saved Yjs decoding, document identity metadata, page roots
+        and card/inline reference targets. A missing snapshot can mean a
+        document has never been opened. Restore trashed targets through Trash.
+        No references are rewritten.
+      </p>
       <h3>Attachment issues</h3>
       {!report.affected_attachments.length && (
         <p>No missing or corrupt indexed attachments found.</p>
@@ -99,10 +121,10 @@ export function IntegrityPanel({
         retained. A new backup may fail if indexed attachments are damaged.
       </p>
       <p>
-        This check does not decode document content or validate shared document
-        targets. It scans indexed attachment bytes and files directly inside the
-        asset folder and its immediate subfolders; nested folders and symbolic
-        links are not audited.
+        This is not a complete block-schema or rendering validation. It scans
+        indexed attachment bytes and files directly inside the asset folder and
+        its immediate subfolders; nested folders and symbolic links are not
+        audited.
       </p>
     </section>
   );

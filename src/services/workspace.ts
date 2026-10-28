@@ -1,4 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  auditDocuments,
+  type AuditDocument,
+  type DocumentAudit,
+} from "../features/editor/blocksuite/integrity";
 export type ExportFormat = "markdown" | "png" | "pdf";
 export interface ExportFile {
   name: string;
@@ -35,6 +40,7 @@ export interface TrashedObject extends KnowledgeObject {
   deleted_at: number;
 }
 export interface IntegrityReport {
+  documents: DocumentAudit;
   checked_at: number;
   checked: number;
   missing: string[];
@@ -91,7 +97,14 @@ export const repository = {
       if (page.length < 100) return rows;
     }
   },
-  integrity: () => invoke<IntegrityReport>("check_workspace"),
+  async integrity(): Promise<IntegrityReport> {
+    const { document_snapshots, ...report } = await invoke<
+      Omit<IntegrityReport, "documents"> & {
+        document_snapshots: AuditDocument[];
+      }
+    >("check_workspace");
+    return { ...report, documents: auditDocuments(document_snapshots) };
+  },
   list: (
     search = "",
     offset = 0,

@@ -5,6 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
+import * as Y from "yjs";
 const root = path.resolve("test-results/integrity-" + Date.now());
 await mkdir(root, { recursive: true });
 let child, browser;
@@ -41,7 +42,31 @@ try {
     .getByText("SQLite integrity and stored relationships passed.")
     .waitFor();
   const db = new DatabaseSync(path.join(root, "Workspace/knot.db"));
+  await page
+    .getByText(/documents checked, including Trash; 0 findings/)
+    .waitFor();
   const id = db.prepare("SELECT id FROM objects LIMIT 1").get().id;
+  const saved = db.prepare("SELECT * FROM documents WHERE object_id=?").get(id);
+  const body = new Y.Doc();
+  Y.applyUpdate(body, saved.document_state);
+  for (const target of ["trashed", "absent", "broken"]) {
+    const card = new Y.Map();
+    card.set("sys:flavour", "affine:embed-synced-doc");
+    card.set("prop:pageId", target);
+    body.getMap("blocks").set(`audit-${target}`, card);
+  }
+  db.prepare("UPDATE documents SET document_state=? WHERE object_id=?").run(
+    Y.encodeStateAsUpdate(body),
+    id,
+  );
+  body.destroy();
+  db.prepare(
+    "INSERT INTO objects (id,title,kind,updated_at) VALUES ('broken','Broken source','note',1)",
+  ).run();
+  db.prepare("INSERT INTO documents VALUES ('broken',?,?,1)").run(
+    saved.collection_state,
+    Buffer.from([255]),
+  );
   db.prepare(
     "INSERT INTO objects (id,title,kind,updated_at,deleted_at) VALUES ('trashed','Recovered source','note',1,1)",
   ).run();
@@ -59,12 +84,21 @@ try {
   const before = db.prepare("SELECT * FROM documents ORDER BY object_id").all();
   await click("Check again");
   await page
+    .getByText(/Reference target absent is missing from the catalog/)
+    .waitFor();
+  await page.getByText(/Reference target trashed is in Trash/).waitFor();
+  await page
+    .getByText(/Reference target broken is without a readable saved snapshot/)
+    .waitFor();
+  await page
     .getByText(
       "1 asset records checked; 1 missing, 0 corrupt, 1 unindexed files.",
     )
     .waitFor();
   await page.getByText("Missing: fixture.png · 2 associated documents").click();
-  await page.getByText(/Recovered source \(in Trash\)/).waitFor();
+  await page
+    .getByText("Recovered source (in Trash) · trashed", { exact: true })
+    .waitFor();
   await page.getByText("Unindexed files (1)", { exact: true }).click();
   await page.getByText("interrupted.tmp", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(root, "missing.png") });
