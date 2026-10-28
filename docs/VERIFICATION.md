@@ -1,5 +1,13 @@
 # Verification
 
+## Milestone 3 document exports — 28 October 2026
+
+- TypeScript, ESLint, eight frontend tests, 26 Rust tests (two opt-in tests excluded), Clippy with warnings denied, production frontend and standalone debug desktop builds passed. The debug executable includes exports; the release executable and installer remain at the icon refresh below.
+- Rust coverage verifies Markdown and ZIP attachment bytes, format/signature and unsafe-path rejection, safe suggested filenames, refusal to overwrite existing destinations, and temporary-file cleanup on failure.
+- `node tests/native/exports.mjs` passed against the compiled Windows app and real SQLite storage. It checks formatted Unicode Markdown, exact attachment bytes, Page and Canvas PNG/PDF, canvas shapes and text, white image backgrounds, unchanged document blocks, failed-save retry, workspace-ID reference links without copying source bodies, cancellation, destination-failure retry, and oversized-view rejection.
+- Evidence: `test-results/exports-1793176538164/`. Page and Canvas PNGs were visually inspected for complete text, image and shape rendering. The native test captures the export command handoff and simulates dialog cancellation/destination failure; it does not exercise the actual Save As dialog or its final write. Rust tests cover the writer separately. One non-fatal Yjs event-handler warning occurred during document switching.
+- Markdown exports supported page blocks; canvas content is omitted and linked documents are not portable copies. PDF is a single raster page without selectable text. Visual exports are limited to 16 megapixels/16,000 pixels per side, and all payloads to 100 MiB. Multi-page documents, complex mixed-media fidelity and physical disk-full/power-loss remain untested.
+
 ## Knot icon refresh — 28 October 2026
 
 - Generated a new ivory woven-knot mark on a forest-green rounded tile. Original artwork is stored in `public/knot-icon.png`; prompt and regeneration instructions are in `BRANDING.md`. Tauri platform icons, sidebar branding and favicon now use the same artwork.
@@ -141,4 +149,4 @@ These are single-run smoke measurements on this PC, not statistical benchmarks:
 - The installer and standalone executable were built and exercised; installation/uninstallation on a clean Windows VM remains unverified.
 - Offline testing covers WebView networking disabled and a standalone executable without a dev server. The machine's network adapter was not disabled.
 - Imports are bounded to 100 MiB and use in-memory IPC. PDF inline embedding is limited to 10 MiB. Multi-gigabyte library stress testing and streaming imports remain future work.
-- BlockSuite's online-dependent embeds are unavailable under the offline CSP. Standard Markdown/PDF/PNG export and destructive asset cleanup remain future milestones. Trash restoration is covered by the Milestone 3 results above; folders and shared cross-board notes are covered by Milestone 2.
+- BlockSuite's online-dependent embeds are unavailable under the offline CSP. Standard Markdown/PDF/PNG export and Trash restoration are covered by the Milestone 3 results above; destructive asset cleanup remains future work. Folders and shared cross-board notes are covered by Milestone 2.

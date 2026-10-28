@@ -1,4 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
+export type ExportFormat = "markdown" | "png" | "pdf";
+export interface ExportFile {
+  name: string;
+  bytes: number[];
+}
+export const exportDocument = (
+  title: string,
+  format: ExportFormat,
+  files: ExportFile[],
+) => invoke<string | null>("export_document", { title, format, files });
 export interface WorkspaceCatalog {
   active: string | null;
   entries: { id: string; path: string }[];

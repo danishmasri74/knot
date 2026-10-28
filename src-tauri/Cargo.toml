@@ -19,6 +19,4 @@ sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
-
-[dev-dependencies]
 tempfile = "3"

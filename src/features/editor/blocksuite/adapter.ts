@@ -1,10 +1,18 @@
 import { effects as registerBlocks } from "@blocksuite/blocks/effects";
 import { effects as registerEditors } from "@blocksuite/presets/effects";
-import { DocCollection, Schema, Text } from "@blocksuite/store";
+import {
+  DocCollection,
+  Schema,
+  Text,
+  Job,
+  getAssetName,
+} from "@blocksuite/store";
 import {
   AffineSchemas,
   RefNodeSlotsProvider,
   RefNodeSlotsExtension,
+  MarkdownAdapter,
+  ExportManager,
 } from "@blocksuite/blocks";
 import { AffineEditorContainer } from "@blocksuite/presets";
 import * as Y from "yjs";
@@ -12,6 +20,8 @@ import {
   attachments,
   repository,
   type KnowledgeObject,
+  type ExportFormat,
+  type ExportFile,
 } from "../../../services/workspace";
 import {
   SaveCoordinator,
@@ -267,6 +277,131 @@ export async function openEditor(
       doc,
       collection,
       catalog,
+      async exportFiles(format: ExportFormat): Promise<ExportFile[]> {
+        if (format === "markdown") {
+          const job = new Job({
+            collection,
+            middlewares: [
+              ({ adapterConfigs }) => {
+                adapterConfigs.set("docLinkBaseUrl", "knot://document");
+                for (const meta of collection.meta.docMetas)
+                  adapterConfigs.set(
+                    `title:${meta.id}`,
+                    meta.title || "Unavailable document",
+                  );
+              },
+            ],
+          });
+          try {
+            const snapshot = job.docToSnapshot(doc);
+            if (!snapshot) throw new Error("Document could not be exported");
+            const result = await new MarkdownAdapter(job).fromDocSnapshot({
+              snapshot,
+              assets: job.assetsManager,
+            });
+            const files: ExportFile[] = [
+              {
+                name: "index.md",
+                bytes: Array.from(new TextEncoder().encode(result.file)),
+              },
+            ];
+            let total = files[0].bytes.length;
+            for (const id of new Set(result.assetsIds)) {
+              const blob = job.assets.get(id);
+              if (!blob) throw new Error("An export attachment is missing");
+              total += blob.size;
+              if (total > 100 * 1024 * 1024)
+                throw new Error("Export exceeds 100 MiB");
+              files.push({
+                name: `assets/${getAssetName(job.assets, id)}`,
+                bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
+              });
+            }
+            return files;
+          } finally {
+            job.assetsManager.cleanup();
+          }
+        }
+        await document.fonts.ready;
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        const root = editor.querySelector("affine-edgeless-root");
+        const page = editor.querySelector(".affine-page-root-block-container");
+        const bounds =
+          editor.mode === "edgeless" ? root?.gfx.elementsBound : null;
+        const width = bounds ? bounds.w + 100 : page?.scrollWidth;
+        const height = bounds ? bounds.h + 100 : page?.scrollHeight;
+        const scale = window.devicePixelRatio || 1;
+        if (
+          !width ||
+          !height ||
+          !Number.isFinite(width * height) ||
+          width * height * scale * scale > 16_000_000 ||
+          Math.max(width, height) * scale > 16000
+        )
+          throw new Error(
+            "View is empty or too large to export. Limit: 16 megapixels and 16,000 pixels per side.",
+          );
+        // BlockSuite 0.19.5 exposes only browser-download wrappers for page capture.
+        // Keep this pinned internal bridge here; native acceptance covers both modes.
+        const manager = new ExportManager(editor.std);
+        const ready = manager as unknown as { _checkReady(): Promise<boolean> };
+        if (root && bounds && !(await ready._checkReady()))
+          throw new Error("Images are still loading; retry export.");
+        const canvas =
+          root && bounds
+            ? await manager.edgelessToCanvas(
+                root.surface.renderer,
+                bounds,
+                root,
+                undefined,
+                root.gfx.getElementsByBound(bounds, { type: "canvas" }),
+              )
+            : await (
+                manager as unknown as {
+                  _toCanvas(): Promise<HTMLCanvasElement | undefined>;
+                }
+              )._toCanvas();
+        if (!canvas || !canvas.width || !canvas.height)
+          throw new Error("Could not render this view for export");
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Could not prepare export image");
+        context.save();
+        context.resetTransform();
+        context.globalCompositeOperation = "destination-over";
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.restore();
+        const png = await new Promise<Blob>((resolve, reject) =>
+          canvas.toBlob(
+            (blob) =>
+              blob ? resolve(blob) : reject(new Error("Image encoding failed")),
+            "image/png",
+          ),
+        );
+        let bytes = new Uint8Array(await png.arrayBuffer());
+        if (format === "pdf") {
+          const { PDFDocument } = await import("pdf-lib");
+          const pdf = await PDFDocument.create();
+          const image = await pdf.embedPng(bytes);
+          const page = pdf.addPage([
+            canvas.width / scale,
+            canvas.height / scale,
+          ]);
+          page.drawImage(image, {
+            x: 0,
+            y: 0,
+            width: page.getWidth(),
+            height: page.getHeight(),
+          });
+          pdf.setTitle(doc.meta?.title || "Untitled");
+          bytes = new Uint8Array(await pdf.save());
+        }
+        if (bytes.length > 100 * 1024 * 1024)
+          throw new Error("Export exceeds 100 MiB");
+        return [{ name: `document.${format}`, bytes: Array.from(bytes) }];
+      },
       setMode(mode: "page" | "edgeless") {
         navigationSubscription.dispose();
         editor.mode = mode;

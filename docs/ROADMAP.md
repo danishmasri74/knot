@@ -30,7 +30,8 @@ Streaming IPC for large files; multi-window navigation; startup optimization; su
 - Implemented managed workspace picker: return to the personal workspace or reopen a restored backup, persist selection across restarts, flush before switching and retain the current workspace on opening/selection failure. Missing startup selections are recoverable without creating an empty replacement.
 - Implemented backup management: create and list local managed archives, verify through the full restore validator, restore into a separate workspace, and explicitly delete individual archives. Existing external archive dialogs remain available.
 - Implemented external workspace selection through a native folder dialog, remembered locations and unavailable-location recovery. Relocation creates and opens a validated copy in the selected destination while retaining the source recovery copy; automatic source removal is not implemented.
-- Remaining: standard exports, broader recovery UI, orphan cleanup, richer integrity tooling and format migrations. No permanent deletion or asset cleanup is included in the Trash slice.
+- Implemented standard export slice: Markdown with referenced attachments bundled in ZIP, and PNG/single-image PDF snapshots of the current Page or Canvas view. These are sharing formats, not lossless backups; portable linked-document collections and paginated/selectable-text PDF remain future work.
+- Remaining: broader recovery UI, orphan cleanup, richer integrity tooling and format migrations. No permanent deletion or asset cleanup is included in the Trash slice.
 
 ## Milestone 4
 

@@ -1,4 +1,5 @@
 mod backup;
+mod exports;
 mod managed_backups;
 mod organization;
 mod storage;
@@ -13,6 +14,25 @@ struct AppState {
     base: std::path::PathBuf,
 }
 type Reply<T> = Result<T, String>;
+#[tauri::command]
+async fn export_document(
+    title: String,
+    format: String,
+    files: Vec<exports::ExportFile>,
+) -> Reply<Option<String>> {
+    let extension = exports::validate(&format, &files).map_err(|e| e.to_string())?;
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Export document — choose a new filename")
+        .add_filter("Document export", &[extension])
+        .set_file_name(exports::filename(&title, extension))
+        .save_file()
+        .await;
+    let Some(file) = file else {
+        return Ok(None);
+    };
+    exports::write(file.path(), &format, &files).map_err(|e| e.to_string())?;
+    Ok(Some(file.path().display().to_string()))
+}
 #[tauri::command]
 async fn list_backups(state: State<'_, AppState>) -> Reply<Vec<managed_backups::Entry>> {
     let _guard = state
@@ -292,6 +312,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            export_document,
             list_backups,
             create_backup,
             validate_backup,

@@ -938,3 +938,69 @@ fn relocation_and_registry_failures_are_recoverable() {
         "broken"
     );
 }
+
+#[test]
+fn document_exports_validate_and_publish_without_overwriting() {
+    use super::exports::{self, ExportFile};
+    use std::io::Read;
+    let tmp = tempfile::tempdir().unwrap();
+    let markdown = vec![ExportFile {
+        name: "index.md".into(),
+        bytes: b"# Title\n\n**Bold**".to_vec(),
+    }];
+    let path = tmp.path().join("note.md");
+    exports::write(&path, "markdown", &markdown).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), markdown[0].bytes);
+    assert!(exports::write(&path, "markdown", &markdown).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), markdown[0].bytes);
+    let zip = tmp.path().join("note.zip");
+    let bundle = vec![
+        ExportFile {
+            name: "index.md".into(),
+            bytes: b"![image](assets/image.png)".to_vec(),
+        },
+        ExportFile {
+            name: "assets/image.png".into(),
+            bytes: vec![1, 2, 3],
+        },
+    ];
+    exports::write(&zip, "markdown", &bundle).unwrap();
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(zip).unwrap()).unwrap();
+    let mut bytes = Vec::new();
+    archive
+        .by_name("assets/image.png")
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert_eq!(bytes, vec![1, 2, 3]);
+    for bad in [
+        "../outside",
+        "assets/../outside",
+        "assets/a/b",
+        "assets/C:bad",
+    ] {
+        let files = vec![ExportFile {
+            name: bad.into(),
+            bytes: vec![1],
+        }];
+        assert!(exports::write(&tmp.path().join("bad.zip"), "markdown", &files).is_err());
+    }
+    for format in ["png", "pdf", "unknown"] {
+        assert!(exports::validate(format, &markdown).is_err());
+    }
+    for (format, signature) in [
+        ("png", b"\x89PNG\r\n\x1a\n".as_slice()),
+        ("pdf", b"%PDF-1.7".as_slice()),
+    ] {
+        let files = vec![ExportFile {
+            name: format!("document.{format}"),
+            bytes: signature.to_vec(),
+        }];
+        exports::write(&tmp.path().join(format!("out.{format}")), format, &files).unwrap();
+    }
+    assert!(exports::write(&tmp.path().join("absent/note.md"), "markdown", &markdown).is_err());
+    assert!(!tmp.path().join("bad.zip").exists());
+    assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 4);
+    assert_eq!(exports::filename("CON", "md"), "Knot-CON.md");
+    assert_eq!(exports::filename("a/b: title", "md"), "Knot-a-b- title.md");
+}

@@ -8,6 +8,8 @@ import {
   workspaces,
   type WorkspaceCatalog,
   type BackupEntry,
+  exportDocument,
+  type ExportFormat,
   organization,
   type Catalog,
   type Organization,
@@ -29,6 +31,8 @@ import {
 } from "../features/editor/blocksuite/adapter";
 
 export function App() {
+  const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("markdown");
   const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalog>({
     active: null,
     entries: [],
@@ -152,6 +156,7 @@ export function App() {
     if (record) history.current.visit(item);
   }
   async function reloadWorkspace() {
+    setExporting(false);
     ++searchGeneration.current;
     history.current.clear();
     session.current?.destroy();
@@ -541,6 +546,12 @@ export function App() {
           <div className="actions">
             <button
               disabled={!active || busy}
+              onClick={() => setExporting(!exporting)}
+            >
+              Export
+            </button>
+            <button
+              disabled={!active || busy}
               onClick={() => setChoosingReference(!choosingReference)}
             >
               ＋ Reference
@@ -662,6 +673,67 @@ export function App() {
             onChanged={reloadOrganization}
             onClose={() => setManaging(false)}
           />
+        )}
+        {exporting && active && (
+          <section className="recovery-panel" aria-label="Export document">
+            <h2>Export document</h2>
+            <p>
+              Markdown exports page text and supported blocks, with attachments
+              in a ZIP when needed. Canvas drawings are omitted; shared notes
+              and document references remain links to workspace IDs, not
+              portable copies.
+            </p>
+            <p>
+              PNG and PDF capture the current Page or Canvas view. PDF is a
+              single image-based page; text is not selectable. Embedded files
+              and remote media may appear as cards. Keep a Knot backup for full
+              fidelity.
+            </p>
+            <label>
+              Format{" "}
+              <select
+                aria-label="Export format"
+                disabled={busy}
+                value={exportFormat}
+                onChange={(e) =>
+                  setExportFormat(e.target.value as ExportFormat)
+                }
+              >
+                <option value="markdown">Markdown (.md / .zip)</option>
+                <option value="png">PNG image (.png)</option>
+                <option value="pdf">PDF snapshot (.pdf)</option>
+              </select>
+            </label>{" "}
+            <button
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  const current = session.current;
+                  if (!current) return;
+                  await current.flush();
+                  const files = await current.exportFiles(exportFormat);
+                  const path = await exportDocument(
+                    current.doc.meta?.title || title,
+                    exportFormat,
+                    files,
+                  );
+                  setNotice(
+                    path ? `Export saved: ${path}` : "Export canceled.",
+                  );
+                })
+              }
+            >
+              Save export
+            </button>{" "}
+            <button disabled={busy} onClick={() => setExporting(false)}>
+              Close export
+            </button>
+            <p>
+              Choose a new filename; existing files are never overwritten.
+              Maximum export: 100 MiB. Visual exports are limited to 16
+              megapixels.
+            </p>
+          </section>
         )}
         {backupEntries !== null && (
           <BackupManager
