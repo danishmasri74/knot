@@ -1447,7 +1447,12 @@ export function App() {
         await run(async () => {
           await flushMcqDraft.current?.();
           await session.current?.flush();
-          await browserApi.dispose();
+          // Best effort: destroying the window tears the browser pane down
+          // anyway, and a broken pane must not keep Knot (or an update) from
+          // closing once edits are saved.
+          await browserApi.dispose().catch((e) =>
+            console.warn("Browser pane cleanup failed during close", e),
+          );
           await getCurrentWindow().destroy();
         });
       })

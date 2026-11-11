@@ -66,3 +66,7 @@ GitHub's `latest` link skips prereleases, so `-Prerelease` builds can be tested 
 ## Removing a bad release
 
 Delete it on GitHub (or `gh release delete v<version> --repo <repo> --cleanup-tag`). The `latest` link falls back to the previous release. Copies that already updated keep the bad version until a newer release ships, so fix forward with a new patch version.
+
+## Installer
+
+The Windows installer uses Knot's own NSIS template, `src-tauri/installer/knot.nsi`. Its artwork is in `src-tauri/installer/*.bmp`; regenerate it after an identity change with `node scripts/create-installer-art.mjs`. Before upgrading the Tauri CLI, compare its new `installer.nsi` with `src-tauri/installer/tauri-<version>-installer.nsi.orig` and carry the `KNOT:` changes over. The release script warns when the versions differ. Behaviour and test record: [UPDATER-INSTALLER-PLAN.md](UPDATER-INSTALLER-PLAN.md#3-installer-nsis).

@@ -56,6 +56,14 @@ try {
 
     Invoke-Checked 'Version check' { node scripts/set-version.mjs --check $Version }
 
+    # The Knot installer template is a modified copy of one Tauri version's
+    # template; a CLI upgrade may change what the bundler passes to it.
+    $templateBase = (Select-String -LiteralPath 'src-tauri/installer/knot.nsi' -Pattern 'based on Tauri ([0-9.]+)' | Select-Object -First 1).Matches[0].Groups[1].Value
+    $cliVersion = ((pnpm -s tauri --version) -replace '[^0-9.]', '')
+    if ($templateBase -ne $cliVersion) {
+        Write-Warning "Installer template is based on Tauri $templateBase but the CLI is $cliVersion. Compare the new upstream installer.nsi with src-tauri/installer/tauri-$templateBase-installer.nsi.orig before releasing."
+    }
+
     if (-not $NotesFile) { $NotesFile = "docs/releases/$Version.md" }
     if (-not (Test-Path -LiteralPath $NotesFile)) {
         Fail "release notes are missing. Write $NotesFile (a few short lines)."

@@ -1,6 +1,6 @@
 # Updater and installer plan
 
-Status: planned on 11 November 2026. Slice 1's local tooling is implemented (`pnpm version:set`, `pnpm release`, [RELEASING.md](RELEASING.md)); publishing waits on the releases repository, GitHub CLI and the real signing key. Slices 2–4 are not implemented. Distribution goes through a public, code-free GitHub releases repository. Notebook sharing is planned separately.
+Status: planned on 11 November 2026. Slice 1 (release tooling) is done and published `0.2.0-rc.1` to `knot-desktop/knot-releases`; see [RELEASING.md](RELEASING.md). Slice 2 (installer) is implemented and verified on this PC; see section 3. Slices 3–4 are not implemented. Distribution goes through a public, code-free GitHub releases repository. Notebook sharing is planned separately.
 
 ## Principles
 
@@ -127,42 +127,72 @@ States, shown in the same identity block (one line of status and one action):
 
 ## 3. Installer (NSIS)
 
-### Configuration
+### Configuration (as built)
 
-- `bundle.windows.nsis.installMode: "currentUser"`: no admin prompt and no install-mode page. Installs to `%LOCALAPPDATA%\Knot` like today's copy.
-- `installerIcon: icons/icon.ico`. The Start menu entry and the Apps list use the Linked K icon.
-- `bundle.windows.webviewInstallMode: { type: "embedBootstrapper" }` so Windows 10 PCs without WebView2 can install with only a small online step (about +1.8 MB).
-- `compression: "lzma"`.
-- `bundle.publisher: "Knot"`, `copyright`, `homepage` pointing to the releases repo, so the Apps list and file properties read cleanly.
+- `bundle.windows.nsis`:
+  - `template: installer/knot.nsi`;
+  - `installMode: currentUser`, so there's no admin prompt and Knot installs to `%LOCALAPPDATA%\Knot`;
+  - `installerIcon`/`uninstallerIcon: icons/icon.ico`;
+  - `headerImage`/`uninstallerHeaderImage: installer/header.bmp`, `sidebarImage: installer/sidebar.bmp`;
+  - `compression: lzma`, no language selector.
+- `bundle.windows.allowDowngrades: false` and `webviewInstallMode: embedBootstrapper` (adds about 1.8 MB, so Windows 10 PCs without WebView2 can install).
+- `bundle.publisher: "Knot"`, `copyright`, `homepage` (the releases repo). The Apps list shows Knot / Knot / version / homepage.
 
-### Artwork
+### Artwork (as built)
 
-Generated from `assets/knot.svg`, `assets/knot-mark.svg` and `assets/knot-wordmark.svg` by a new `scripts/create-installer-art.mjs` (Playwright renders the SVGs at 100% and 200%, then they're converted to 24-bit BMPs NSIS can read). Output goes to `src-tauri/installer/` and is committed.
+`node scripts/create-installer-art.mjs` renders the Linked K paths from `assets/knot-mark.svg` in headless Edge and writes 24-bit BMPs to `src-tauri/installer/`. They're rendered at 2× (328×628 and 300×114) and NSIS scales them to the control, which keeps them sharp from 100% to 200% display scaling.
 
-- **Sidebar (164×314, Welcome and Finish pages):** a flat paper `#FAF9F6` background with a charcoal Linked K mark centred in the upper third and the wordmark below it. No gradients, shadows or illustration.
-- **Header (150×57, inner pages):** paper background with a small charcoal mark aligned right and one stroke width of clear space.
-- NSIS pages don't follow Windows dark mode, so the installer always uses the paper palette. That matches the launch splash in light mode.
-- Mascot artwork is not used in the installer.
+- **Sidebar (Welcome and Finish):** flat paper `#FAF9F6`, the charcoal mark in the upper third with the wordmark below, and a hairline on the right edge.
+- **Header (inner pages):** paper, with a small mark on the right.
+- `MUI_BGCOLOR FAF9F6` / `MUI_TEXTCOLOR 242423` give the header strip and the Welcome/Finish pages the paper palette.
+- Windows draws the inner page body, the bottom bar, buttons, checkboxes and the progress bar (green on Windows 11), and these can't be restyled. NSIS doesn't follow dark mode. No mascot art is used.
 
-### Pages: from seven to three
+### Pages (as built)
 
-The default Tauri template shows Welcome → (license) → install mode → directory → Start menu folder → installing → finish. Knot uses a trimmed copy of Tauri's NSIS template (`bundle.windows.nsis.template: installer/knot.nsi`) with English copy from `installer/English.nsh`:
+`src-tauri/installer/knot.nsi` is Tauri 2.12.4's template (the untouched copy is `tauri-2.12.4-installer.nsi.orig`) with every change marked `KNOT:`. English copy is in `LangString knot*` entries at the end of the language section.
 
-1. **Welcome:** `Install Knot` / `A local home for connected ideas.` / `Knot installs for your Windows account only. It doesn't need administrator access.` and a small **Change location…** link instead of a directory page.
-2. **Installing:** `Installing Knot…` with a progress bar and no details list by default.
-3. **Finish:** `Knot is ready.` with `Open Knot` (checked) and `Add a desktop shortcut` (checked), then **Done**.
+1. **Welcome:**
+   - `Install Knot` / `A local home for connected ideas.` / the account-only note;
+   - `Installs to <path>` and a **Change location…** link below the text;
+   - the main button reads **Install**.
+   - The directory page appears only after the link is used.
+2. **Installing:**
+   - `Installing Knot` / `This takes less than a minute.`, with details hidden behind a button;
+   - it moves on to Finish by itself;
+   - on failure: `Knot wasn't installed` / `Your notes weren't changed.`
+3. **Finish:** `Knot is ready.` / `Find it in the Start menu any time.`, with **Open Knot** and **Add a desktop shortcut** both ticked, and **Done**.
 
-Updates run the same installer in passive mode: only the progress page, with the header art, then Knot relaunches.
+Other behaviour:
 
-Pinning the template to a Tauri version is a maintenance cost. The release script compares the bundled Tauri CLI version with the version the template was copied from, and warns if they differ.
+- **No reinstall/uninstall page.** An existing copy is replaced in place, as updates do.
+- **Newer copy:** if the installed version is newer, the installer shows `Knot X is already installed, which is newer than this installer…`, quits, and changes nothing. Passive and silent runs are refused too (`allowDowngrades: false`).
+- **Knot open, interactive install:** Tauri's default force-closes the app, which would skip Knot's save-on-close. Knot's template asks `Knot is open. Close it from its window so your work is saved, then click Retry.` Cancel leaves everything as it was.
+- **Knot open, passive or silent run:** the installer waits up to 60 seconds for Knot to close by itself. If it hasn't, the installer exits with code 2 without replacing anything.
+- **Updates (`/P /UPDATE`):** only the progress page shows, titled `Updating Knot` / `Updating Knot to <version>` / `Your notes aren't touched while Knot updates.` Whether Knot relaunches depends on the arguments the updater passes, and is checked in slice 3.
 
-### Uninstaller: never delete notes
+The release script warns when the Tauri CLI version differs from the version the template was copied from.
 
-Knot stores workspaces, managed backups and AI diagnostics in `%LOCALAPPDATA%\com.knot.desktop`, which is `app_local_data_dir`. Tauri's default uninstaller offers **"Delete the application data"**, which removes exactly that folder, including every workspace and backup. The Knot template removes that checkbox. Instead:
+### Uninstaller: never delete notes (as built)
 
-- The uninstall page says: `Your notes and backups stay in %LOCALAPPDATA%\com.knot.desktop. Reinstalling Knot will open them again.` and has an **Open folder** link.
-- Removing user data is never part of uninstalling. A future in-app control can handle that with its own confirmations.
-- The uninstaller removes the exe, the Linked K icon file, shortcuts and registry entries only. Caches under `%LOCALAPPDATA%\com.knot.desktop\EBWebView` and `topic-v1` are kept too. They're small and rebuildable, and deleting from that folder at all risks mistakes.
+Knot stores workspaces, managed backups and AI diagnostics in `%LOCALAPPDATA%\com.knot.desktop` (`app_local_data_dir`). Tauri's default uninstaller offers **"Delete the application data"**, which would remove that whole folder. Knot's template removes both the checkbox and the deletion code.
+
+- **Confirm page:** `Uninstall Knot` / `This removes the app and its shortcuts.` / `Your notes and backups stay in <folder>. Install Knot again and it opens them automatically.`
+- **Finish page:** `Knot was removed` / `Your notes and backups are kept.`
+- The uninstaller removes the exe, uninstaller, shortcuts and the Apps entry. Everything under `com.knot.desktop` stays, caches included. Removing user data is never part of uninstalling.
+- The planned **Open folder** link was dropped, because the folder path is shown in the text.
+
+### Verification (11 November 2026, this PC, 125% scaling)
+
+- Your notes and backups (55 files under `Workspace` and `Backups`) were fingerprinted before testing and compared after each step. They were byte-identical throughout, including after uninstall.
+- **Interactive install while Knot was open:** the close prompt appeared. The user closed Knot normally and clicked Retry, the install completed, and **Open Knot** on Finish launched it.
+- **Passive update with Knot closed:** completed with exit code 0 and the "Updating Knot to …" header.
+- **Passive update with Knot open:** waited, then gave up. Knot kept running in the same process and was never killed. This led to the change to exit by itself instead of stopping on a failure page.
+- **Newer-version guard:** with the Apps entry temporarily set to 9.9.9, the message appeared, the installer quit, and nothing changed.
+- **Uninstall:** the app, Start menu shortcut and Apps entry were removed, and the data folder was unchanged.
+- **Reinstall:** Welcome → Change location… → location page → Install → Finish → Open Knot.
+- Not yet covered: a clean Windows account and a second PC (SmartScreen, Windows 10 WebView2 bootstrap).
+
+Found while testing, and fixed in `App.tsx`: when Knot's browser pane webview was broken, closing Knot failed with "failed to send message to the webview" after saving, so the window couldn't close and an update couldn't proceed. Browser-pane cleanup during close is now best-effort. The window is destroyed anyway, and edits are flushed before that step. The pane broke in a Knot launched minimized by the test harness; the root cause of that is not investigated.
 
 ### Unsigned builds
 

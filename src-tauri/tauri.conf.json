@@ -29,12 +29,30 @@
     "active": true,
     "targets": ["nsis"],
     "shortDescription": "A local home for connected ideas",
+    "publisher": "Knot",
+    "copyright": "© 2026 Knot",
+    "homepage": "https://github.com/knot-desktop/knot-releases",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "nsis": {
+        "template": "installer/knot.nsi",
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "uninstallerHeaderImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "compression": "lzma",
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
