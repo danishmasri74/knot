@@ -218,8 +218,10 @@ not pay for their complexity in the measured data.
   It also avoids hitting the 180 KB request ceiling.
   **Implemented 11 November 2026** in `src-tauri/src/ai_context.rs` (−71% context
   bytes on synthetic benchmark contexts; real-note effect to be read from
-  `payload_bytes` in diagnostics). The renderer's 180 KB pre-compaction limit is
-  unchanged. Revisit caching steps 2–4 once post-compaction data exists.
+  `payload_bytes` in diagnostics). Follow-up the same day: the renderer no longer
+  stores covered `structure`/`text` copies, so the unchanged 180 KB limit counts
+  each block once. Simply raising the limit was rejected, because chats store
+  frozen contexts in device storage. Revisit caching steps 2–4 once post-compaction data exists.
 
 ## Later related work
 

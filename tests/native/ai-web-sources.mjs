@@ -226,7 +226,7 @@ try {
     /1 of 2.*Excluded/s,
   );
   const frozen = await page.evaluate(() => window.aiRequests.at(-1).context);
-  assert.equal(JSON.parse(frozen).structure.length, 0);
+  assert.equal((JSON.parse(frozen).structure ?? []).length, 0);
   assert.ok(JSON.parse(frozen).citationSources.some((s) => s.kind === "web"));
   await page.evaluate(() => (window.recoverWeb = true));
   const failed = page

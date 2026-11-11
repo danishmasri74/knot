@@ -9,7 +9,10 @@ use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 /// Appended to the instructions only when a context was compacted.
-pub(crate) const COMPACT_INSTRUCTIONS: &str = "noteSources is the note part of the citation table: one entry per note with its title and blocks in document order. Each line starts with that block's citation marker, then two spaces of indentation per nesting level and a type marker (# to ###### headings, - bullet, 1. numbered item, [ ] open task, [x] completed task, > quote, code: code); lines without a marker are paragraphs, a '--- note N ---' line separates notes on a canvas, and further-indented continuation lines belong to the block above. Cite a note block by copying the marker that leads its line. When noteSources is present, citationSources lists only website passages.";
+pub(crate) const COMPACT_INSTRUCTIONS: &str = "noteSources holds the cited note blocks: per note, one line per block in order, starting with its citation marker; cite a block by copying that marker. Indentation shows nesting; leading #, -, 1., [ ]/[x], > and code: show heading, list, checklist, quote and code formatting, and block text can state status too. '--- note N ---' separates canvas notes; deeper-indented lines continue the block above. citationSources then lists only website passages.";
+
+/// Appended for edit operations when a context was compacted.
+pub(crate) const COMPACT_EDIT_INSTRUCTIONS: &str = "Never copy noteSources line markers such as #, -, 1., [ ] or [x] into generated text; express structure with native block types.";
 
 /// Fields a note citation entry may carry and still be compacted losslessly for
 /// the model. `revision` is an internal staleness token the model never needs.
@@ -108,10 +111,14 @@ pub(crate) fn compact(context: &str) -> Option<String> {
             return None;
         }
     }
-    let ids: HashSet<&str> = notes.iter().filter_map(|e| str_field(e, "id")).collect();
-    let covered = |blocks: Option<&Value>| {
+    // Block IDs are only unique within a document.
+    let ids: HashSet<(Option<&str>, &str)> = notes
+        .iter()
+        .filter_map(|e| Some((str_field(e, "document"), str_field(e, "id")?)))
+        .collect();
+    let covered = |blocks: Option<&Value>, document: Option<&str>| {
         blocks.and_then(Value::as_array).is_some_and(|blocks| {
-            blocks.iter().all(|b| str_field(b, "id").is_some_and(|id| ids.contains(id)))
+            blocks.iter().all(|b| str_field(b, "id").is_some_and(|id| ids.contains(&(document, id))))
         })
     };
     // Group consecutive entries by document; titles appear once per group.
@@ -145,12 +152,18 @@ pub(crate) fn compact(context: &str) -> Option<String> {
     }) {
         object.remove("text");
     }
-    if covered(object.get("structure")) {
+    // The renderer may already have dropped covered structure lists; a missing
+    // list counts as covered. Document IDs are never useful to the model.
+    let document = object.get("document").and_then(Value::as_str).map(str::to_owned);
+    if object.get("structure").is_none() || covered(object.get("structure"), document.as_deref()) {
         object.remove("structure");
         object.remove("document");
     }
     if let Some(Value::Array(added)) = object.get_mut("addedNotes") {
-        added.retain(|note| !covered(note.get("structure")));
+        added.retain(|note| {
+            note.get("structure").is_some()
+                && !covered(note.get("structure"), str_field(note, "document"))
+        });
         if added.is_empty() {
             object.remove("addedNotes");
         }
@@ -307,6 +320,26 @@ mod tests {
         }
         eprintln!("compacted {compacted_cases} benchmark contexts: {before} -> {after} bytes");
         assert!(after < before);
+    }
+
+    #[test]
+    fn renderer_dropped_copies_and_cross_document_id_collisions() {
+        // Renderer already removed covered structure/text: document IDs still go.
+        let original = json!({"sourceMode": "current", "document": "doc-1", "addedNotes": [{"document": "doc-2", "title": "Other"}],
+            "citationSources": [
+                {"document": "doc-1", "title": "Plan", "id": "same", "text": "Mine", "citation": "[S1]"},
+                {"document": "doc-2", "title": "Other", "id": "x", "text": "Theirs", "citation": "[S2]"}
+            ]});
+        let compacted: Value = serde_json::from_str(&compact(&original.to_string()).unwrap()).unwrap();
+        assert!(compacted.get("document").is_none() && compacted.get("addedNotes").is_none());
+        // An added note's block shares an ID with a cited block of another document: keep it.
+        let collision = json!({"sourceMode": "current", "document": "doc-1",
+            "structure": [{"id": "same", "text": "Mine"}],
+            "addedNotes": [{"document": "doc-2", "title": "Other", "structure": [{"id": "same", "text": "Uncited"}]}],
+            "citationSources": [{"document": "doc-1", "title": "Plan", "id": "same", "text": "Mine", "citation": "[S1]"}]});
+        let compacted: Value = serde_json::from_str(&compact(&collision.to_string()).unwrap()).unwrap();
+        assert!(compacted.get("structure").is_none());
+        assert_eq!(compacted["addedNotes"][0]["structure"][0]["text"], "Uncited");
     }
 
     #[test]

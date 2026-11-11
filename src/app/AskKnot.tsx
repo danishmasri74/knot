@@ -1,4 +1,5 @@
 import { AiProposalPreview } from "./AiProposalPreview";
+import { Mascot } from "./Mascot";
 import { AskSuggestion } from "./AskSuggestion";
 import { AiStarters } from "./AiStarters";
 import { useCallback } from "react";
@@ -1568,9 +1569,7 @@ export function AskKnot({
           >
             {!turns.length && (
               <div className="ask-empty">
-                <span className="ask-spark">
-                  <ShellIcon name="sparkles" />
-                </span>
+                <Mascot mood="ask" />
                 <h3>Where should we start?</h3>
                 <p>
                   Make sense of your notes, find the right words, or turn an

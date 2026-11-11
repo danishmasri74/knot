@@ -1,3 +1,4 @@
+import { Mascot } from "./Mascot";
 import {
   CardPlacement,
   cardPlacement,
@@ -269,11 +270,12 @@ export function LibraryCardDeck({
         </div>
       )}
       {data && !cards.length && (
-        <p className="library-empty">
-          {query
+        <div className="library-empty mascot-empty-state">
+          <Mascot mood={query ? "search" : "library"} />
+          <p>{query
             ? "No cards match your search."
-            : "Your note cards will appear here as you create notes in your notebooks."}
-        </p>
+            : "Your note cards will appear here as you create notes in your notebooks."}</p>
+        </div>
       )}
       {pages > 1 && (
         <nav className="library-pagination" aria-label="Card Deck pages">

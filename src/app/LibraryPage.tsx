@@ -1,4 +1,5 @@
 import type { useSidebarDrag } from "./useSidebarDrag";
+import { Mascot } from "./Mascot";
 import { ChoicePopover } from "./ChoicePopover";
 import { Fragment, useEffect, useState, useRef, type ReactNode } from "react";
 import {
@@ -418,9 +419,10 @@ export function LibraryPage({
               {!entries.length &&
                 query &&
                 !"uncollected".includes(query.toLowerCase()) && (
-                  <p className="library-empty">
-                    No collections match your search.
-                  </p>
+                  <div className="library-empty mascot-empty-state">
+                    <Mascot mood="search" />
+                    <p>No collections match your search.</p>
+                  </div>
                 )}
             </>
           ) : (
@@ -461,11 +463,12 @@ export function LibraryPage({
                   </div>
                 </div>
               ) : !result.rows.length ? (
-                <p className="library-empty">
-                  {query
+                <div className="library-empty mascot-empty-state">
+                  <Mascot mood={query ? "search" : "library"} />
+                  <p>{query
                     ? "No notebooks match your search."
-                    : "No notebooks here yet."}
-                </p>
+                    : "No notebooks here yet."}</p>
+                </div>
               ) : (
                 <div
                   className={`library-list${layout === "grid" ? " library-grid" : ""}`}

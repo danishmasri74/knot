@@ -28,13 +28,16 @@ Only after approval, set `KNOT_BENCHMARK_APPROVED=paid-synthetic-evaluation`,
 cargo test --lib ai::tests::live_quality_benchmark -- --ignored --exact --nocapture
 ```
 
-The sequential runner reserves 272,000 input (at the highest cache-write rate for GPT-6) and 6,000 output tokens per
-case using the versioned standard rates. It refuses to start unless the full suite
-fits the limit. Unknown usage, nonstandard service tiers, failures or an exceeded
-reservation stop further requests. Unknown cost with reported standard tier and
-bounded input/output consumes the full reservation. No automatic retries. The reservation is a
-conservative client check, not a substitute for a provider-side account cap.
-For Luna the full reservation is $4.26; this is an estimate, not authorization.
+The sequential runner reserves 20,000 input tokens (at the highest cache-write rate for
+GPT-6) and 6,000 output tokens per case using the versioned standard rates. The largest v1
+case used 1,219 input tokens, and any request reporting more than the reservation stops
+the run. It refuses to start unless the full suite fits the limit. Unknown usage,
+nonstandard service tiers, failures or an exceeded reservation stop further requests.
+Unknown cost with reported standard tier and bounded input/output consumes the full
+reservation. No automatic retries. The reservation is a conservative client check, not a
+substitute for a provider-side account cap. For Luna the full reservation is $0.48; this
+is an estimate, not authorization. `KNOT_BENCHMARK_LABEL` optionally names a run in its
+result header. See the [11 November comparison](../../docs/AI-INSTRUCTION-TRIM-BENCHMARK-2026-11-11.md).
 
 Results are separate JSONL files in `results/` (git-ignored), containing synthetic
 answers, usage, timing, fixture IDs, model and pricing version. A stopped run is

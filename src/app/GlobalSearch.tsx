@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SearchReport } from "../features/editor/blocksuite/search";
 import type { KnowledgeObject } from "../services/workspace";
 import { ShellIcon } from "./ShellIcon";
+import { Mascot } from "./Mascot";
 import { LoadingRows } from "./LoadingRows";
 import type { NoteView } from "../services/note-navigation";
 
@@ -172,7 +173,12 @@ export function GlobalSearch({
         </div>
         {error && <p role="alert">{error}</p>}
         {loading && <LoadingRows label="Loading search results" />}
-        {!loading && !error && !results.length && <p>No results found.</p>}
+        {!loading && !error && !results.length && (
+          <div className="mascot-empty-state search-empty-state">
+            <Mascot mood={query.trim() ? "search" : "library"} />
+            <p>{query.trim() ? "No results found." : "No recent notebooks yet."}</p>
+          </div>
+        )}
         {partial && (
           <p role="status">
             Some saved content could not be searched. Results may be incomplete.

@@ -18,17 +18,21 @@ fn live_quality_benchmark() {
     assert!(budget.is_finite() && budget > 0.0);
     let model = std::env::var("KNOT_BENCHMARK_MODEL").expect("Explicit model required");
     assert!(MODELS.contains(&model.as_str()));
-    // Reserve a complete short-context window and maximum output per case.
+    // Per-case input reservation. The largest v1 case used 1,219 input tokens
+    // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
+    // more stops the run. Maximum output is capped by the request (6,000).
+    const INPUT_RESERVE: u64 = 20_000;
+    // Reserve the input bound at the highest cache-write rate and maximum output.
     // User must configure STANDARD service and a matching provider project cap.
     let reserve = estimate(
         &model,
         &Usage {
-            input: Some(272_000),
+            input: Some(INPUT_RESERVE),
             cached: Some(0),
             output: Some(6000),
-            cache_write: Some(272_000),
+            cache_write: Some(INPUT_RESERVE),
             cache_write_30m: Some(0),
-            cache_write_12h: Some(272_000),
+            cache_write_12h: Some(INPUT_RESERVE),
             ..Usage::default()
         },
         Some("default"),
@@ -85,7 +89,7 @@ fn live_quality_benchmark() {
         .open(&result_path)
         .unwrap();
     if resume.is_none() {
-        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*60.0,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION})).unwrap();
+        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*60.0,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":INPUT_RESERVE})).unwrap();
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -132,7 +136,7 @@ fn live_quality_benchmark() {
             file.flush().unwrap();
             println!("{}: success={}, accounted USD {:.6}/{:.2}",case["id"],result.is_ok(),spent,budget);
             let bounded = matches!(measurement.attempt.service_tier.as_deref(), Some("default" | "standard"))
-                && measurement.attempt.usage.input.is_some_and(|n| n <= 272_000)
+                && measurement.attempt.usage.input.is_some_and(|n| n <= INPUT_RESERVE)
                 && measurement.attempt.usage.output.is_some_and(|n| n <= 6000);
             assert!(result.is_ok() && bounded && cost.is_none_or(|n| n <= reserve), "Request failed or reservation cannot be verified; stopped, results are partial and ungraded");
         }

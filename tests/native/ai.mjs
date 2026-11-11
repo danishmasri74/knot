@@ -337,11 +337,17 @@ try {
     .click();
   await send("Use this additional context");
   assert.ok(
-    await page.evaluate(() =>
-      JSON.parse(window.aiRequests.at(-1).context).addedNotes[0].structure.some(
-        (block) => block.text.length > 0,
-      ),
-    ),
+    await page.evaluate(() => {
+      // The added note's blocks live once, in the frozen citation table.
+      const context = JSON.parse(window.aiRequests.at(-1).context);
+      const added = context.addedNotes[0];
+      return (
+        added.structure === undefined &&
+        context.citationSources.some(
+          (block) => block.document === added.document && block.text.length > 0,
+        )
+      );
+    }),
   );
   const originalId = await page.evaluate(
     () => document.querySelector("affine-editor-container").doc.id,

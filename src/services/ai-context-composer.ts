@@ -197,11 +197,58 @@ export function composeAiContext(
     ...source,
     citation: `[S${index + 1}]`,
   }));
+  dropCoveredCopies(result);
   if (bytes(result) > 180_000)
     throw new Error(
       "The selected sources exceed the request limit. Choose fewer sources or No notes.",
     );
   return JSON.stringify(result);
+}
+
+/**
+ * The frozen citation table already holds every note block. Drop the
+ * duplicate `structure` lists and plain `text` it fully covers, so saved
+ * chats and the request limit only count each block once. Text that no block
+ * contains (for example unstructured canvas text) is kept.
+ */
+export function dropCoveredCopies(data: {
+  document?: unknown;
+  text?: unknown;
+  structure?: unknown;
+  addedNotes?: unknown;
+  citationSources: CitationSource[];
+}) {
+  const notes = data.citationSources.filter((s) => s.kind !== "web");
+  if (!notes.length) return;
+  // Block IDs are only unique within a document.
+  const key = (document: unknown, id: unknown) => `${document}\u0000${id}`;
+  const keys = new Set(notes.map((s) => key(s.document, s.id)));
+  const covered = (blocks: unknown, document: unknown) =>
+    Array.isArray(blocks) &&
+    blocks.length > 0 &&
+    blocks.every(
+      (b: { id?: unknown }) =>
+        typeof b?.id === "string" && keys.has(key(document, b.id)),
+    );
+  if (covered(data.structure, data.document)) delete data.structure;
+  if (Array.isArray(data.addedNotes))
+    for (const note of data.addedNotes as {
+      document?: unknown;
+      structure?: unknown;
+    }[])
+      if (covered(note.structure, note.document)) delete note.structure;
+  const lines = new Set(
+    notes.flatMap((s) => s.text.split("\n").map((l) => l.trim())),
+  );
+  if (
+    typeof data.text === "string" &&
+    data.text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .every((l) => lines.has(l))
+  )
+    delete data.text;
 }
 
 /** Restore bounded selected passages without refetching on chat reopen/continuation. */
