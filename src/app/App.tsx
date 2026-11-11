@@ -64,6 +64,7 @@ import { Mascot } from "./Mascot";
 import { NewNotebook } from "./NewNotebook";
 import { AiSettings } from "./AiSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
+import { ShareNotebookDialog } from "./ShareNotebookDialog";
 import {
   checkForUpdate,
   getUpdateState,
@@ -152,6 +153,7 @@ import {
   type QuarantineCatalog,
   backups,
   workspaces,
+  knotbooks,
   type WorkspaceCatalog,
   type IntegrityReport,
   type BackupEntry,
@@ -209,6 +211,7 @@ export function App() {
     );
   });
   const [quizReset, setQuizReset] = useState(false);
+  const [sharing, setSharing] = useState<{ id: string; title: string } | null>(null);
   const [aiPlacement, setAiPlacement] = useState<"page" | "panel" | "hidden">(
     "hidden",
   );
@@ -2078,6 +2081,22 @@ export function App() {
           />
         );
       })()}
+      {sharing && (
+        <ShareNotebookDialog
+          root={sharing}
+          catalog={() => repository.catalog()}
+          load={repository.load}
+          prepare={flushPendingWork}
+          onClose={() => setSharing(null)}
+          onSaved={(filename) => {
+            setSharing(null);
+            showNotice(`Saved ${filename}`, {
+              label: "Show in folder",
+              run: () => void knotbooks.showLast().catch(report),
+            });
+          }}
+        />
+      )}
       {quizReset && <TrashConfirmation title="Reset quiz progress?" count={1}
         description="This permanently clears all quiz answers and attempt history in this notebook."
         onClose={() => setQuizReset(false)}
@@ -2736,6 +2755,16 @@ export function App() {
                   >
                     <ShellIcon name="export" />
                     <span>Export</span>
+                  </button>
+                  <button
+                    aria-label="Share as file"
+                    disabled={!active || busy}
+                    onClick={() =>
+                      active && setSharing({ id: active.id, title: active.title })
+                    }
+                  >
+                    <ShellIcon name="share" />
+                    <span>Share as file…</span>
                   </button>
                 </div>
                 {!library && (

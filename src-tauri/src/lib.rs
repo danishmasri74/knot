@@ -7,6 +7,7 @@ mod canvas_previews;
 mod collections;
 mod diagnostics;
 mod exports;
+mod knotbook;
 mod getting_started;
 mod managed_backups;
 mod migrations;
@@ -26,6 +27,77 @@ struct AppState {
     base: std::path::PathBuf,
 }
 type Reply<T> = Result<T, String>;
+/// The last .knotbook this session saved, so "Show in folder" never needs a
+/// path from the interface.
+struct LastShare(Mutex<Option<std::path::PathBuf>>);
+#[tauri::command]
+async fn knotbook_size(
+    state: State<'_, AppState>,
+    entries: Vec<knotbook::ShareEntry>,
+    cards: Vec<String>,
+) -> Reply<u64> {
+    with(&state, |w| Ok(knotbook::collect(w, &entries, &cards)?.size()))
+}
+#[tauri::command]
+async fn export_knotbook(
+    state: State<'_, AppState>,
+    last: State<'_, LastShare>,
+    title: String,
+    entries: Vec<knotbook::ShareEntry>,
+    cards: Vec<String>,
+    unshared: Vec<knotbook::Unshared>,
+    shared_by: String,
+) -> Reply<Option<String>> {
+    knotbook::validate_shared_by(&shared_by).map_err(|e| e.to_string())?;
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Share notebook")
+        .add_filter("Knot notebook", &["knotbook"])
+        .set_file_name(knotbook::filename(&title))
+        .save_file()
+        .await;
+    let Some(file) = file else {
+        return Ok(None);
+    };
+    let mut path = file.path().to_path_buf();
+    if !path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("knotbook"))
+    {
+        let mut name = path.file_name().unwrap_or_default().to_os_string();
+        name.push(".knotbook");
+        path.set_file_name(name);
+    }
+    with(&state, |w| {
+        let package = knotbook::collect(w, &entries, &cards)?;
+        knotbook::write(w, &path, &package, &unshared, &shared_by)
+    })?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    *last.0.lock().map_err(|_| "Share state unavailable")? = Some(path);
+    Ok(Some(name))
+}
+#[tauri::command]
+async fn show_last_share(last: State<'_, LastShare>) -> Reply<()> {
+    let path = last
+        .0
+        .lock()
+        .map_err(|_| "Share state unavailable")?
+        .clone()
+        .ok_or("Nothing has been shared yet")?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer.exe")
+            .raw_arg(format!("/select,\"{}\"", path.display()))
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    let _ = path;
+    Ok(())
+}
 #[tauri::command]
 async fn getting_started_status(state: State<'_, AppState>) -> Reply<getting_started::Status> {
     with(&state, |w| w.getting_started_status())
@@ -535,6 +607,7 @@ pub fn run() {
             Ok(())
         })
         .manage(ai::Requests::default())
+        .manage(LastShare(Mutex::new(None)))
         .manage(web_sources::Requests::default())
         .manage(browser::Browser::default())
         .on_page_load(|webview, payload| {
@@ -581,6 +654,9 @@ pub fn run() {
                 diagnostics::ai_diagnostics_outcome,
                 diagnostics::ai_diagnostics_export,
                 export_document,
+                knotbook_size,
+                export_knotbook,
+                show_last_share,
                 list_backups,
                 create_backup,
                 validate_backup,

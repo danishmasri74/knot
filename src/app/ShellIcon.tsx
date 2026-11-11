@@ -62,6 +62,7 @@ export const shellIconPaths = {
   columns: "M3 3h18v18H3z M13 3v18 M17 3v18",
   chevron: "M9 5l7 7-7 7",
   options: "M4 7h16 M4 17h16 M8 4v6 M16 14v6",
+  share: "M6 3h13a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6V3z M6 3H3v18h3 M13 15V9 M10 12l3-3 3 3",
 } as const;
 
 export function ShellIcon({

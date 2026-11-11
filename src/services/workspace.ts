@@ -136,6 +136,24 @@ export const repository = {
   save: (id: string, snapshot: Snapshot) =>
     changedTopicSources(invoke<void>("save_document", { id, snapshot })),
 };
+/** .knotbook shares (docs/NOTEBOOK-SHARING-PLAN.md). Paths stay in Rust. */
+export interface KnotbookEntry {
+  id: string;
+  role: "root" | "canvas" | "linked";
+  parent: string | null;
+}
+export const knotbooks = {
+  size: (entries: KnotbookEntry[], cards: string[]) =>
+    invoke<number>("knotbook_size", { entries, cards }),
+  export: (share: {
+    title: string;
+    entries: KnotbookEntry[];
+    cards: string[];
+    unshared: { id: string; title: string }[];
+    sharedBy: string;
+  }) => invoke<string | null>("export_knotbook", share),
+  showLast: () => invoke<void>("show_last_share"),
+};
 export const attachments = {
   recoverMissing: (hash: string) =>
     invoke<string>("recover_missing_attachment", { hash }),
