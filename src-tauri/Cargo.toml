@@ -30,6 +30,7 @@ flate2 = "1"
 brotli = "8"
 httpdate = "1"
 webbrowser = "1"
+tauri-plugin-updater = "2"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39.1"

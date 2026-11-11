@@ -25,6 +25,15 @@
       "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://img.youtube.com; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost blob: https://youtube.com/oembed https://www.youtube.com/oembed; worker-src 'self' blob:; frame-src blob: 'self' https://www.youtube.com/embed/"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFBOTEwQjRENEI5RjE4QzQKUldURUdKOUxUUXVSR241UVgvNWp4NTgyb3ZyWmJtL3lia3hHL0ZYdVZ2d3JWSk9Jdlo1VHo3cTMK",
+      "endpoints": [
+        "https://github.com/knot-desktop/knot-releases/releases/latest/download/latest.json"
+      ],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],

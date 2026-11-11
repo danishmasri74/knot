@@ -63,6 +63,16 @@ import { Favorites } from "./Favorites";
 import { Mascot } from "./Mascot";
 import { NewNotebook } from "./NewNotebook";
 import { AiSettings } from "./AiSettings";
+import { UpdatesSettings } from "./UpdatesSettings";
+import {
+  checkForUpdate,
+  getUpdateState,
+  installUpdate,
+  launchReport,
+  shouldAnnounce,
+  skippedVersion,
+  useUpdateState,
+} from "../services/updater";
 import { getAiEnabled } from "../services/ai-preferences";
 import { AskKnot } from "./AskKnot";
 import {
@@ -184,6 +194,20 @@ export function App() {
     source?: McqDefinition["sources"][number];
   }>();
   const flushMcqDraft = useRef<(() => Promise<void>) | undefined>();
+  // Saves everything a window close would lose. Shared by closing Knot and by
+  // installing an update, which exits the app as soon as the installer starts.
+  const flushPendingWork = async () => {
+    await flushMcqDraft.current?.();
+    await session.current?.flush();
+  };
+  const prepareToClose = useRef(async () => {
+    await flushPendingWork();
+    // Best effort: destroying the window tears the browser pane down anyway,
+    // and a broken pane must not keep Knot from closing once edits are saved.
+    await browserApi.dispose().catch((e) =>
+      console.warn("Browser pane cleanup failed during close", e),
+    );
+  });
   const [quizReset, setQuizReset] = useState(false);
   const [aiPlacement, setAiPlacement] = useState<"page" | "panel" | "hidden">(
     "hidden",
@@ -736,10 +760,32 @@ export function App() {
     updateNoticeText(value);
     setNoticeRevision((revision) => revision + 1);
   };
+  // An optional action button for the current notice (e.g. "View" an update).
+  const [noticeAction, setNoticeAction] = useState<{
+    label: string;
+    run: () => void;
+  } | null>(null);
   const setNotice = (value: string) => {
     setCollectionUndo(null);
+    setNoticeAction(null);
     updateNotice(value);
   };
+  const showNotice = (value: string, action: { label: string; run: () => void }) => {
+    setNotice(value);
+    setNoticeAction(action);
+  };
+  const updateState = useUpdateState();
+  // The quiet Settings dot: an update is waiting and the Updates page hasn't
+  // been opened for that version yet.
+  const [seenUpdate, setSeenUpdate] = useState("");
+  const pendingUpdateVersion =
+    updateState.kind === "available" || updateState.kind === "ready"
+      ? updateState.version
+      : "";
+  const updateDot =
+    !!pendingUpdateVersion &&
+    pendingUpdateVersion !== seenUpdate &&
+    pendingUpdateVersion !== skippedVersion();
   const host = useRef<HTMLDivElement>(null),
     history = useRef(
       new NavigationHistory<
@@ -1445,14 +1491,7 @@ export function App() {
           return;
         }
         await run(async () => {
-          await flushMcqDraft.current?.();
-          await session.current?.flush();
-          // Best effort: destroying the window tears the browser pane down
-          // anyway, and a broken pane must not keep Knot (or an update) from
-          // closing once edits are saved.
-          await browserApi.dispose().catch((e) =>
-            console.warn("Browser pane cleanup failed during close", e),
-          );
+          await prepareToClose.current();
           await getCurrentWindow().destroy();
         });
       })
@@ -1465,6 +1504,66 @@ export function App() {
       off?.();
     };
   }, []);
+  // Notices and timers outlive a render; the ref always opens Updates with
+  // this render's surface handling.
+  const openUpdates = useRef(() => {});
+  openUpdates.current = () => openSurface("updates");
+  useEffect(() => {
+    if (surface === "updates" && pendingUpdateVersion)
+      setSeenUpdate(pendingUpdateVersion);
+  }, [surface, pendingUpdateVersion]);
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    const view = (label: string) => ({ label, run: () => openUpdates.current() });
+    void launchReport()
+      .then((result) => {
+        if (cancelled || !result) return;
+        if (result.kind === "updated")
+          showNotice(`Knot is now ${result.version}.`, view("What's new"));
+        else
+          showNotice(
+            `The update to ${result.version} didn't finish. Knot ${result.current} is still installed and your notes are unchanged.`,
+            view("Open Updates"),
+          );
+      })
+      .catch(() => {});
+    // A quiet check about 30 seconds after opening, then every few hours while
+    // Knot stays open. checkForUpdate itself limits automatic checks to one a
+    // day and does nothing when they're turned off.
+    let timer = 0;
+    const attempt = (delay: number) => {
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        if (locked.current) return attempt(30_000);
+        void checkForUpdate({ manual: false }).then((result) => {
+          if (!cancelled && result.kind === "available" && shouldAnnounce(result.version))
+            showNotice(`Knot ${result.version} is available.`, view("View"));
+          attempt(6 * 60 * 60 * 1000);
+        });
+      }, delay);
+    };
+    attempt(30_000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+  const installAppUpdate = () => {
+    if (locked.current || getUpdateState().kind !== "ready") {
+      setError("An operation is in progress. Please wait before updating.");
+      return;
+    }
+    void run(async () => {
+      // installUpdate saves, backs up, then exits Knot through the installer.
+      // A failed save or backup throws here and keeps the current version.
+      await installUpdate(async (step) => {
+        await flushPendingWork();
+        step("backup");
+        await backups.create();
+      });
+    });
+  };
   useEffect(() => {
     if (!isTauri()) return;
     const timer = setTimeout(() => void refresh(query).catch(report), 180);
@@ -2239,6 +2338,9 @@ export function App() {
               ) : (
                 <>
                   <ShellIcon name="options" /> Settings
+                  {updateDot && (
+                    <span className="sidebar-update-dot" aria-label="Update available" role="img" />
+                  )}
                 </>
               )}
             </button>{" "}
@@ -2440,6 +2542,7 @@ export function App() {
                               "settings",
                               "editorSettings",
                               "aiSettings",
+                              "updates",
                               "workspaceSettings",
                               "workspace",
                               "backups",
@@ -2705,6 +2808,15 @@ export function App() {
                 >
                   <ShellIcon name="sparkles" /> AI
                 </button>
+                <button
+                  disabled={busy}
+                  aria-current={surface === "updates" ? "page" : undefined}
+                  aria-label={updateDot ? "Updates, update available" : undefined}
+                  onClick={() => openSurface("updates")}
+                >
+                  <ShellIcon name="refresh" /> Updates
+                  {updateDot && <span className="settings-nav-dot" aria-hidden="true" />}
+                </button>
                 <span className="settings-nav-label">Workspace</span>
                 <button
                   disabled={busy}
@@ -2752,6 +2864,9 @@ export function App() {
           onClose={closeSurface}
         >
           {surface === "editorSettings" && <EditorSettings />}
+          {surface === "updates" && (
+            <UpdatesSettings busy={busy} onInstall={installAppUpdate} />
+          )}
           {surface === "aiSettings" && (
             <AiSettings
               enabled={aiEnabled}
@@ -3302,6 +3417,18 @@ export function App() {
                 }
               >
                 Undo collection assignment
+              </button>
+            )}
+            {noticeAction && (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  const action = noticeAction;
+                  setNotice("");
+                  action.run();
+                }}
+              >
+                {noticeAction.label}
               </button>
             )}
             <button

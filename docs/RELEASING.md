@@ -54,6 +54,8 @@ Releases are published as files on a public, code-free GitHub repository. The Kn
 
    It asks for the key password unless `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is set.
 
+To test the in-app updater end to end, install a test build, then publish the next test version as the latest release without updating this PC: `pnpm release 0.2.0-rc.3 -TestLatest -SkipLocalUpdate`. The installed build then finds it in Settings → Updates. Every updater-enabled copy sees whatever is latest, so do this only before you've shared a build, or follow it with a real release.
+
 Options: `-DryRun` builds everything into `src-tauri/target/release/release-out/<version>/` without checking the working tree or publishing. `-SkipChecks` skips the test suite. `-SkipLocalUpdate` leaves the installed app alone. `-NotesFile <path>` uses other notes.
 
 ## Addresses

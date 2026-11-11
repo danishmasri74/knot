@@ -25,6 +25,7 @@
     "@huggingface/transformers": "3.8.1",
     "@mozilla/readability": "^0.6.0",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-updater": "^2.14.1",
     "@toeverything/theme": "1.1.23",
     "linkedom": "^0.18.15",
     "lit": "3.3.3",

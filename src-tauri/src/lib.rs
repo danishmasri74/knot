@@ -498,6 +498,8 @@ pub fn run() {
         context.config_mut().app.windows[0].create = false;
     }
     tauri::Builder::default()
+        // Signed updates from the releases repository; see docs/UPDATER-INSTALLER-PLAN.md.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             #[cfg(debug_assertions)]
             if let Some(root) = std::env::var_os("KNOT_TEST_DATA_DIR") {

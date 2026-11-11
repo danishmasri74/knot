@@ -13,6 +13,9 @@ param(
     [switch]$DryRun,
     [switch]$SkipChecks,
     [switch]$SkipLocalUpdate,
+    # Publish a test version (e.g. 0.2.0-rc.3) as the latest release so an
+    # installed test build can update to it. Only for testing the updater.
+    [switch]$TestLatest,
     [string]$NotesFile,
     [string]$PublicKeyPath
 )
@@ -43,9 +46,10 @@ try {
     if ($Version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$') {
         Fail "'$Version' is not a version like 0.2.0 or 0.2.0-rc.1."
     }
-    if ($Version.Contains('-') -and -not $Prerelease -and -not $DryRun) {
-        Fail "$Version looks like a test version. Add -Prerelease, or use a plain version."
+    if ($Version.Contains('-') -and -not $Prerelease -and -not $DryRun -and -not $TestLatest) {
+        Fail "$Version looks like a test version. Add -Prerelease, or -TestLatest to test the updater, or use a plain version."
     }
+    if ($TestLatest -and $Prerelease) { Fail '-TestLatest and -Prerelease contradict each other.' }
 
     $config = Get-Content -LiteralPath 'scripts/release.config.json' -Raw | ConvertFrom-Json
     $repo = $config.repo
@@ -97,6 +101,15 @@ try {
         Fail "public key not found at $PublicKeyPath. It is written next to the private key by 'tauri signer generate'."
     }
     $publicKey = (Get-Content -LiteralPath $PublicKeyPath -Raw).Trim()
+    # Installed copies trust only the key in tauri.conf.json; a release signed
+    # with any other key would be rejected by every updater.
+    $tauriConf = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
+    if ($tauriConf.plugins.updater.pubkey -ne $publicKey) {
+        Fail "the updater public key in src-tauri/tauri.conf.json does not match $PublicKeyPath."
+    }
+    if (-not $DryRun -and -not ($tauriConf.plugins.updater.endpoints -contains "https://github.com/$repo/releases/latest/download/latest.json")) {
+        Fail "the updater endpoint in src-tauri/tauri.conf.json does not point at $repo."
+    }
     if ($null -eq $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
         if (-not [Environment]::UserInteractive) {
             Fail 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD is not set and there is no console to ask for it.'
@@ -122,19 +135,9 @@ try {
 
     # -------------------------------------------------------------------- build
     Step 'Build and sign'
-    # Signing updater files requires the updater section, so it is generated per
-    # release from the key pair actually used. Everyday builds (pnpm update:running)
-    # stay unsigned and need no key.
-    $releaseConfig = [ordered]@{
-        bundle  = [ordered]@{ createUpdaterArtifacts = $true }
-        plugins = [ordered]@{
-            updater = [ordered]@{
-                pubkey    = $publicKey
-                endpoints = @("https://github.com/$repo/releases/latest/download/latest.json")
-                windows   = [ordered]@{ installMode = 'passive' }
-            }
-        }
-    }
+    # Only releases produce signed updater files; everyday builds
+    # (pnpm update:running) need no key.
+    $releaseConfig = [ordered]@{ bundle = [ordered]@{ createUpdaterArtifacts = $true } }
     $releaseConfigPath = Join-Path $projectRoot 'src-tauri/target/release-updater.conf.json'
     Write-Utf8 $releaseConfigPath ($releaseConfig | ConvertTo-Json -Depth 6)
     Invoke-Checked 'Tauri build' { pnpm tauri build --config $releaseConfigPath }

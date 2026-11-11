@@ -3378,6 +3378,73 @@ main:has(.settings-modal) > .editor-area {
 .settings-toggle[aria-checked="true"] span {
   transform: translateX(16px);
 }
+
+/* Settings → Updates: one status line and one action (UPDATER-INSTALLER-PLAN.md). */
+.settings-updates .updates-status > div {
+  flex: 1;
+  min-width: 0;
+}
+.settings-updates .updates-mark {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+.settings-updates .updates-status > button {
+  flex-shrink: 0;
+}
+.settings-page button.updates-primary {
+  background: var(--shell-text);
+  border-color: var(--shell-text);
+  color: var(--shell-surface);
+}
+.settings-page button.updates-primary:hover:not(:disabled) {
+  background: var(--shell-text);
+  opacity: 0.88;
+}
+.settings-updates .updates-error {
+  color: light-dark(#9b4734, #d28a79);
+}
+.updates-progress {
+  height: 2px;
+  margin-top: 12px;
+  background: var(--shell-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.updates-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--shell-accent);
+  transition: width 200ms linear;
+}
+.settings-updates .updates-notes {
+  padding: 16px 0 18px;
+  border-bottom: 1px solid var(--shell-border);
+}
+.settings-updates .updates-notes ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--shell-muted);
+  line-height: 1.75;
+}
+.settings-updates .updates-notes p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.settings-nav-dot,
+.sidebar-update-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--shell-accent);
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .updates-progress > span {
+    transition: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .settings-toggle span {
     transition: none;
