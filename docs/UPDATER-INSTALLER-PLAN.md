@@ -1,6 +1,6 @@
 # Updater and installer plan
 
-Status: planned on 11 November 2026. Slice 1 (release tooling) is done and published `0.2.0-rc.1` to `knot-desktop/knot-releases`; see [RELEASING.md](RELEASING.md). Slice 2 (installer) is implemented and verified on this PC; see section 3. Slices 3–4 are not implemented. Distribution goes through a public, code-free GitHub releases repository. Notebook sharing is planned separately.
+Status: planned on 11 November 2026. Slice 1 (release tooling) and slice 2 (installer, section 3) are done. Slice 3 (in-app updater) is done and verified end to end: 0.2.0-rc.2 updated itself to 0.2.0-rc.3 from `knot-desktop/knot-releases` (see the verification under section 2). Slice 4 (release 0.2.0 and the first share) is next. Distribution goes through a public, code-free GitHub releases repository. Notebook sharing is planned separately.
 
 ## Principles
 
@@ -124,6 +124,21 @@ States, shown in the same identity block (one line of status and one action):
 | Download interrupted | `The download stopped. Try again to resume from the start.` |
 | Not enough disk space | `There isn't enough free space to download the update.` |
 | Save failed during preparation | Existing save-error UI; the update waits. |
+
+### As built and verified (11 November 2026)
+
+- **Code:**
+  - `src/services/updater.ts`: state machine, per-device preferences, plain-language errors, and a launch report;
+  - `src/app/UpdatesSettings.tsx`: Settings → Updates;
+  - `App.tsx`: the daily check, the notices and the Settings dot;
+  - a shared save step (`flushPendingWork`, `prepareToClose`) used by both closing Knot and installing an update;
+  - `tauri-plugin-updater` 2.14 with the committed public key, the endpoint, and passive install mode.
+  - Unit tests are in `tests/updater.test.ts`.
+- **Plugin behaviour on Windows:** it downloads to a temp file (no SmartScreen prompt), then runs the installer with `/P /UPDATE /R`, which relaunches Knot, and exits Knot with `exit(0)`. Knot saves and backs up before calling install.
+- **Differences from the mockups:**
+  - Downloading has no **Cancel**, because the plugin can't abort a download.
+  - The failed state's detail line says the installed version is unchanged.
+- **End-to-end test:** 0.2.0-rc.2 (installed with the Knot installer) checked GitHub and found 0.2.0-rc.3 (published with `pnpm release 0.2.0-rc.3 -TestLatest -SkipLocalUpdate`). It showed the release notes, downloaded, and on **Restart to update** saved and created a managed backup. The backup contains `knot.db` and all 17 attachments, the same count as the live workspace. Knot then closed, the passive installer ran, and Knot reopened on 0.2.0-rc.3 about 13 seconds later.
 
 ## 3. Installer (NSIS)
 
