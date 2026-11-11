@@ -1,6 +1,14 @@
 import { useState } from "react";
 import type { OrphanCandidate, QuarantineCatalog } from "../services/workspace";
 
+function formatSize(bytes: number) {
+  return bytes < 1024
+    ? `${bytes} B`
+    : bytes < 1048576
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
 export function QuarantinePanel({
   candidates,
   catalog,
@@ -9,7 +17,6 @@ export function QuarantinePanel({
   onRestore,
   onDispose,
   onRefresh,
-  onClose,
 }: {
   candidates: OrphanCandidate[] | null;
   catalog: QuarantineCatalog;
@@ -18,35 +25,29 @@ export function QuarantinePanel({
   onRestore: (id: string) => void;
   onDispose: (entry: QuarantineCatalog["entries"][number]) => void;
   onRefresh: () => void;
-  onClose: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const chosen = candidates?.filter((c) => selected.has(c.id)) ?? [];
   return (
     <section
-      className="recovery-panel integrity-panel"
+      className="settings-page recovery-panel integrity-panel"
       aria-label="Orphan quarantine"
     >
-      <h2>Orphan quarantine</h2>
-      <p>
-        Move selected unindexed files out of the asset folder into this
-        workspace’s quarantine. Every file is rechecked before moving. Files
-        matching any indexed attachment name or content hash are protected,
-        including Trash assets.
-      </p>
-      <p>
-        Quarantine keeps the bytes on this disk; it does not free disk space.
-        Backups and workspace relocation do not include quarantine. Restore
-        copies to their original locations without replacing existing files and
-        retains the quarantine copies.
-      </p>
-      <button disabled={busy} onClick={onRefresh}>
-        Refresh quarantine
-      </button>{" "}
-      <button disabled={busy} onClick={onClose}>
-        Close quarantine
-      </button>
-      <h3>Eligible unindexed files</h3>
+      <div className="recovery-intro">
+        <div>
+          <h3>Unlinked files</h3>
+          <p>
+            Files not linked to your workspace. Keep them, or set them aside.
+          </p>
+        </div>
+        <button
+          disabled={busy}
+          onClick={onRefresh}
+          aria-label="Refresh quarantine"
+        >
+          Refresh
+        </button>
+      </div>
       {candidates === null ? (
         <p>
           Preview unavailable. Refresh to retry; recovery copies below remain
@@ -54,16 +55,9 @@ export function QuarantinePanel({
         </p>
       ) : (
         <>
-          <p>
-            {candidates.length} eligible files ·{" "}
-            {candidates.reduce((sum, c) => sum + c.size, 0).toLocaleString()}{" "}
-            bytes total
-          </p>
-          <p>
-            The scan covers ordinary files directly in assets and one subfolder
-            deep. Links, deeper folders, unsupported names and indexed
-            duplicates are excluded.
-          </p>
+          {!candidates.length && (
+            <p className="recovery-empty">No unlinked files.</p>
+          )}
           <div className="quarantine-files">
             {candidates.map((c) => (
               <label key={c.id}>
@@ -82,46 +76,58 @@ export function QuarantinePanel({
                   }}
                 />
                 <span>
-                  <code>{c.path}</code> · {c.size.toLocaleString()} bytes
+                  <code data-tooltip={c.path}>{c.path.split(/[\\/]/).pop()}</code>
+                  <small>{formatSize(c.size)}</small>
                 </span>
               </label>
             ))}
           </div>
-          <p>
-            {chosen.length} selected ·{" "}
-            {chosen.reduce((sum, c) => sum + c.size, 0).toLocaleString()} bytes
-            (maximum 100 files per operation)
-          </p>
-          <button
-            disabled={busy || !chosen.length}
-            onClick={() => onMove(chosen)}
-          >
-            Quarantine selected files
-          </button>
+          {!!candidates.length && (
+            <div className="recovery-selection">
+              <span>{chosen.length} selected</span>
+              <button
+                aria-label="Quarantine selected files"
+                disabled={busy || !chosen.length}
+                onClick={() => onMove(chosen)}
+              >
+                Set aside
+              </button>
+            </div>
+          )}
         </>
       )}
-      <h3>Recovery copies</h3>
-      <p>
-        Permanently delete removes one recovery copy from disk and cannot be
-        undone. Any restored original stays in place. Copies matching the
-        current attachment index are protected; damaged or incomplete copies are
-        retained.
+      <div className="recovery-intro recovery-copies-heading">
+        <div>
+          <h3>Set-aside files</h3>
+          <p>Restore a file or permanently delete its saved copy.</p>
+        </div>
+      </div>
+      <p className="recovery-notice">
+        These files stay on this device and aren’t included in backups.
       </p>
       {catalog.warnings.map((w) => (
         <p role="alert" key={w}>
           {w}
         </p>
       ))}
-      {!catalog.entries.length && <p>No complete recovery copies.</p>}
+      {!catalog.entries.length && (
+        <p className="recovery-empty">No files set aside.</p>
+      )}
       {catalog.entries.map((entry) => (
         <div className="trash-row" key={entry.id}>
           <span>
-            <strong>{entry.original}</strong>
+            <strong className="recovery-filename" data-tooltip={entry.original}>
+              {entry.original.split(/[\\/]/).pop()}
+            </strong>
             <small>
-              {entry.size.toLocaleString()} bytes ·{" "}
+              {formatSize(entry.size)} ·{" "}
               {new Date(entry.created_at).toLocaleString()}
             </small>
-            <small>Recovery ID: {entry.id}</small>
+            <details>
+              <summary>File details</summary>
+              <code>{entry.original}</code>
+              <small>Recovery ID: {entry.id}</small>
+            </details>
           </span>
           <button
             disabled={busy}
@@ -139,6 +145,23 @@ export function QuarantinePanel({
           </button>
         </div>
       ))}
+      <details className="recovery-explainer">
+        <summary>How file recovery works</summary>
+        <p>
+          Setting files aside moves them into recovery storage on this disk. It
+          does not free space. Files used by documents, including Trash, are
+          protected and rechecked before moving.
+        </p>
+        <p>
+          Restore keeps the recovery copy and never replaces an existing file.
+          Permanent deletion cannot be undone. Backups and workspace moves
+          exclude these files.
+        </p>
+        <p>
+          Up to 100 files per action. Scans cover the attachment folder and one
+          subfolder level; links and deeper folders are excluded.
+        </p>
+      </details>
     </section>
   );
 }

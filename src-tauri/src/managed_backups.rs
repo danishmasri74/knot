@@ -20,8 +20,8 @@ pub struct Entry {
 fn directory(base: &Path) -> Result<PathBuf> {
     let dir = base.join("Backups");
     fs::create_dir_all(&dir)?;
-    if dir.canonicalize()?.parent() != Some(base.canonicalize()?.as_path()) {
-        return Err("Backup folder is outside managed storage".into());
+    if !crate::paths::is_direct_child(&dir, base)? {
+        return Err("Knot cannot use this backup folder because it points outside its app storage. Your workspace is unchanged. You can still export a backup to a location you choose.".into());
     }
     Ok(dir)
 }
@@ -36,9 +36,7 @@ pub fn resolve(base: &Path, id: &str) -> Result<PathBuf> {
     }
     let dir = directory(base)?;
     let path = dir.join(id);
-    if !fs::symlink_metadata(&path)?.is_file()
-        || path.canonicalize()?.parent() != Some(dir.canonicalize()?.as_path())
-    {
+    if !fs::symlink_metadata(&path)?.is_file() || !crate::paths::is_direct_child(&path, &dir)? {
         return Err("Backup is missing or outside managed storage".into());
     }
     Ok(path)

@@ -6,8 +6,13 @@
 4. **Tauri 2.12.5 and Rust 1.90.0**: current compatible Rust dependency set is fixed by Cargo.lock, toolchain by rust-toolchain.toml. Bundled SQLite avoids machine-level SQLite dependencies.
 5. **Snapshot pairs instead of update logs**: atomic, straightforward recovery without log replay/compaction complexity. The tradeoff is increased write cost for large documents. Benchmark before introducing incremental logs.
 6. **Copy-based content-addressed attachments**: stable offline originals; hashes determine paths, source IDs preserve BlockSuite references. No destructive cleanup in this release.
-7. **Soft deletion**: data remains recoverable in the workspace and backups. No misleading permanent-delete control.
+7. **Soft deletion**: data remains recoverable in the workspace and backups. Trash supports confirmed permanent document deletion and Empty Trash. Shared attachments and existing backups are preserved; unused files are managed through File recovery.
 8. **Native recovery before standard exports**: archive preserves internal state, identifiers, and attachments. Markdown/PNG/PDF export controls are not advertised before implementation.
 9. **Offline restrictions**: no network services or providers; CSP prevents remote embeds. Installed WebView2 is a prerequisite. Editor fonts use system fallback; optional online-dependent upstream features are not supported.
 
 References inspected: https://blocksuite.io/guide/quick-start, https://github.com/toeverything/blocksuite, https://docs.yjs.dev/, https://v2.tauri.app/, and installed 0.19.5 package sources.
+
+
+## Optional collections (2026-11-01)
+
+Collections replace folders and tags as the single grouping feature. They are many-to-many notebook memberships, not copies or editor documents. A compact Library dropdown filters the existing list; no collection page or nested sidebar is introduced. Creation happens together with adding a notebook, and rename/delete are contextual. Schema 3 migrates populated legacy groups, unions memberships for equal names, preserves Trash and content, and removes the obsolete storage structures after creating a verified recovery archive.

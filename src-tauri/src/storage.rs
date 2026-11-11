@@ -80,6 +80,7 @@ pub struct AffectedDocument {
     pub deleted: bool,
 }
 pub struct Workspace {
+    pub activation: String,
     pub root: PathBuf,
     pub db: Connection,
     // OS releases this lock even after abnormal process termination.
@@ -251,6 +252,7 @@ impl Workspace {
         }
         db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;")?;
         let workspace = Self {
+            activation: uuid::Uuid::new_v4().to_string(),
             root,
             db,
             _lock: lock,
@@ -265,7 +267,7 @@ impl Workspace {
         Ok(workspace)
     }
     pub fn list(&self, search: &str, offset: i64) -> Result<Vec<Object>> {
-        self.filtered_list(search, offset, None, None)
+        self.filtered_list(search, offset, None)
     }
     pub fn create(&self, kind: &str) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
@@ -307,8 +309,8 @@ impl Workspace {
             return Err("Invalid trash offset".into());
         }
         let mut query = self.db.prepare(
-            "SELECT id,title,kind,updated_at,deleted_at FROM objects
-             WHERE deleted_at IS NOT NULL AND instr(lower(title),lower(?1))>0
+            "SELECT * FROM (SELECT id,title,kind,updated_at,deleted_at FROM objects WHERE deleted_at IS NOT NULL UNION ALL SELECT id,name,'collection',deleted_at,deleted_at FROM collections WHERE deleted_at IS NOT NULL)
+             WHERE instr(lower(title),lower(?1))>0
              ORDER BY deleted_at DESC,id LIMIT 100 OFFSET ?2",
         )?;
         let rows = query.query_map(params![search, offset], |r| {
@@ -324,7 +326,77 @@ impl Workspace {
         })?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
+    /// Permanently remove only objects whose deletion timestamp is at least 30 days old.
+    pub fn clear_expired_trash(&mut self, timestamp: i64) -> Result<usize> {
+        let cutoff = timestamp.saturating_sub(30 * 24 * 60 * 60 * 1000);
+        let ids = {
+            let mut query = self.db.prepare(
+                "SELECT id FROM objects WHERE deleted_at IS NOT NULL AND deleted_at <= ?1 UNION ALL SELECT id FROM collections WHERE deleted_at IS NOT NULL AND deleted_at <= ?1 ORDER BY id",
+            )?;
+            let rows = query.query_map([cutoff], |row| row.get::<_, String>(0))?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()?
+        };
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        self.purge_trash(&ids)
+    }
+    pub fn purge_trash(&mut self, ids: &[String]) -> Result<usize> {
+        let tx = self.db.transaction()?;
+        for id in ids {
+            let deleted: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM objects WHERE id=?1 AND deleted_at IS NOT NULL UNION ALL SELECT 1 FROM collections WHERE id=?1 AND deleted_at IS NOT NULL)",
+                [id],
+                |r| r.get(0),
+            )?;
+            if !deleted {
+                return Err("Document is not in Trash. Refresh and try again.".into());
+            }
+        }
+        let mut count = 0;
+        let mut attachment_ids = Vec::<String>::new();
+        for id in ids {
+            let removed = tx.execute(
+                "DELETE FROM collections WHERE id=?1 AND deleted_at IS NOT NULL",
+                [id],
+            )?;
+            if removed > 0 {
+                count += removed;
+                continue;
+            }
+            let mut query =
+                tx.prepare("SELECT attachment_id FROM object_attachments WHERE object_id=?1")?;
+            attachment_ids.extend(
+                query
+                    .query_map([id], |r| r.get::<_, String>(0))?
+                    .collect::<std::result::Result<Vec<_>, _>>()?,
+            );
+            tx.execute("DELETE FROM collection_objects WHERE object_id=?1", [id])?;
+            tx.execute("DELETE FROM object_attachments WHERE object_id=?1", [id])?;
+            tx.execute("DELETE FROM documents WHERE object_id=?1", [id])?;
+            count += tx.execute(
+                "DELETE FROM objects WHERE id=?1 AND deleted_at IS NOT NULL",
+                [id],
+            )?;
+        }
+        for id in attachment_ids {
+            tx.execute("DELETE FROM attachments WHERE id=?1 AND NOT EXISTS(SELECT 1 FROM object_attachments WHERE attachment_id=?1) AND NOT EXISTS(SELECT 1 FROM card_deck,json_tree(card_deck.content) WHERE json_tree.type='text' AND json_tree.value=?1)", [id])?;
+        }
+        // Shared assets stay indexed; unreferenced files are handled by File recovery.
+        tx.commit()?;
+        for id in ids {
+            crate::canvas_previews::remove_document(&self.root, id);
+        }
+        Ok(count)
+    }
     pub fn restore_object(&self, id: &str) -> Result<()> {
+        let restored = self.db.execute(
+            "UPDATE collections SET deleted_at=NULL WHERE id=?1 AND deleted_at IS NOT NULL",
+            [id],
+        )?;
+        if restored == 1 {
+            return Ok(());
+        }
         let changed = self.db.execute(
             "UPDATE objects SET deleted_at=NULL WHERE id=?1 AND deleted_at IS NOT NULL",
             [id],
@@ -357,17 +429,45 @@ impl Workspace {
         Ok(())
     }
     pub fn save_documents(&mut self, documents: &[DocumentWrite]) -> Result<()> {
+        self.save_documents_with_deck(documents, None)
+    }
+    pub fn save_documents_with_deck(
+        &mut self,
+        documents: &[DocumentWrite],
+        deck: Option<&str>,
+    ) -> Result<()> {
+        self.save_documents_with_mcq(documents, deck, &[], None)
+    }
+    pub fn save_documents_with_mcq(
+        &mut self,
+        documents: &[DocumentWrite],
+        deck: Option<&str>,
+        quiz: &[crate::mcq::Mutation],
+        published_draft: Option<&str>,
+    ) -> Result<()> {
         let tx = self.db.transaction()?;
+        if let Some(content) = deck {
+            let _: serde_json::Value = serde_json::from_str(content)?;
+            tx.execute("UPDATE card_deck SET content=?1 WHERE id=1", [content])?;
+        }
         for entry in documents {
             if entry.create {
                 tx.execute("INSERT OR IGNORE INTO objects(id,title,kind,updated_at) VALUES(?1,'Untitled note','note',?2)", params![entry.id, now()])?;
             }
             Self::write_snapshot(&tx, &entry.id, &entry.snapshot)?;
         }
+        crate::mcq::apply(&tx, quiz)?;
+        if let Some(id) = published_draft {
+            tx.execute("DELETE FROM mcq_drafts WHERE id=?1", [id])?;
+        }
         tx.commit()?;
         Ok(())
     }
-    fn write_snapshot(tx: &rusqlite::Transaction<'_>, id: &str, s: &Snapshot) -> Result<()> {
+    pub(crate) fn write_snapshot(
+        tx: &rusqlite::Transaction<'_>,
+        id: &str,
+        s: &Snapshot,
+    ) -> Result<()> {
         if s.collection.is_empty()
             || s.document.is_empty()
             || s.collection.len() + s.document.len() > 64 * 1024 * 1024
@@ -413,6 +513,40 @@ impl Workspace {
         name: &str,
         mime: &str,
     ) -> Result<String> {
+        let hash = self.stage_blob(bytes)?;
+        let tx = self.db.transaction()?;
+        let previous: Option<String> = tx
+            .query_row("SELECT sha256 FROM attachments WHERE id=?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if previous.is_some_and(|h| h != hash) {
+            return Err("Attachment identifier collision".into());
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO attachments VALUES(?1,?2,?3,?4,?5)",
+            params![key, hash, name, mime, bytes.len() as i64],
+        )?;
+        if let Some(card_id) = object.strip_prefix("knot:card:") {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM card_deck,json_each(card_deck.content) WHERE json_each.key=?1 AND COALESCE(json_extract(json_each.value,'$.deleted'),0)=0)",
+                [card_id], |row| row.get(0),
+            )?;
+            if !exists {
+                return Err("This card is unavailable".into());
+            }
+            // The deck owns this asset. Purging notebook placements already
+            // retains assets referenced anywhere in the shared card content.
+        } else {
+            tx.execute(
+                "INSERT OR IGNORE INTO object_attachments VALUES(?1,?2)",
+                params![object, key],
+            )?;
+        }
+        tx.commit()?;
+        Ok(key.to_string())
+    }
+    pub(crate) fn stage_blob(&self, bytes: &[u8]) -> Result<String> {
         if bytes.len() > 100 * 1024 * 1024 {
             return Err("Attachment exceeds the 100 MiB import limit".into());
         }
@@ -433,25 +567,7 @@ impl Workspace {
             }
             fs::rename(tmp, &path)?;
         }
-        let tx = self.db.transaction()?;
-        let previous: Option<String> = tx
-            .query_row("SELECT sha256 FROM attachments WHERE id=?1", [key], |r| {
-                r.get(0)
-            })
-            .optional()?;
-        if previous.is_some_and(|h| h != hash) {
-            return Err("Attachment identifier collision".into());
-        }
-        tx.execute(
-            "INSERT OR IGNORE INTO attachments VALUES(?1,?2,?3,?4,?5)",
-            params![key, hash, name, mime, bytes.len() as i64],
-        )?;
-        tx.execute(
-            "INSERT OR IGNORE INTO object_attachments VALUES(?1,?2)",
-            params![object, key],
-        )?;
-        tx.commit()?;
-        Ok(key.to_string())
+        Ok(hash)
     }
     pub fn get_blob(&self, key: &str) -> Result<Vec<u8>> {
         let hash: String =

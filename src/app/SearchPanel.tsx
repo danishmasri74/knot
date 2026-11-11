@@ -5,13 +5,11 @@ export function SearchPanel({
   report,
   busy,
   onRefresh,
-  onClose,
   onOpen,
 }: {
   report: SearchReport | null;
   busy: boolean;
   onRefresh: () => void;
-  onClose: () => void;
   onOpen: (source: KnowledgeObject) => void;
 }) {
   return (
@@ -21,12 +19,9 @@ export function SearchPanel({
         <button disabled={busy} onClick={onRefresh}>
           Refresh search
         </button>
-        <button disabled={busy} onClick={onClose}>
-          Close search
-        </button>
       </div>
       <p>
-        Uses the current folder and tag filters. Searches titles,
+        Uses the current collection filter. Searches titles,
         paragraphs/headings, lists and code. Excludes attachment contents,
         tables, canvas-only text and shared previews.
       </p>
@@ -60,7 +55,7 @@ export function SearchPanel({
                 <li key={source.id}>
                   <button
                     disabled={busy}
-                    title={source.id}
+                    data-tooltip={source.id}
                     onClick={() => onOpen(source)}
                   >
                     {source.title}

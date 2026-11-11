@@ -1,3 +1,5 @@
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -41,7 +43,7 @@ async function launch() {
   page.on("dialog", (d) => d.accept());
 }
 async function saved() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
   );
@@ -104,8 +106,8 @@ try {
   await saved();
   assert.match((await state()).json, /connector/);
   record("Shape and connector persist through supported surface model");
-  await page.getByTitle("Undo (Ctrl+Z)").click();
-  await page.getByTitle("Redo (Ctrl+Y)").click();
+  await clickShellButton(page, "Undo");
+  await clickShellButton(page, "Redo");
   await saved();
   assert.match((await state()).json, /connector/);
   record("Undo redo");
@@ -118,7 +120,7 @@ try {
       .locator("input[type=file]")
       .setInputFiles(path.resolve("tests/fixtures", file));
     await page.waitForFunction(() =>
-      document.querySelector(".statusbar")?.textContent.includes("Stored"),
+      document.querySelector(".app-shell")?.getAttribute("aria-busy") === "false",
     );
     await saved();
   }
@@ -128,7 +130,7 @@ try {
     2,
   );
   record("Image PDF imports and physical deduplication");
-  await page.getByRole("button", { name: "New whiteboard" }).click();
+  await createNotebook(page, true);
   await page.waitForSelector("affine-edgeless-root");
   assert.notEqual((await state()).id, note.id);
   await page.getByLabel("Document title").fill("Independent board");
@@ -136,6 +138,10 @@ try {
   await saved();
   record("Create and rename independent board");
   await page.getByRole("button", { name: "Welcome to Knot" }).click();
+  await page.waitForFunction(
+    (id) => document.querySelector("affine-editor-container")?.doc.id === id,
+    note.id,
+  );
   await page.waitForSelector("affine-paragraph");
   assert.equal((await state()).id, note.id);
   db.exec(
@@ -155,9 +161,12 @@ try {
   assert.match((await state()).json, /Retry survives/);
   record("Actual SQLite failure blocks navigation and retry preserves edits");
   db.close();
-  await page.getByRole("button", { name: "New note" }).click();
+  await createNotebook(page);
+  await page.waitForFunction(
+    () => !document.querySelector(".primary").disabled,
+  );
   await page.waitForSelector("affine-paragraph");
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await page.waitForTimeout(400);
   db = new DatabaseSync(path.join(root, "Workspace/knot.db"));
   assert.equal(
@@ -169,6 +178,10 @@ try {
   db.close();
   record("Confirmed soft delete");
   await page.getByRole("button", { name: "Welcome to Knot" }).click();
+  await page.waitForFunction(
+    (id) => document.querySelector("affine-editor-container")?.doc.id === id,
+    note.id,
+  );
   await saved();
   await browser.close();
   browser = null;
@@ -176,6 +189,10 @@ try {
   await new Promise((r) => setTimeout(r, 500));
   await launch();
   await page.getByRole("button", { name: "Welcome to Knot" }).click();
+  await page.waitForFunction(
+    (id) => document.querySelector("affine-editor-container")?.doc.id === id,
+    note.id,
+  );
   await page.waitForSelector("affine-paragraph");
   const restored = await state();
   assert.equal(restored.id, note.id);
@@ -197,7 +214,7 @@ try {
   assert.match((await state()).json, /Offline edit/);
   record("Editing and SQLite saves with WebView network offline");
   await browser.contexts()[0].setOffline(false);
-  await page.getByRole("button", { name: "Check workspace" }).click();
+  await clickShellButton(page, "Check workspace");
   await page.waitForFunction(() =>
     document
       .querySelector(".integrity-panel")

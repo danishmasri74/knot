@@ -1,2 +1,55 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><link rel="icon" type="image/png" href="/knot-icon.png"/><title>Knot</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
-
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/knot.svg" />
+    <title>Knot</title>
+    <link rel="stylesheet" href="/launch.css" />
+    <script src="/launch.js"></script>
+  </head>
+  <body>
+    <div id="launch-splash" role="status" aria-label="Opening Knot">
+      <div class="launch-lockup">
+        <svg class="launch-mark" viewBox="0 0 256 256" aria-hidden="true">
+          <defs>
+            <path
+              id="il-ribbon"
+              d="M36 24H68Q80 24 80 36V100L166 144Q177 150 185 162L241 232Q248 244 234 244H190Q182 244 177 237L132 180L49 137Q24 124 24 105V36Q24 24 36 24Z"
+            />
+            <path
+              id="il-upper"
+              d="M103 99L174 31Q181 24 192 24H231Q249 24 238 38L163 119Z"
+            />
+            <path
+              id="il-lower"
+              d="M64 155L109 178L80 206V232Q80 244 68 244H36Q24 244 24 232V198Q24 189 30 182Z"
+            />
+          </defs>
+          <use class="launch-ribbon" href="#il-ribbon" />
+          <use class="launch-upper" href="#il-upper" />
+          <use class="launch-lower" href="#il-lower" /></svg
+        ><svg class="launch-wordmark" viewBox="0 0 91 36" aria-hidden="true">
+          <path
+            d="M1 2Q1 1 2 1H7Q8 1 8 2V14.1L12.2 11.1L26.5 32.4Q27 33.4 25.9 33.4H19.5Q18.7 33.4 18.2 32.6L9.2 19.2L8 20.5V32.4Q8 33.4 7 33.4H2Q1 33.4 1 32.4Z"
+          />
+          <path
+            d="M12.2 8.8L18.7 1.7Q19.3 1 20.3 1H26.3Q27.2 1 26.5 1.9L16.5 12.7Z"
+          />
+          <path
+            d="M29 10H35.4V13Q38 9.5 42.4 9.5Q50.5 9.5 50.5 18.5V33.4H43.9V19.8Q43.9 15.2 40.1 15.2Q35.6 15.2 35.6 20.2V33.4H29Z"
+          />
+          <path
+            fill-rule="evenodd"
+            d="M65 9.5C72.4 9.5 77.2 14.4 77.2 21.6S72.4 34 65 34S52.8 29 52.8 21.6S57.6 9.5 65 9.5ZM65 15C61.7 15 59.6 17.4 59.6 21.6S61.7 28.5 65 28.5S70.5 26 70.5 21.6S68.4 15 65 15Z"
+          />
+          <path
+            d="M80.1 4.7L86.6 2.6V10H91V15.2H86.6V25.6Q86.6 28.5 89 28.5Q90 28.5 91 28.2V33.3Q89.4 34 87.3 34Q80.1 34 80.1 26.6V15.2H77.7V10H80.1Z"
+          />
+        </svg>
+      </div>
+    </div>
+    <div id="root" inert></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import {
@@ -49,8 +52,11 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
+  const report = page.locator(".health-report");
+  if ((await report.count()) && !((await report.getAttribute("open")) !== null))
+    await report.locator(":scope > summary").click();
 }
 async function stop() {
   await browser?.close();
@@ -62,7 +68,7 @@ async function stop() {
   child = null;
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
 }
 const assets = path.join(root, "Workspace/assets");
@@ -103,15 +109,11 @@ try {
   const source = await page.evaluate(
     () => document.querySelector("affine-editor-container").doc.id,
   );
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   const board = await page.evaluate(
     () => document.querySelector("affine-editor-container").doc.id,
   );
-  await click("＋ Reference");
-  await page
-    .getByLabel("Reference document")
-    .selectOption({ label: "Shared source" });
-  await click("Place shared note");
+  await placeLegacyReference(page, "Shared source");
   await save();
   db = new DatabaseSync(path.join(root, "Workspace/knot.db"));
   db.prepare(
@@ -284,12 +286,12 @@ try {
     copies,
   );
   await page.screenshot({ path: path.join(root, "disposed.png") });
-  await click("Close quarantine");
+  await click("Close File recovery panel");
   // Missing indexed attachments can be recovered from misplaced exact copies.
   const indexedPath = path.join(assets, hash.slice(0, 2), hash);
   await unlink(indexedPath);
   await unlink(path.join(assets, "duplicate.tmp"));
-  await click("✓ Check workspace");
+  await click("Check workspace");
   const recoverButton = `Recover missing attachment ${hash}`;
   await click(recoverButton);
   await page
@@ -337,7 +339,7 @@ try {
     "shared and trashed attachment",
   );
   await page.screenshot({ path: path.join(root, "attachment-recovered.png") });
-  await click("Close report");
+  await click("Close Workspace health panel");
   await page.waitForFunction(() =>
     [
       ...document.querySelectorAll("affine-embed-edgeless-synced-doc-block"),
@@ -360,9 +362,7 @@ try {
     0,
   );
   await click("Orphan quarantine");
-  await page
-    .getByText("No complete recovery copies.", { exact: true })
-    .waitFor();
+  await page.getByText("No files set aside.", { exact: true }).waitFor();
   assert.equal(
     await readFile(
       path.join(root, "Workspace/quarantine", copies[0], "payload"),

@@ -5,7 +5,7 @@ use crate::{
 use rusqlite::Connection;
 use std::{fs, path::Path};
 
-pub const CURRENT_SCHEMA: i64 = 2;
+pub const CURRENT_SCHEMA: i64 = 10;
 const PREFIX: &str = "pre-migration-schema-";
 
 fn verify_archive(path: &Path) -> Result<()> {
@@ -124,7 +124,34 @@ pub fn upgrade(ws: &Workspace, version: i64) -> Result<()> {
         if version == 0 {
             tx.execute_batch(include_str!("../migrations/001_initial.sql"))?;
         }
-        tx.execute_batch(include_str!("../migrations/002_organization.sql"))?;
+        if version < 2 {
+            tx.execute_batch(include_str!("../migrations/002_organization.sql"))?;
+        }
+        if version < 3 {
+            tx.execute_batch(include_str!("../migrations/003_collections.sql"))?;
+        }
+        if version < 4 {
+            tx.execute_batch(include_str!("../migrations/004_favorites.sql"))?;
+        }
+        if version < 5 {
+            tx.execute_batch(include_str!("../migrations/005_getting_started.sql"))?;
+        }
+        if version < 6 {
+            tx.execute_batch(include_str!("../migrations/006_collection_order.sql"))?;
+        }
+        if version < 7 {
+            tx.execute_batch(include_str!("../migrations/007_library.sql"))?;
+        }
+        if version < 8 {
+            tx.execute_batch(include_str!("../migrations/008_collection_trash.sql"))?;
+        }
+        if version < 9 {
+            tx.execute_batch(include_str!("../migrations/009_card_deck.sql"))?;
+        }
+        tx.execute_batch(include_str!("../migrations/010_mcq.sql"))?;
+        if version == 0 {
+            tx.execute("UPDATE getting_started SET pending=1", [])?;
+        }
         tx.pragma_update(None, "user_version", CURRENT_SCHEMA)?;
         validate_database(&tx)?;
         tx.commit()?;
@@ -141,6 +168,26 @@ mod tests {
     use super::*;
     use crate::storage::hash_file;
     use std::io::Read;
+
+    #[test]
+    fn version_three_preserves_collections_when_adding_favorites() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("v3");
+        let db = legacy(&root);
+        db.execute_batch(include_str!("../migrations/002_organization.sql"))
+            .unwrap();
+        db.execute_batch(include_str!("../migrations/003_collections.sql"))
+            .unwrap();
+        db.pragma_update(None, "user_version", 3).unwrap();
+        db.execute_batch("INSERT INTO collections VALUES('keep','Keep'); INSERT INTO collection_objects VALUES('board','keep');").unwrap();
+        drop(db);
+        let ws = Workspace::open(root).unwrap();
+        assert_eq!(version(&ws.db), CURRENT_SCHEMA);
+        assert_eq!(ws.membership("board").unwrap().collections, vec!["keep"]);
+        assert!(ws.catalog().unwrap().favorites.is_empty());
+        ws.set_favorite("board", true).unwrap();
+        assert_eq!(ws.catalog().unwrap().favorites, vec!["board"]);
+    }
 
     fn legacy(root: &Path) -> Connection {
         fs::create_dir_all(root).unwrap();
@@ -159,6 +206,50 @@ mod tests {
     fn version(db: &Connection) -> i64 {
         db.pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap()
+    }
+
+    #[test]
+    fn version_two_groups_migrate_and_old_backup_restores() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("legacy-groups");
+        let db = legacy(&root);
+        db.execute_batch(include_str!("../migrations/002_organization.sql"))
+            .unwrap();
+        db.execute_batch(
+            "PRAGMA user_version=2;
+          INSERT INTO folders VALUES('f','Research'),('empty','Empty');
+          INSERT INTO tags VALUES('t','research'),('trash','Archived'),('unused','Unused');
+          UPDATE objects SET folder_id='f' WHERE id='board';
+          INSERT INTO object_tags VALUES('source','t'),('source','trash');",
+        )
+        .unwrap();
+        drop(db);
+        let ws = Workspace::open(root.clone()).unwrap();
+        assert_eq!(version(&ws.db), CURRENT_SCHEMA);
+        assert_eq!(ws.catalog().unwrap().collections.len(), 2);
+        assert_eq!(ws.filtered_list("", 0, Some("folder:f")).unwrap().len(), 1);
+        ws.restore_object("source").unwrap();
+        assert_eq!(ws.membership("source").unwrap().collections.len(), 2);
+        assert_eq!(ws.filtered_list("", 0, Some("folder:f")).unwrap().len(), 2);
+        assert_eq!(ws.load("source").unwrap().unwrap().document, vec![3, 4]);
+        assert_eq!(ws.db.query_row("SELECT count(*) FROM sqlite_master WHERE name IN ('folders','tags','object_tags','objects_folder')", [], |r| r.get::<_,i64>(0)).unwrap(), 0);
+        assert_eq!(
+            ws.db
+                .query_row(
+                    "SELECT count(*) FROM pragma_table_info('objects') WHERE name='folder_id'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        let archives = recovery_archives(&root).unwrap();
+        let restored =
+            Workspace::open(backup::restore(Path::new(&archives[0]), tmp.path()).unwrap()).unwrap();
+        restored.restore_object("source").unwrap();
+        assert_eq!(restored.membership("source").unwrap().collections.len(), 2);
+        assert_eq!(restored.catalog().unwrap().collections.len(), 2);
+        validate_database(&restored.db).unwrap();
     }
 
     #[test]
@@ -185,7 +276,7 @@ mod tests {
         let manifest = fs::read(root.join("workspace.json")).unwrap();
         drop(db);
         let ws = Workspace::open(root.clone()).unwrap();
-        assert_eq!(version(&ws.db), 2);
+        assert_eq!(version(&ws.db), CURRENT_SCHEMA);
         assert_eq!(ws.load("source").unwrap().unwrap().document, vec![3, 4]);
         assert_eq!(ws.load("board").unwrap().unwrap().document, vec![7, 8]);
         assert_eq!(ws.trash("", 0).unwrap()[0].object.id, "source");
@@ -271,7 +362,7 @@ mod tests {
         db.execute_batch("DROP TRIGGER reject_migration").unwrap();
         drop(db);
         let ws = Workspace::open(root.clone()).unwrap();
-        assert_eq!(version(&ws.db), 2);
+        assert_eq!(version(&ws.db), CURRENT_SCHEMA);
         assert_eq!(recovery_archives(&root).unwrap().len(), 2);
         assert!(Path::new(&archives[0]).is_file());
     }
@@ -345,7 +436,7 @@ mod tests {
     fn migration_refuses_broken_relationships_and_unavailable_archive_folder() {
         let tmp = tempfile::tempdir().unwrap();
         let fresh = Workspace::open(tmp.path().join("fresh")).unwrap();
-        assert_eq!(version(&fresh.db), 2);
+        assert_eq!(version(&fresh.db), CURRENT_SCHEMA);
         assert!(recovery_archives(&fresh.root).unwrap().is_empty());
         let root = tmp.path().join("legacy");
         let db = legacy(&root);

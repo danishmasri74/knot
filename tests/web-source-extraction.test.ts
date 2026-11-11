@@ -1,0 +1,60 @@
+import { expect, test } from "vitest";
+import { extractWebSource } from "../src/services/web-source-extraction";
+
+test("Readability worker DOM preserves article, documentation, code, tables, Unicode and malformed text", () => {
+  const result = extractWebSource(
+    `<html><head><title>Guide</title></head><body><nav>Ignore</nav><main><h1>مرحبا 世界</h1><p>A short valid page.</p><pre>const x = 1;\nconsole.log(x)</pre><table><tr><th>Item</th><th>Cost</th></tr><tr><td>Tea</td><td>3</td></tr></table><ul><li>One</li><li>Two</li></ul><p>Unclosed`,
+    "text/html",
+  );
+  expect(result.title).toBe("Guide");
+  expect(
+    result.sections.some(
+      (s) => s.kind === "code" && s.text.includes("const x"),
+    ),
+  ).toBe(true);
+  expect(
+    result.sections.some(
+      (s) => s.kind === "table" && s.text.includes("Item | Cost\nTea | 3"),
+    ),
+  ).toBe(true);
+  expect(result.sections.map((s) => s.text).join(" ")).toContain("مرحبا 世界");
+  expect(result.sections.map((s) => s.text).join(" ")).not.toContain("Ignore");
+  expect(
+    extractWebSource("<html><body><p>Hi.</p></body></html>", "text/html")
+      .sections[0].text,
+  ).toBe("Hi.");
+});
+test("hostile markup remains inert and visual gaps/challenges are explicit", () => {
+  const result = extractWebSource(
+    '<html><body><article><h1>Safe</h1><p onclick="fetch(\'/bad\')">Evidence</p><script>throw Error("executed")</script><img src="https://example.com/track"><iframe src="https://example.com/frame"></iframe></article></body></html>',
+    "text/html",
+  );
+  expect(result.sections.map((s) => s.text).join(" ")).toBe("Safe Evidence");
+  expect(result.warnings).toContain(
+    "Images, embedded and visual content were not captured.",
+  );
+  expect(() =>
+    extractWebSource(
+      "<html><head><title>Just a moment</title></head><body>Verify you are human</body></html>",
+      "text/html",
+    ),
+  ).toThrow("challenge");
+  expect(() =>
+    extractWebSource(
+      "<html><body><script>app()</script></body></html>",
+      "text/html",
+    ),
+  ).toThrow("No readable");
+});
+test("long passages keep Unicode intact and reject excessive DOMs", () => {
+  const body = "x".repeat(5999) + "😀" + "z".repeat(10_000);
+  const result = extractWebSource(body, "text/plain");
+  expect(result.sections.map((s) => s.text).join("")).toBe(body);
+  expect(result.sections.every((s) => s.text.length <= 6000)).toBe(true);
+  expect(() =>
+    extractWebSource(
+      `<html><body><main>${"<p>x</p>".repeat(50_001)}</main></body></html>`,
+      "text/html",
+    ),
+  ).toThrow("DOM limit");
+});

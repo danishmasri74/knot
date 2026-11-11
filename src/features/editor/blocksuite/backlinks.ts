@@ -5,10 +5,15 @@ import type { KnowledgeObject, Snapshot } from "../../../services/workspace";
 export interface BacklinkReport {
   sources: KnowledgeObject[];
   unreadable: KnowledgeObject[];
+  locations?: Record<string, string>;
 }
 
 /** Isolated decoding: never initialize an editor or write a source snapshot. */
 export function savedReferences(id: string, snapshot: Snapshot): Set<string> {
+  return new Set(savedReferenceLocations(id, snapshot).keys());
+}
+
+function savedReferenceLocations(id: string, snapshot: Snapshot) {
   const envelope = new Y.Doc();
   const body = new Y.Doc();
   try {
@@ -33,7 +38,11 @@ export function savedReferences(id: string, snapshot: Snapshot): Set<string> {
       ).length !== 1
     )
       throw new Error("Invalid page root");
-    return referenceIds(blocks);
+    const locations = new Map<string, string>();
+    for (const [blockId, block] of blocks)
+      for (const target of referenceIds(block))
+        if (!locations.has(target)) locations.set(target, blockId);
+    return locations;
   } finally {
     envelope.destroy();
     body.destroy();
@@ -46,6 +55,7 @@ export async function findBacklinks(
   load: (id: string) => Promise<Snapshot | null>,
 ): Promise<BacklinkReport> {
   const result: BacklinkReport = { sources: [], unreadable: [] };
+  const locations: Record<string, string> = Object.create(null);
   const unique = new Map(catalog.map((row) => [row.id, row]));
   for (const row of unique.values()) {
     if (row.id === target) continue;
@@ -53,8 +63,11 @@ export async function findBacklinks(
     const snapshot = await load(row.id);
     if (!snapshot) continue; // Never-opened documents cannot contain saved links.
     try {
-      if (savedReferences(row.id, snapshot).has(target))
+      const location = savedReferenceLocations(row.id, snapshot).get(target);
+      if (location) {
         result.sources.push(row);
+        locations[row.id] = location;
+      }
     } catch {
       result.unreadable.push(row);
     }
@@ -63,5 +76,6 @@ export async function findBacklinks(
     a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
   result.sources.sort(order);
   result.unreadable.sort(order);
+  result.locations = locations;
   return result;
 }

@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
 import {
+  passageSegments,
+  samePassage,
   parsePdfSourceUrl,
   pdfSourceUrl,
   validatePdfHighlight,
@@ -56,4 +58,19 @@ it("bounds selected text and requires a stable retry ID and visible selection", 
     { rects: [] },
   ])
     expect(() => validatePdfHighlight({ ...value, ...change })).toThrow();
+});
+
+it("splits only the shared part and retains both destinations for identical ranges", () => {
+  const first = { ...value, noteId: "one", label: "first" };
+  const second = { ...first, noteId: "two" };
+  expect(passageSegments([first, second]).map((s) => s.refs)).toEqual([[0, 1]]);
+  expect(
+    passageSegments([first, { ...second, rects: [[0.2, 0.2, 0.3, 0.04]] }]).map(
+      (s) => s.refs,
+    ),
+  ).toEqual([[0], [0, 1], [1]]);
+  expect(
+    samePassage(first, { ...second, rects: [[0.101, 0.2, 0.302, 0.04]] }),
+  ).toBe(true);
+  expect(samePassage(first, { ...second, page: 3 })).toBe(false);
 });

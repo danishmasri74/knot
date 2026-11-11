@@ -36,7 +36,8 @@ export interface Snapshot {
   collection: number[];
   document: number[];
 }
-export interface TrashedObject extends KnowledgeObject {
+export interface TrashedObject extends Omit<KnowledgeObject, "kind"> {
+  kind: KnowledgeObject["kind"] | "collection";
   deleted_at: number;
 }
 export interface IntegrityReport {
@@ -56,41 +57,54 @@ export interface IntegrityReport {
     documents: { id: string; title: string; deleted: boolean }[];
   }[];
 }
-export interface Label {
+export interface Collection {
   id: string;
   name: string;
+  notebooks: string[];
 }
 export interface Catalog {
-  folders: Label[];
-  tags: Label[];
+  collections: Collection[];
+  favorites: string[];
 }
-export interface Organization {
-  folder: string | null;
-  tags: string[];
+export interface Membership {
+  collections: string[];
 }
 export interface LibraryFilter {
-  folder: string | null;
-  tag: string | null;
+  collection: string | null;
 }
-export const organization = {
-  catalog: () => invoke<Catalog>("organization_catalog"),
-  get: (id: string) => invoke<Organization>("get_organization", { id }),
-  save: (id: string, value: Organization) =>
-    invoke<void>("organize_object", { id, value }),
-  create: (kind: "folder" | "tag", name: string) =>
-    invoke<string>("create_label", { kind, name }),
-  rename: (kind: "folder" | "tag", id: string, name: string) =>
-    invoke<void>("rename_label", { kind, id, name }),
-  delete: (kind: "folder" | "tag", id: string) =>
-    invoke<void>("delete_label", { kind, id }),
+export const collections = {
+  reorder: (ids: string[]) => invoke<void>("reorder_collections", { ids }),
+  favorite: (id: string, favorite: boolean) =>
+    invoke<void>("set_favorite", { id, favorite }),
+  catalog: () => invoke<Catalog>("collection_catalog"),
+  get: (id: string) => invoke<Membership>("get_membership", { id }),
+  save: (id: string, value: Membership) =>
+    invoke<void>("set_membership", { id, value }),
+  create: (name: string, object: string | null = null) =>
+    invoke<string>("create_collection", { name, object }),
+  rename: (id: string, name: string) =>
+    invoke<void>("rename_collection", { id, name }),
+  delete: (id: string) => invoke<void>("delete_collection", { id }),
 };
+function changedTopicSources<T>(result: Promise<T>):Promise<T> {
+  return result.then(value=>{window.dispatchEvent(new Event("knot-topic-sources-changed"));return value;});
+}
 export const repository = {
+  loadCardDeck: () => invoke<string>("load_card_deck"),
+  clearExpiredTrash: () => invoke<number>("clear_expired_trash"),
+  purgeTrash: (ids: string[]) => invoke<number>("purge_trash", { ids }),
   trash: (search = "", offset = 0) =>
     invoke<TrashedObject[]>("list_trash", { search, offset }),
-  restore: (id: string) => invoke<void>("restore_object", { id }),
+  restore: (id: string) => changedTopicSources(invoke<void>("restore_object", { id })),
   saveMany: (
     documents: { id: string; snapshot: Snapshot; create: boolean }[],
-  ) => invoke<void>("save_documents", { documents }),
+    deck?: string,
+    quiz?: import("../features/quiz/mcq").McqMutation[],
+    publishedDraft?: string,
+  ) => {
+    const save = invoke<void>("save_documents", { documents, deck, quiz, publishedDraft });
+    return documents.length || deck !== undefined ? changedTopicSources(save) : save;
+  },
   async catalog() {
     const rows: KnowledgeObject[] = [];
     for (let offset = 0; ; offset += 100) {
@@ -110,17 +124,17 @@ export const repository = {
   list: (
     search = "",
     offset = 0,
-    filter: LibraryFilter = { folder: null, tag: null },
+    filter: LibraryFilter = { collection: null },
   ) =>
     invoke<KnowledgeObject[]>("filter_objects", { search, offset, ...filter }),
   create: (kind: KnowledgeObject["kind"]) =>
     invoke<string>("create_object", { kind }),
   rename: (id: string, title: string) =>
-    invoke<void>("rename_object", { id, title }),
-  delete: (id: string) => invoke<void>("delete_object", { id }),
+    changedTopicSources(invoke<void>("rename_object", { id, title })),
+  delete: (id: string) => changedTopicSources(invoke<void>("delete_object", { id })),
   load: (id: string) => invoke<Snapshot | null>("load_document", { id }),
   save: (id: string, snapshot: Snapshot) =>
-    invoke<void>("save_document", { id, snapshot }),
+    changedTopicSources(invoke<void>("save_document", { id, snapshot })),
 };
 export const attachments = {
   recoverMissing: (hash: string) =>
@@ -176,3 +190,19 @@ export const quarantine = {
   dispose: (entry: QuarantineCatalog["entries"][number]) =>
     invoke<string | null>("dispose_quarantined", { entry }),
 };
+
+export interface LibraryRow extends KnowledgeObject {
+  created_at: number | null;
+}
+export const libraryPage = (
+  search: string,
+  collection: string | null,
+  created: boolean,
+  offset: number,
+) =>
+  invoke<{ rows: LibraryRow[]; total: number }>("library_page", {
+    search,
+    collection,
+    created,
+    offset,
+  });

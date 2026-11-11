@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
@@ -40,7 +43,11 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  if (name === "Refresh search") {
+    await search(currentQuery);
+    return;
+  }
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -53,7 +60,7 @@ async function stop() {
   child = null;
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
@@ -65,9 +72,7 @@ async function rename(title) {
   await ready();
 }
 async function place(title, shared = true) {
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption({ label: title });
-  await click(shared ? "Place shared note" : "Insert link");
+  await placeLegacyReference(page, title, shared);
 }
 async function body(id) {
   return page.evaluate((id) => {
@@ -80,10 +85,23 @@ async function body(id) {
   }, id);
 }
 
-const panel = () => page.getByRole("region", { name: "Body search results" });
+const panel = () =>
+  page.getByRole("dialog", { name: "Search workspace", exact: true });
+let currentQuery = "";
 async function search(query) {
-  await page.getByLabel("Search titles", { exact: true }).fill(query);
-  await click("Search titles & body");
+  currentQuery = query;
+  if (await panel().count())
+    await page
+      .getByRole("button", { name: "Close search", exact: true })
+      .click();
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search workspace" }).fill(query);
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector("#global-search-results")
+        ?.getAttribute("aria-busy") === "false",
+  );
 }
 async function edit(text) {
   await page.evaluate((text) => {
@@ -93,6 +111,25 @@ async function edit(text) {
 }
 try {
   await launch();
+  const trigger = page.getByRole("button", { name: /^Search/ });
+  await trigger.click();
+  const input = page.getByRole("combobox", { name: "Search workspace" });
+  assert.ok(
+    await input.evaluate((element) => element === document.activeElement),
+  );
+  await page.keyboard.press("Tab");
+  assert.ok(
+    await panel().evaluate((element) =>
+      element.contains(document.activeElement),
+    ),
+  );
+  await page.keyboard.press("Escape");
+  assert.ok(
+    await trigger.evaluate((element) => element === document.activeElement),
+  );
+  await page.keyboard.press("Control+k");
+  await page.keyboard.press("Escape");
+  assert.equal(await panel().count(), 0);
   await rename("Research source");
   await edit("Café quasar original body");
   await page
@@ -101,30 +138,25 @@ try {
   await ready();
   await save();
   const source = await body();
-  await click("Manage folders & tags");
-  for (const [kind, name] of [
-    ["folder", "Research"],
-    ["tag", "Important"],
-  ]) {
-    await page.getByLabel("Organization type").selectOption(kind);
-    await page.getByLabel("Folder or tag name").fill(name);
-    await click("Create");
-  }
-  await click("Close");
-  await page.locator(".document-organization summary").click();
   await page
-    .getByLabel("Document folder", { exact: true })
-    .selectOption({ label: "Research" });
+    .getByRole("button", {
+      name: "Collections for Research source",
+      exact: true,
+    })
+    .click();
+  await page.getByLabel("Find or create collection").fill("Research");
+  await page
+    .getByRole("button", { name: "Create “Research”", exact: true })
+    .click();
   await ready();
-  await page.getByRole("checkbox", { name: "Important", exact: true }).click();
-  await ready();
-  await page.getByRole("button", { name: /New note/ }).click();
+  await page.keyboard.press("Escape");
+  await createNotebook(page);
   await ready();
   await rename("Other source");
   await edit("quasar second body");
   await save();
   const other = await body();
-  await page.getByRole("button", { name: /New whiteboard/ }).click();
+  await createNotebook(page, true);
   await ready();
   await rename("Shared board");
   await place("Research source");
@@ -146,10 +178,10 @@ try {
   const bytes = await readFile(assetPath);
   await page.context().setOffline(true);
   await search("QUASAR");
-  assert.equal(await panel().locator("li").count(), 2);
+  assert.equal(await panel().getByRole("option").count(), 2);
   assert.equal(
     await panel()
-      .getByRole("button", { name: "Shared board", exact: true })
+      .getByRole("option", { name: "Shared board", exact: true })
       .count(),
     0,
   );
@@ -157,49 +189,54 @@ try {
   assert.deepEqual(records(), before);
   assert.deepEqual(await readFile(assetPath), bytes);
   await page.screenshot({ path: path.join(root, "search.png") });
+  await page.getByRole("combobox").focus();
+  await page.keyboard.press("ArrowDown");
+  assert.equal(
+    await panel().getByRole("option", { selected: true }).count(),
+    1,
+  );
+  await page.keyboard.press("Enter");
+  await ready();
+  assert.equal(await panel().count(), 0);
+  await click("Go back");
+  await search("QUASAR");
   await page.context().setOffline(false);
   await page
-    .getByLabel("Filter by folder", { exact: true })
-    .selectOption({ label: "Research" });
-  await panel().waitFor({ state: "detached" });
-  await page
-    .getByLabel("Filter by tag", { exact: true })
-    .selectOption({ label: "Important" });
+    .getByRole("region", { name: "Collection Research", exact: true })
+    .getByRole("button", { name: "Research", exact: true })
+    .click();
   await search("quasar");
-  assert.equal(await panel().locator("li").count(), 1);
+  assert.equal(await panel().getByRole("option").count(), 2);
   await panel()
-    .getByRole("button", { name: "Research source", exact: true })
+    .getByRole("option")
+    .filter({ hasText: "Research source" })
     .click();
   await ready();
   assert.equal((await body()).id, source.id);
   assert.equal(await panel().count(), 0);
   await click("Go back");
   assert.equal((await body()).id, board.id);
-  await page
-    .getByLabel("Filter by folder", { exact: true })
-    .selectOption("all");
-  await page.getByLabel("Filter by tag", { exact: true }).selectOption("");
   await search("quasar");
   db.exec(
     "CREATE TRIGGER reject_search BEFORE UPDATE ON documents BEGIN SELECT RAISE(FAIL, 'search save blocked'); END",
   );
   await edit("quasar pending ");
   await click("Refresh search");
-  await page
+  await panel()
     .getByRole("alert")
     .filter({ hasText: "search save blocked" })
     .waitFor();
-  assert.equal(await panel().locator("li").count(), 0);
+  assert.equal(await panel().getByRole("option").count(), 0);
   db.exec("DROP TRIGGER reject_search");
   await click("Refresh search");
-  assert.equal(await panel().locator("li").count(), 3);
+  assert.equal(await panel().getByRole("option").count(), 3);
   await page.evaluate(() => {
     const doc = document.querySelector("affine-editor-container").doc;
     const p = doc.getBlocksByFlavour("affine:paragraph")[0].model;
     p.text.delete(0, p.text.length);
   });
   await click("Refresh search");
-  assert.equal(await panel().locator("li").count(), 2);
+  assert.equal(await panel().getByRole("option").count(), 2);
   const saved = db
     .prepare("SELECT document_state FROM documents WHERE object_id=?")
     .get(other.id).document_state;
@@ -208,9 +245,9 @@ try {
   );
   await click("Refresh search");
   await panel()
-    .getByText(/Partial results/)
+    .getByText(/Results may be incomplete/)
     .waitFor();
-  assert.equal(await panel().locator("li").count(), 1);
+  assert.equal(await panel().getByRole("option").count(), 1);
   assert.deepEqual(
     [
       ...db
@@ -225,21 +262,22 @@ try {
   );
   await search("Other source");
   await panel()
-    .getByRole("button", { name: "Other source", exact: true })
+    .getByRole("option", { name: "Other source", exact: true })
     .click();
   await ready();
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await ready();
   await search("quasar");
-  assert.equal(await panel().locator("li").count(), 1);
+  assert.equal(await panel().getByRole("option").count(), 1);
   assert.deepEqual(await readFile(assetPath), bytes);
   db.close();
   await stop();
   await launch();
   await search("café");
-  assert.equal(await panel().locator("li").count(), 1);
+  assert.equal(await panel().getByRole("option").count(), 1);
   await panel()
-    .getByRole("button", { name: "Research source", exact: true })
+    .getByRole("option")
+    .filter({ hasText: "Research source" })
     .click();
   await ready();
   assert.equal((await body()).id, source.id);
@@ -252,9 +290,9 @@ try {
   await ready();
   assert.equal(await panel().count(), 0);
   await search("quasar");
-  assert.equal(await panel().locator("li").count(), 1);
+  assert.equal(await panel().getByRole("option").count(), 1);
   console.log(
-    "PASS body/title search, combined filters, shared exclusion, offline, preservation, navigation, save retry, freshness, corruption, Trash, restart and workspace reset",
+    "PASS global modal, shortcuts, focus, keyboard navigation, body/title search, filter independence, shared exclusion, offline, preservation, navigation, save retry, freshness, corruption, Trash, restart and workspace reset",
   );
   console.log("TEST WORKSPACE " + root);
 } finally {

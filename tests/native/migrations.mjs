@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
@@ -41,7 +44,7 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -56,7 +59,7 @@ async function stop() {
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
@@ -72,9 +75,7 @@ async function select(title) {
   await ready();
 }
 async function place(title, shared = true) {
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption({ label: title });
-  await click(shared ? "Place shared note" : "Insert link");
+  await placeLegacyReference(page, title, shared);
 }
 async function body(id) {
   return page.evaluate((id) => {
@@ -123,15 +124,15 @@ try {
   await ready();
   await save();
   const source = await body();
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   await rename("Migration board");
   await place("Migration source");
   await save();
   const board = await body();
-  await page.getByRole("button", { name: "New note" }).click();
+  await createNotebook(page);
   await ready();
   await rename("Migration Trash");
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await ready();
   await select("Migration board");
   await stop();
@@ -140,7 +141,7 @@ try {
   const before = rows(db);
   const manifest = await readFile(path.join(root, "Workspace/workspace.json"));
   db.exec(
-    "DROP INDEX objects_folder; DROP TABLE object_tags; DROP TABLE tags; DROP TABLE folders; ALTER TABLE objects DROP COLUMN folder_id; DELETE FROM schema_migrations WHERE version=2; PRAGMA user_version=1;",
+    "DROP TABLE collection_objects; DROP TABLE collections; DELETE FROM schema_migrations WHERE version>1; PRAGMA user_version=1;",
   );
   db.exec(
     "CREATE TRIGGER reject_migration BEFORE INSERT ON schema_migrations BEGIN SELECT RAISE(ABORT,'native migration failure'); END;",
@@ -165,7 +166,7 @@ try {
   await select("Migration source");
   assert.deepEqual(await body(), source);
   db = new DatabaseSync(database);
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 2);
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 5);
   assert.deepEqual(rows(db), before);
   assert.deepEqual(
     await readFile(path.join(root, "Workspace/workspace.json")),
@@ -184,15 +185,17 @@ try {
     await readFile("tests/fixtures/knot.png"),
   );
   db.close();
-  await click("✓ Check workspace");
-  await page.getByText("Database schema: 2.", { exact: true }).waitFor();
+  await click("Check workspace");
+  await page.locator(".health-report > summary").click();
+  await page.getByText("Database schema: 5.", { exact: true }).waitFor();
   await page
     .getByText("Pre-migration recovery archives (2)", { exact: true })
     .click();
   await page.screenshot({ path: path.join(root, "migration-recovery.png") });
   await stop();
   await launch();
-  await click("✓ Check workspace");
+  await click("Check workspace");
+  await page.locator(".health-report > summary").click();
   await page
     .getByText("Pre-migration recovery archives (2)", { exact: true })
     .waitFor();

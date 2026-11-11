@@ -1,0 +1,723 @@
+import * as Y from "yjs";
+import { cleanAiBlock, cleanAiProposal } from "../../../services/ai-generated-content";
+import { ConnectorMode } from "@blocksuite/blocks";
+import { getAiConnectorShape } from "../../../services/ai-preferences";
+import {
+  validateSourceRefs,
+  webProvenance,
+} from "../../../services/web-ai-evidence";
+import { appendWebProvenance } from "./web-source";
+import { aiConnectorPorts, layoutAiCards } from "./ai-layout";
+import type { AiPdfSource } from "../../../services/pdf-input";
+import type { BlockModel, Doc } from "@blocksuite/store";
+import type { AffineEditorContainer } from "@blocksuite/presets";
+import type {
+  AttachmentBlockModel,
+  ImageBlockModel,
+  NoteBlockModel,
+  SurfaceBlockModel,
+} from "@blocksuite/blocks";
+
+import {
+  type AiBlock,
+  validAiContent,
+  aiBlockText,
+  aiBlockSize,
+  appendAiBlock,
+} from "./ai-content";
+export type { AiBlock } from "./ai-content";
+export type AiProposal = {
+  replacements: string[];
+  blocks: AiBlock[];
+  connections?: {
+    from: number;
+    to: number;
+    label: string;
+    sourceRefs?: string[];
+  }[];
+  mindmap?: { text: string; parent: number; sourceRefs?: string[] }[];
+};
+type Range = {
+  id: string;
+  start: number;
+  length: number;
+  text: string;
+  attributes: Record<string, unknown>;
+};
+export type AiContext = {
+  sourceIntent?: "ambient" | "selection" | "explicit";
+  webContext?: string;
+  canvas?: boolean;
+  selectedImageKey?: string;
+  selectionKey?: string;
+  selectionLabel?: string;
+  selectionKind?: "website" | "file";
+  pdf?: boolean;
+  pdfSource?: AiPdfSource;
+  workspace: string;
+  document: string;
+  instance: Doc;
+  version: string;
+  label: string;
+  text: string;
+  structure: ContextBlock[];
+  surrounding: ContextBlock[];
+  ranges: Range[];
+  note: string | null;
+};
+export type ContextBlock = {
+  webSource?: string;
+  id: string;
+  parent: string | null;
+  note: string | null;
+  type: string;
+  checked?: boolean;
+  text: string;
+};
+export function structuredAiBlocks(root: BlockModel): ContextBlock[] {
+  const result: ContextBlock[] = [];
+  const walk = (m: BlockModel, parent: string | null, note: string | null) => {
+    if (m.flavour === "affine:note") note = m.id;
+    if (m.text)
+      result.push({
+        id: m.id,
+        parent,
+        note,
+        type: "type" in m ? String(m.type) : m.flavour,
+        ...("type" in m && m.type === "todo"
+          ? { checked: "checked" in m && m.checked === true }
+          : {}),
+        text: m.text.toString(),
+        ...(m.flavour === "knot:web-source" && "evidence" in m
+          ? { webSource: String(m.evidence) }
+          : {}),
+      });
+    m.children.forEach((child) => walk(child, m.id, note));
+  };
+  walk(root, null, root.flavour === "affine:note" ? root.id : null);
+  return result;
+}
+const revisions = new WeakMap<Doc, number>();
+const version = (doc: Doc) => {
+  if (!revisions.has(doc)) {
+    revisions.set(doc, 0);
+    doc.spaceDoc.on("update", (_update, _origin, _doc, transaction) => {
+      // BlockSuite measures rendered note heights outside user undo history.
+      // Those local geometry updates must not invalidate an AI proposal or undo.
+      const measuredNotes =
+        transaction.local &&
+        transaction.origin === null &&
+        transaction.changed.size > 0 &&
+        [...transaction.changed].every(
+          ([type, keys]) =>
+            type instanceof Y.Map &&
+            type.get("sys:flavour") === "affine:note" &&
+            keys.size === 1 &&
+            keys.has("prop:xywh"),
+        );
+      if (!measuredNotes) revisions.set(doc, revisions.get(doc)! + 1);
+    });
+  }
+  return String(revisions.get(doc));
+};
+const readable = (model: BlockModel): string =>
+  [model.text?.toString() ?? "", ...model.children.map(readable)]
+    .filter(Boolean)
+    .join("\n");
+
+export function captureCardContext(
+  doc: Doc,
+  workspace: string,
+  card: BlockModel,
+): AiContext {
+  const structure = structuredAiBlocks(card);
+  return {
+    canvas: true,
+    workspace,
+    document: doc.id,
+    instance: doc,
+    version: version(doc),
+    label: "Focused note",
+    note: card.id,
+    text: structure.map((b) => b.text).join("\n"),
+    structure,
+    surrounding: [],
+    ranges: [],
+  };
+}
+/** Capture the live model before panel focus clears BlockSuite's selection. */
+export function captureAiContext(
+  editor: AffineEditorContainer,
+  workspace: string,
+  focused: string | null,
+): AiContext {
+  const doc = editor.doc;
+  const ranges: Range[] = [];
+  const selection = editor.std.selection.find("text");
+  const ordered: BlockModel[] = [];
+  const walk = (m: BlockModel) => {
+    ordered.push(m);
+    m.children.forEach(walk);
+  };
+  if (doc.root) walk(doc.root);
+  if (selection) {
+    const from = selection.from,
+      to = selection.to ?? from;
+    const first = ordered.findIndex((m) => m.id === from.blockId);
+    const last = ordered.findIndex((m) => m.id === to.blockId);
+    if (first >= 0 && last >= first)
+      for (const m of ordered.slice(first, last + 1)) {
+        if (!m.text) continue;
+        const start = m.id === from.blockId ? from.index : 0;
+        const end = m.id === to.blockId ? to.index + to.length : m.text.length;
+        let offset = start;
+        for (const delta of m.text.sliceToDelta(start, end)) {
+          const text = delta.insert ?? "";
+          if (text)
+            ranges.push({
+              id: m.id,
+              start: offset,
+              length: text.length,
+              text,
+              attributes: delta.attributes ?? {},
+            });
+          offset += text.length;
+        }
+      }
+  }
+  const selectedBlocks = editor.std.selection
+    .filter("block")
+    .map((s) => doc.getBlock(s.blockId)?.model)
+    .filter((m): m is BlockModel => !!m);
+  const canvas =
+    editor.mode === "edgeless"
+      ? editor.querySelector("affine-edgeless-root")
+      : null;
+  const canvasSelected = canvas?.gfx.selection.selectedElements ?? [];
+  for (const element of canvasSelected) {
+    const block = doc.getBlock(element.id)?.model;
+    if (block && !selectedBlocks.some((m) => m.id === block.id))
+      selectedBlocks.push(block);
+  }
+  const imageKeys = new Set<string>();
+  for (const block of selectedBlocks) {
+    if (block.flavour === "affine:image") {
+      const key = (block as ImageBlockModel).sourceId;
+      if (key) imageKeys.add(key);
+    } else if (block.flavour === "affine:attachment") {
+      const attachment = block as AttachmentBlockModel;
+      if (attachment.type?.startsWith("image/") && attachment.sourceId)
+        imageKeys.add(attachment.sourceId);
+    }
+  }
+  const selectedPdf = selectedBlocks.find(
+    (block) =>
+      block.flavour === "affine:attachment" &&
+      (block as AttachmentBlockModel).type === "application/pdf",
+  ) as AttachmentBlockModel | undefined;
+  const selected = selectedBlocks.length === 1 ? selectedBlocks[0] : undefined;
+  const selectedFile =
+    selected?.flavour === "affine:attachment"
+      ? (selected as AttachmentBlockModel)
+      : undefined;
+  const selectedUrl =
+    selected && "url" in selected && typeof selected.url === "string"
+      ? selected.url
+      : undefined;
+  const selectedCard =
+    selected?.flavour === "affine:note" ? selected : undefined;
+  const websiteTitle =
+    selected && "title" in selected && typeof selected.title === "string"
+      ? selected.title.trim()
+      : "";
+  let websiteLabel: string | undefined;
+  if (selectedUrl) {
+    try {
+      const url = new URL(selectedUrl);
+      if (url.protocol === "http:" || url.protocol === "https:")
+        websiteLabel = websiteTitle || url.hostname;
+    } catch {
+      if (selected?.flavour === "affine:bookmark")
+        websiteLabel = websiteTitle || selectedUrl;
+    }
+  }
+  const selectionKey = JSON.stringify([
+    selectedBlocks.map((block) => block.id).sort(),
+    canvasSelected.map((element) => element.id).sort(),
+    ranges.map((range) => [range.id, range.start, range.length]),
+  ]);
+  let note = focused ? doc.getBlock(focused)?.model : undefined;
+  if (
+    !note &&
+    selectedBlocks.length === 1 &&
+    selectedBlocks[0].flavour === "affine:note"
+  )
+    note = selectedBlocks[0];
+  if (!note && ranges.length) {
+    let parent = doc.getBlock(ranges[0].id)?.model;
+    while (parent && parent.flavour !== "affine:note")
+      parent = doc.getParent(parent) ?? undefined;
+    note = parent;
+  }
+  const notes = doc.getBlocksByFlavour("affine:note").map((b) => b.model);
+  const visible = notes.filter(
+    (m) =>
+      editor.mode === "edgeless" ||
+      !("displayMode" in m) ||
+      m.displayMode !== "edgeless",
+  );
+  const canvasText = (
+    canvasSelected.length
+      ? canvasSelected
+      : ((
+          doc.getBlocksByFlavour("affine:surface")[0]?.model as
+            SurfaceBlockModel | undefined
+        )?.elementModels ?? [])
+  )
+    .filter((element) => !("flavour" in element))
+    .map((element) =>
+      "text" in element && element.text ? String(element.text) : "",
+    )
+    .filter(Boolean)
+    .join("\n");
+  const text = ranges.length
+    ? ranges
+        .map((r, i) => `${i && ranges[i - 1].id !== r.id ? "\n" : ""}${r.text}`)
+        .join("")
+    : selectedBlocks.length || canvasSelected.length
+      ? [selectedBlocks.map(readable).join("\n"), canvasText]
+          .filter(Boolean)
+          .join("\n")
+      : note
+        ? readable(note)
+        : [visible.map(readable).join("\n\n"), ...(canvas ? [canvasText] : [])]
+            .filter(Boolean)
+            .join("\n\n");
+  const all = doc.root ? structuredAiBlocks(doc.root) : [];
+  const selectedIds = new Set(ranges.map((r) => r.id));
+  const structure = ranges.length
+    ? all
+        .filter((b) => selectedIds.has(b.id))
+        .map((b) => ({
+          ...b,
+          text: ranges
+            .filter((r) => r.id === b.id)
+            .map((r) => r.text)
+            .join(""),
+        }))
+    : selectedBlocks.length || canvasSelected.length
+      ? selectedBlocks.flatMap(structuredAiBlocks)
+      : note
+        ? structuredAiBlocks(note)
+        : visible.flatMap(structuredAiBlocks);
+  const surrounding: ContextBlock[] = [];
+  if (ranges.length) {
+    const first = all.findIndex((b) => b.id === ranges[0].id);
+    const last = all.findIndex((b) => b.id === ranges[ranges.length - 1].id);
+    const heading = all
+      .slice(0, first)
+      .reverse()
+      .find((b) => b.note === all[first]?.note && /^h[1-6]$/.test(b.type));
+    const candidates = [
+      ...(heading ? [heading] : []),
+      ...all.slice(Math.max(0, first - 1), last + 2),
+    ];
+    let budget = 4000;
+    for (const b of candidates) {
+      if (
+        b.note !== all[first]?.note ||
+        surrounding.some((x) => x.id === b.id) ||
+        budget <= 0
+      )
+        continue;
+      const text = b.text.slice(0, Math.min(1500, budget));
+      budget -= text.length;
+      surrounding.push({ ...b, text });
+    }
+  }
+  return {
+    sourceIntent:
+      ranges.length || selectedBlocks.length || canvasSelected.length
+        ? "selection"
+        : "ambient",
+    canvas: editor.mode === "edgeless",
+    selectionKey,
+    selectionKind: websiteLabel ? "website" : selectedFile ? "file" : undefined,
+    selectionLabel:
+      selectedPdf?.name ||
+      selectedFile?.name ||
+      websiteLabel ||
+      (selectedCard
+        ? readable(selectedCard).split("\n")[0].slice(0, 60) || "Card"
+        : undefined),
+    ...(selectedPdf?.sourceId
+      ? {
+          pdf: true,
+          pdfSource: {
+            key: selectedPdf.sourceId,
+          },
+        }
+      : {}),
+    selectedImageKey: imageKeys.size === 1 ? [...imageKeys][0] : undefined,
+    workspace,
+    document: doc.id,
+    instance: doc,
+    version: version(doc),
+    label:
+      ranges.length || selectedBlocks.length || canvasSelected.length
+        ? "Selection"
+        : note
+          ? "Focused note"
+          : editor.mode === "edgeless"
+            ? "Canvas text"
+            : "Page",
+    text,
+    structure,
+    surrounding,
+    ranges,
+    note: note?.id ?? (visible.length === 1 ? visible[0].id : null),
+  };
+}
+
+export function validateProposal(
+  value: unknown,
+  webContext?: string,
+): AiProposal {
+  const p = value as AiProposal;
+  if (
+    !p ||
+    !Array.isArray(p.replacements) ||
+    !Array.isArray(p.blocks) ||
+    p.replacements.some((t) => typeof t !== "string") ||
+    p.blocks.some(
+      (b) =>
+        !validAiContent(b) ||
+        (b.children !== undefined &&
+          (!Array.isArray(b.children) ||
+            b.children.length > 30 ||
+            b.children.some((c) => !validAiContent(c) || "children" in c) ||
+            (b.children.length > 0 && b.type !== "paragraph"))),
+    ) ||
+    p.blocks.reduce((n, b) => n + 1 + (b.children?.length ?? 0), 0) > 200 ||
+    JSON.stringify(p).length > 60000 ||
+    p.blocks.length > 100
+  )
+    throw new Error("The edit response is invalid. Please try again.");
+  const connections = p.connections ?? [];
+  if (
+    p.mindmap !== undefined &&
+    (!Array.isArray(p.mindmap) ||
+      p.mindmap.length > 60 ||
+      p.mindmap.some(
+        (node, i) =>
+          !node ||
+          typeof node.text !== "string" ||
+          !node.text.trim() ||
+          node.text.length > 160 ||
+          !Number.isInteger(node.parent) ||
+          (i === 0 ? node.parent !== -1 : node.parent < 0 || node.parent >= i),
+      ) ||
+      (p.mindmap.length && p.replacements.length))
+  )
+    throw new Error("Invalid canvas mind map.");
+  if (
+    !Array.isArray(connections) ||
+    connections.length > 40 ||
+    connections.some(
+      (c) =>
+        !c ||
+        !Number.isInteger(c.from) ||
+        !Number.isInteger(c.to) ||
+        c.from < 0 ||
+        c.to < 0 ||
+        c.from >= p.blocks.length ||
+        c.to >= p.blocks.length ||
+        c.from === c.to ||
+        typeof c.label !== "string" ||
+        c.label.length > 200,
+    )
+  )
+    throw new Error("Invalid canvas connections.");
+  validateSourceRefs(p, webContext);
+  return cleanAiProposal(p);
+}
+
+function aiConnectorStroke(index: number) {
+  // A golden-angle step keeps successive arrows far apart on the color wheel.
+  const hue = 210 + index * 137.5;
+  const channels = [0, 120, 240].map(
+    (offset) => (1 + Math.cos(((hue - offset) * Math.PI) / 180)) / 2,
+  );
+  // BlockSuite's custom color picker can round-trip hex values in both themes.
+  const hex = (min: number, max: number) =>
+    "#" +
+    channels
+      .map((c) =>
+        Math.round(min + c * (max - min))
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("");
+  return { light: hex(20, 153), dark: hex(106, 247) };
+}
+
+/** Save one chat response as one editable card, including structured previews. */
+export function addAiMessageCard(doc: Doc, blocks: AiBlock[]) {
+  blocks = blocks.map(cleanAiBlock);
+  if (doc.readonly || !doc.root)
+    throw new Error("Open an editable notebook to add a card.");
+  if (!blocks.length) throw new Error("This message has no content to add.");
+  let right = 0;
+  for (const { model } of doc.getBlocksByFlavour("affine:note")) {
+    const bounds: unknown = JSON.parse((model as NoteBlockModel).xywh);
+    if (
+      Array.isArray(bounds) &&
+      bounds.length === 4 &&
+      bounds.every(Number.isFinite)
+    )
+      right = Math.max(right, bounds[0] + bounds[2] + 80);
+  }
+  const sizes = blocks.map(aiBlockSize);
+  const width = Math.max(...sizes.map((size) => size.width));
+  const height = sizes.reduce((sum, size) => sum + size.height, 0);
+  let id = "";
+  doc.captureSync();
+  doc.transact(() => {
+    id = doc.addBlock(
+      "affine:note",
+      { xywh: `[${right},0,${width},${height}]` },
+      doc.root!,
+    );
+    for (const block of blocks) appendAiBlock(doc, id, block);
+  });
+  doc.captureSync();
+  return id;
+}
+
+export function applyAiProposal(
+  doc: Doc,
+  workspace: string,
+  context: AiContext,
+  input: AiProposal,
+  mode: "rewrite" | "insert" | "canvas",
+) {
+  const proposal = validateProposal(input, context.webContext);
+  const allRefs = [
+    ...new Set([
+      ...proposal.blocks.flatMap((b) => [
+        ...(b.sourceRefs ?? []),
+        ...(b.children ?? []).flatMap((c) => c.sourceRefs ?? []),
+      ]),
+      ...(proposal.connections ?? []).flatMap((c) => c.sourceRefs ?? []),
+      ...(proposal.mindmap ?? []).flatMap((n) => n.sourceRefs ?? []),
+    ]),
+  ];
+  // Resolve and serialize every source before mutating the document.
+  webProvenance(context.webContext, allRefs);
+  if (
+    doc !== context.instance ||
+    doc.id !== context.document ||
+    workspace !== context.workspace ||
+    version(doc) !== context.version ||
+    doc.readonly
+  )
+    throw new Error("This edit is stale. Capture fresh context and try again.");
+  if (mode === "rewrite") {
+    if (
+      !context.ranges.length ||
+      proposal.replacements.length !== context.ranges.length ||
+      proposal.blocks.length
+    )
+      throw new Error("Select text to rewrite and try again.");
+    for (const [i, range] of context.ranges.entries()) {
+      const model = doc.getBlock(range.id)?.model;
+      if (
+        !model?.text ||
+        !["affine:paragraph", "affine:list", "affine:code"].includes(
+          model.flavour,
+        ) ||
+        model.text.toString().slice(range.start, range.start + range.length) !==
+          range.text
+      )
+        throw new Error("The selected block is unavailable or unsupported.");
+      if (
+        (range.attributes.reference || range.attributes.link) &&
+        proposal.replacements[i] !== range.text
+      )
+        throw new Error(
+          "The proposal changed a reference or link. Please try again.",
+        );
+    }
+  } else if (
+    mode !== "canvas" &&
+    (!context.note ||
+      doc.getBlock(context.note)?.model.flavour !== "affine:note" ||
+      !proposal.blocks.length ||
+      proposal.replacements.length)
+  )
+    throw new Error("Open a note before inserting content.");
+  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+    SurfaceBlockModel | undefined;
+  if (
+    mode === "canvas" &&
+    (!context.canvas ||
+      !surface ||
+      !doc.root ||
+      !(proposal.blocks.length || proposal.mindmap?.length) ||
+      proposal.blocks.length > 20 ||
+      proposal.replacements.length)
+  )
+    throw new Error("Open a canvas to create up to 20 cards.");
+  const connections = proposal.connections ?? [];
+  const connectorMode = {
+    curve: ConnectorMode.Curve,
+    elbowed: ConnectorMode.Orthogonal,
+    straight: ConnectorMode.Straight,
+  }[getAiConnectorShape()];
+  let right = 0;
+  if (mode === "canvas")
+    for (const element of [
+      ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
+      ...(surface?.elementModels ?? []),
+    ]) {
+      if ("xywh" in element) {
+        const b = JSON.parse(String(element.xywh));
+        if (Array.isArray(b) && b.length === 4 && b.every(Number.isFinite))
+          right = Math.max(right, b[0] + b[2] + 80);
+      }
+    }
+  doc.captureSync();
+  doc.transact(() => {
+    if (mode === "canvas") {
+      const bounds = layoutAiCards(
+        proposal.blocks.map(aiBlockText),
+        connections,
+        right,
+        proposal.blocks.map(aiBlockSize),
+      );
+      if (proposal.mindmap?.length) {
+        type Node = { text: string; children: Node[]; xywh?: string };
+        const nodes: Node[] = proposal.mindmap.map(({ text }) => ({
+          text,
+          children: [],
+        }));
+        const mapLeft = bounds.length
+          ? Math.max(...bounds.map(([x, , width]) => x + width)) + 160
+          : right;
+        nodes[0].xywh = JSON.stringify([mapLeft, 0, 180, 50]);
+        proposal.mindmap.forEach(({ parent }, i) => {
+          if (i) nodes[parent].children.push(nodes[i]);
+        });
+        surface!.addElement({ type: "mindmap", children: nodes[0] });
+      }
+      const ids = proposal.blocks.map((block, i) => {
+        const [x, y, w, h] = bounds[i];
+        const id = doc.addBlock(
+          "affine:note",
+          { xywh: `[${x},${y},${w},${h}]` },
+          doc.root!,
+        );
+        appendAiBlock(doc, id, block);
+        appendWebProvenance(
+          doc,
+          id,
+          context.webContext,
+          [...(block.sourceRefs ?? [])],
+          block.text,
+        );
+        for (const child of block.children ?? [])
+          appendWebProvenance(
+            doc,
+            id,
+            context.webContext,
+            child.sourceRefs ?? [],
+            child.text,
+          );
+        for (const edge of connections.filter((c) => c.from === i))
+          appendWebProvenance(
+            doc,
+            id,
+            context.webContext,
+            edge.sourceRefs ?? [],
+            `Connection: ${edge.label}`,
+          );
+        return id;
+      });
+      if (proposal.mindmap?.some((n) => n.sourceRefs?.length)) {
+        const id =
+          ids[0] ??
+          doc.addBlock(
+            "affine:note",
+            {
+              xywh: `[${right},${Math.max(0, ...bounds.map((b) => b[1] + b[3])) + 100},420,320]`,
+            },
+            doc.root!,
+          );
+        for (const node of proposal.mindmap)
+          appendWebProvenance(
+            doc,
+            id,
+            context.webContext,
+            node.sourceRefs ?? [],
+            `Mind map node: ${node.text}`,
+          );
+      }
+      for (const [index, c] of connections.entries()) {
+        const ports = aiConnectorPorts(bounds[c.from], bounds[c.to]);
+        surface!.addElement({
+          type: "connector",
+          mode: connectorMode,
+          stroke: aiConnectorStroke(index),
+          source: { id: ids[c.from], position: ports.source },
+          target: { id: ids[c.to], position: ports.target },
+          text: new Y.Text(c.label),
+        });
+      }
+    } else if (mode === "rewrite") {
+      for (let i = context.ranges.length - 1; i >= 0; i--) {
+        const r = context.ranges[i],
+          text = doc.getBlock(r.id)!.model.text!;
+        text.delete(r.start, r.length);
+        text.insert(proposal.replacements[i], r.start, r.attributes);
+      }
+    } else
+      for (const block of proposal.blocks) {
+        appendAiBlock(doc, context.note!, block);
+        appendWebProvenance(
+          doc,
+          context.note!,
+          context.webContext,
+          block.sourceRefs ?? [],
+          block.text,
+        );
+        for (const child of block.children ?? [])
+          appendWebProvenance(
+            doc,
+            context.note!,
+            context.webContext,
+            child.sourceRefs ?? [],
+            child.text,
+          );
+      }
+  });
+  let item = doc.history.undoStack.at(-1);
+  let appliedVersion = version(doc);
+  const finishCapture = () => {
+    doc.captureSync();
+    item = doc.history.undoStack.at(-1);
+    appliedVersion = version(doc);
+  };
+  // BlockSuite lays out newly created mind maps in a microtask.
+  if (proposal.mindmap?.length) queueMicrotask(finishCapture);
+  else finishCapture();
+  return () => {
+    if (
+      version(doc) !== appliedVersion ||
+      doc.history.undoStack.at(-1) !== item
+    )
+      throw new Error(
+        "There are newer edits. Use the editor’s Undo to undo them in order.",
+      );
+    doc.undo();
+  };
+}

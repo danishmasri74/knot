@@ -1,0 +1,76 @@
+.view-transition {
+  position: absolute;
+  inset: 56px 0 0;
+  z-index: 12;
+  background: var(--affine-background-primary-color);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  transition: opacity 0.22s;
+}
+.view-transition.done {
+  opacity: 0;
+}
+.view-transition span {
+  font-size: 14px;
+  color: light-dark(#555, #aaa);
+}
+.view-transition .signal {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 9px;
+}
+.view-transition .signal i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #b4bdc7;
+  animation: signal-wave 1.65s ease-in-out infinite;
+}
+.view-transition .signal i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.view-transition .signal i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+@keyframes signal-wave {
+  0%,
+  65%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 0.95;
+  }
+}
+.view-transition .loading-tip {
+  position: absolute;
+  bottom: clamp(24px, 12vh, 100px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(82%, 52ch);
+  text-align: center;
+  text-wrap: balance;
+  color: light-dark(#555, #bebfbc);
+  line-height: 1.55;
+}
+@media (max-height: 440px) {
+  .view-transition .loading-tip {
+    position: static;
+    transform: none;
+    width: min(80vw, 460px);
+    margin-top: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-transition,
+  .view-transition * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

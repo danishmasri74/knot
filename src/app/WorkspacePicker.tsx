@@ -12,35 +12,18 @@ export function WorkspacePicker({
   catalog,
   busy,
   onSwitch,
-  onClose,
   onOpenExternal,
   onRelocate,
 }: {
   catalog: WorkspaceCatalog;
   busy: boolean;
   onSwitch: (id: string) => void;
-  onClose: () => void;
   onOpenExternal: () => void;
   onRelocate: () => void;
 }) {
   return (
     <section className="recovery-panel" aria-label="Workspace picker">
-      <h2>Workspaces</h2>
-      <p>
-        Open a managed workspace or an existing Knot folder. Changes are saved
-        before switching.
-      </p>
-      <button disabled={busy} onClick={onOpenExternal}>
-        Open workspace folder
-      </button>{" "}
-      <button disabled={busy || !catalog.active} onClick={onRelocate}>
-        Relocate workspace
-      </button>
-      <p>
-        Relocation creates and opens a validated copy in a new folder. The
-        source remains as a recovery copy; later edits are independent. Managed
-        backups stay in application storage.
-      </p>
+      <p className="workspace-intro">Your spaces for notes and ideas.</p>
       {catalog.warning && <p role="alert">{catalog.warning}</p>}
       {!catalog.active && (
         <p>
@@ -49,13 +32,17 @@ export function WorkspacePicker({
         </p>
       )}
       {catalog.entries.map((entry) => (
-        <div className="trash-row" key={entry.id}>
+        <div className="workspace-card" key={entry.id}>
           <span>
             <strong>{workspaceName(entry.id)}</strong>
-            <small>{entry.path}</small>
+            <small>
+              {catalog.active === entry.id
+                ? "You’re working here"
+                : "Ready to open"}
+            </small>
           </span>
           {catalog.active === entry.id ? (
-            <span>Current</span>
+            <span className="workspace-current">✓ Current</span>
           ) : (
             <button
               disabled={busy}
@@ -68,10 +55,36 @@ export function WorkspacePicker({
         </div>
       ))}
       {!catalog.entries.length && <p>No known workspaces found.</p>}
-      <p>Restored backups remain separate from the original workspace.</p>
-      <button disabled={busy} onClick={onClose}>
-        Close workspaces
+      <button
+        className="workspace-open"
+        disabled={busy}
+        onClick={onOpenExternal}
+      >
+        + Open workspace folder
       </button>
+      <details className="workspace-storage">
+        <summary>Storage & advanced</summary>
+        {catalog.entries
+          .filter((entry) => entry.id === catalog.active)
+          .map((entry) => (
+            <p key={entry.id}>
+              <strong>Workspace location</strong>
+              <br />
+              {entry.path}
+            </p>
+          ))}
+        <button disabled={busy || !catalog.active} onClick={onRelocate}>
+          Relocate workspace
+        </button>
+        <p>
+          Creates and opens a copy in a new folder. The original stays as a
+          recovery copy; later edits are independent.
+        </p>
+        <p>
+          Managed backups stay in application storage. Restored backups open as
+          separate workspaces.
+        </p>
+      </details>
     </section>
   );
 }

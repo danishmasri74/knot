@@ -1,36 +1,37 @@
 import type { BacklinkReport } from "../features/editor/blocksuite/backlinks";
 import type { KnowledgeObject } from "../services/workspace";
+import { ShellIcon } from "./ShellIcon";
 
 export function BacklinksPanel({
   report,
   busy,
   onRefresh,
   onOpen,
-  onClose,
 }: {
   report: BacklinkReport | null;
   busy: boolean;
   onRefresh: () => void;
   onOpen: (source: KnowledgeObject) => void;
-  onClose: () => void;
 }) {
   return (
     <section className="backlinks-panel" aria-label="Backlinks">
-      <div className="actions">
-        <strong>Backlinks</strong>
-        <button disabled={busy} onClick={onRefresh}>
-          Refresh backlinks
+      <header className="backlinks-header">
+        <div>
+          <p>Notebooks that link here</p>
+        </div>
+        <button
+          type="button"
+          className="backlinks-refresh"
+          aria-label="Refresh backlinks"
+          data-tooltip="Refresh backlinks"
+          disabled={busy}
+          onClick={onRefresh}
+        >
+          <ShellIcon name="refresh" size={16} />
         </button>
-        <button disabled={busy} onClick={onClose}>
-          Close backlinks
-        </button>
-      </div>
-      <p>
-        Other live documents linking here. Results reflect the last scan;
-        refresh after edits.
-      </p>
+      </header>
       {!report ? (
-        <p>
+        <p className="backlinks-state" role="status">
           {busy
             ? "Scanning saved documents…"
             : "Scan unavailable. Refresh to retry."}
@@ -38,7 +39,7 @@ export function BacklinksPanel({
       ) : (
         <>
           {report.unreadable.length > 0 && (
-            <p role="status">
+            <p className="backlinks-warning" role="status">
               Partial results: could not read {report.unreadable.length} saved
               document(s):{" "}
               {report.unreadable.map((row) => row.title).join(", ")}. Use Check
@@ -46,27 +47,35 @@ export function BacklinksPanel({
             </p>
           )}
           {report.sources.length ? (
-            <ul>
+            <ul className="backlinks-list">
               {report.sources.map((row) => (
                 <li key={row.id}>
                   <button
+                    type="button"
+                    aria-label={row.title}
                     disabled={busy}
                     onClick={() => onOpen(row)}
-                    title={row.id}
+                    data-tooltip={row.title}
                   >
-                    {row.title}
-                  </button>{" "}
-                  <small>
-                    {row.kind === "whiteboard" ? "Whiteboard" : "Note"}
-                  </small>
+                    <span className="backlinks-object-icon">
+                      <ShellIcon name="notebook" size={18} />
+                    </span>
+                    <span className="backlinks-source">
+                      <span>{row.title}</span>
+                    </span>
+                    <ShellIcon name="external" size={16} />
+                  </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p>
-              No backlinks found
-              {report.unreadable.length ? " in readable documents" : ""}.
-            </p>
+            <div className="backlinks-state" role="status">
+              <ShellIcon name="backlinks" size={22} />
+              <p>
+                No backlinks found
+                {report.unreadable.length ? " in readable documents" : ""}.
+              </p>
+            </div>
           )}
         </>
       )}

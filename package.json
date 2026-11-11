@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "update:running": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-running.ps1",
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/verify-topic-model.mjs && tsc -b && vite build",
     "check": "tsc -b",
     "tauri": "tauri",
     "test": "vitest run",
@@ -14,12 +15,17 @@
   },
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
+    "@blocksuite/affine-shared": "0.19.5",
+    "@blocksuite/block-std": "0.19.5",
     "@blocksuite/blocks": "0.19.5",
     "@blocksuite/presets": "0.19.5",
     "@blocksuite/store": "0.19.5",
+    "@huggingface/transformers": "3.8.1",
+    "@mozilla/readability": "^0.6.0",
     "@tauri-apps/api": "^2.12.4",
     "@toeverything/theme": "1.1.23",
-    "fflate": "0.8.3",
+    "linkedom": "^0.18.15",
+    "lit": "3.3.3",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.4.299",
     "react": "^18.3.1",
@@ -29,6 +35,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.12.4",
+    "@types/mozilla__readability": "^0.4.2",
     "@types/node": "^22.20.5",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
@@ -49,6 +56,11 @@
     },
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "patchedDependencies": {
+      "@blocksuite/blocks@0.19.5": "patches/@blocksuite__blocks@0.19.5.patch",
+      "@blocksuite/block-std@0.19.5": "patches/@blocksuite__block-std@0.19.5.patch",
+      "@blocksuite/data-view@0.19.5": "patches/@blocksuite__data-view@0.19.5.patch"
+    }
   }
 }

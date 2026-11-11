@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import * as Y from "yjs";
 import {
   savedSearchText,
+  savedSearchContent,
   searchSavedDocuments,
   SEARCH_BYTES,
 } from "../src/features/editor/blocksuite/search";
@@ -163,4 +164,84 @@ it("fresh scans reflect changed saved bodies and incomplete updates are refused"
   snapshot.document = [...Y.encodeStateAsUpdate(doc, vector)];
   expect(() => savedSearchText("a", snapshot)).toThrow("Incomplete");
   doc.destroy();
+});
+it("structured context follows tree order and retains note ownership and task state", async () => {
+  const envelope = new Y.Doc(),
+    body = new Y.Doc();
+  envelope.getMap("meta").set("pages", [{ id: "doc" }]);
+  const add = (
+    id: string,
+    flavour: string,
+    children: string[],
+    text?: string,
+    type?: string,
+    checked?: boolean,
+  ) => {
+    const b = new Y.Map();
+    b.set("sys:flavour", `affine:${flavour}`);
+    b.set("sys:children", Y.Array.from(children));
+    if (text !== undefined) b.set("prop:text", new Y.Text(text));
+    if (type) b.set("prop:type", type);
+    if (checked !== undefined) b.set("prop:checked", checked);
+    body.getMap("blocks").set(id, b);
+  };
+  add("done", "list", [], "Finished", "todo", true);
+  add("open", "list", [], "Remaining", "todo", false);
+  add("heading", "paragraph", [], "Tasks", "h2");
+  add("note", "note", ["heading", "open", "done"]);
+  add("nested", "list", [], "Remaining nested", "bulleted");
+  add("second-heading", "paragraph", ["nested"], "Other tasks");
+  add("second-note", "note", ["second-heading"]);
+  add("attachment", "attachment", [], "Remaining excluded");
+  add("root", "page", ["note", "second-note", "attachment"]);
+  const snapshot = {
+    collection: [...Y.encodeStateAsUpdate(envelope)],
+    document: [...Y.encodeStateAsUpdate(body)],
+  };
+  const blocks = JSON.parse(savedSearchText("doc", snapshot, true));
+  expect(blocks.map((b: { id: string }) => b.id)).toEqual([
+    "heading",
+    "open",
+    "done",
+    "second-heading",
+    "nested",
+    "attachment",
+  ]);
+  expect(blocks[0]).toMatchObject({ type: "h2", note: "note", parent: "note" });
+  expect(blocks[1].checked).toBe(false);
+  expect(blocks[2].checked).toBe(true);
+  const before = JSON.stringify(snapshot);
+  const content = savedSearchContent("doc", snapshot);
+  expect(content.notes).toEqual([
+    { id: "note", title: "Tasks", text: "Tasks\nRemaining\nFinished" },
+    {
+      id: "second-note",
+      title: "Other tasks",
+      text: "Other tasks\nRemaining nested",
+    },
+  ]);
+  const report = await searchSavedDocuments(
+    "remaining",
+    async () => [row("doc")],
+    async () => snapshot,
+    async (id, saved) => savedSearchContent(id, saved),
+  );
+  expect(
+    report.results.map(({ noteId, noteTitle }) => ({ noteId, noteTitle })),
+  ).toEqual([
+    { noteId: "note", noteTitle: "Tasks" },
+    { noteId: "second-note", noteTitle: "Other tasks" },
+  ]);
+  const title = await searchSavedDocuments(
+    "doc",
+    async () => [row("doc")],
+    async () => snapshot,
+    async (id, saved) => savedSearchContent(id, saved),
+  );
+  expect(title.results).toEqual([
+    { source: row("doc"), excerpt: "Title match" },
+  ]);
+  expect(JSON.stringify(snapshot)).toBe(before);
+  envelope.destroy();
+  body.destroy();
 });

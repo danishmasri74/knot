@@ -1,0 +1,106 @@
+/* An overlay inside each editor; neither state takes space from the page. */
+affine-editor-container:has(> .floating-toc) {
+  position: relative;
+}
+.floating-toc {
+  position: absolute;
+  z-index: 8;
+  top: 72px;
+  right: 12px;
+  width: 40px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 100px);
+  overflow: auto;
+  scrollbar-width: none;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--dropdown-radius);
+  background: transparent;
+  outline: none;
+  transition:
+    width 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.floating-toc[hidden] {
+  display: none;
+}
+.floating-toc::-webkit-scrollbar {
+  display: none;
+}
+.floating-toc[data-expanded] {
+  width: 280px;
+  padding: var(--dropdown-padding);
+  border-color: var(--dropdown-border);
+  background: var(--dropdown-surface);
+  color: var(--dropdown-text);
+  box-shadow: var(--dropdown-shadow);
+}
+.floating-toc button {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dropdown-row-radius);
+  background: transparent;
+  color: var(--shell-muted);
+  text-align: left;
+  transition: height 160ms ease;
+}
+.floating-toc-line {
+  display: block;
+  flex: none;
+  height: 2px;
+  width: calc(24px - var(--toc-depth) * 3px);
+  margin-left: calc(var(--toc-depth) * 3px);
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.4;
+}
+.floating-toc button[aria-current] {
+  color: var(--shell-text);
+}
+.floating-toc button[aria-current] .floating-toc-line {
+  opacity: 1;
+}
+.floating-toc-title {
+  display: none;
+}
+.floating-toc[data-expanded] button {
+  height: auto;
+  min-height: var(--dropdown-row-height);
+  padding: var(--dropdown-row-padding);
+  padding-left: calc(var(--dropdown-row-padding) + var(--toc-depth) * 12px);
+  font-size: 13px;
+  line-height: 20px;
+}
+.floating-toc[data-expanded] button + button {
+  margin-top: var(--dropdown-gap);
+}
+.floating-toc[data-expanded] .floating-toc-line {
+  display: none;
+}
+.floating-toc[data-expanded] .floating-toc-title {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.floating-toc[data-expanded] button:is(:hover, [aria-current]) {
+  background: var(--dropdown-highlight);
+}
+.floating-toc button:focus-visible {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-toc,
+  .floating-toc button {
+    transition: none;
+  }
+}
+.floating-toc {
+  box-sizing: border-box;
+}

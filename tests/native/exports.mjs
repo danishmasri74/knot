@@ -1,3 +1,4 @@
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -42,7 +43,7 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -57,6 +58,8 @@ async function stop() {
 
 async function capture(format, name) {
   console.log("CAPTURE", format, name);
+  if (!(await page.getByLabel("Export format").isVisible()))
+    await click("Export");
   await page.getByLabel("Export format").selectOption(format);
   await click("Save export");
   const result = await page.evaluate(() => window.exportCapture);
@@ -111,7 +114,7 @@ try {
   await page.keyboard.type("Export body with Unicode café.");
   await page.keyboard.press("Control+a");
   await page.keyboard.press("Control+b");
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   await click("Export");
   const md = await capture("markdown", "plain");
@@ -166,7 +169,7 @@ try {
   assert.equal(assets.length, 2);
   assert.deepEqual(Buffer.from(assets[1].bytes), Buffer.from(png[0].bytes));
   assert.ok(Buffer.from(assets[0].bytes).toString().includes(assets[1].name));
-  await click("◇ Canvas");
+  await click("Canvas");
   await page.evaluate(() => {
     const root = document.querySelector("affine-edgeless-root");
     root.service.addElement("shape", {
@@ -221,7 +224,7 @@ try {
     1,
   );
   await page.screenshot({ path: path.join(root, "export-panel.png") });
-  await click("▤ Page");
+  await click("Page");
   const db = new DatabaseSync(path.join(root, "Workspace/knot.db"));
   db.exec(
     "CREATE TRIGGER reject_export_save BEFORE UPDATE ON documents BEGIN SELECT RAISE(FAIL,'export save failure'); END;",
@@ -249,7 +252,7 @@ try {
   await ready();
   await page.locator("affine-paragraph [contenteditable=true]").click();
   await page.keyboard.type("Only in referenced source note.");
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   const referenceId = await page.evaluate(
     () => document.querySelector("affine-editor-container").doc.id,
@@ -290,7 +293,7 @@ try {
     window.exportBehavior = null;
   });
   await capture("markdown", "destination-retry");
-  await click("◇ Canvas");
+  await click("Canvas");
   await page.evaluate(() =>
     document.querySelector("affine-edgeless-root").service.addElement("shape", {
       xywh: "[0,0,20000,20000]",

@@ -1,0 +1,76 @@
+diff --git a/dist/core/component/overflow/overflow.js b/dist/core/component/overflow/overflow.js
+index 5d2b947..0873c65 100644
+--- a/dist/core/component/overflow/overflow.js
++++ b/dist/core/component/overflow/overflow.js
+@@ -73,14 +73,21 @@ let Overflow = (() => {
+         static { this.styles = css `
+     component-overflow {
+       display: flex;
+-      flex-wrap: wrap;
++      flex-wrap: nowrap;
++      min-width: 0;
+       width: 100%;
+       position: relative;
+     }
+ 
+-    .component-overflow-item {
++    /* Measure the same intrinsic width whether a tab is visible or hidden.
++       Hidden tabs must also override the app-wide display:none utility. */
++    .component-overflow-item,
++    .component-overflow-more {
++      flex: 0 0 auto;
++      width: max-content;
+     }
+     .component-overflow-item.hidden {
++      display: block;
+       opacity: 0;
+       pointer-events: none;
+       position: absolute;
+@@ -101,7 +108,8 @@ let Overflow = (() => {
+             });
+             resize.observe(this);
+             this.disposables.add(() => {
+-                resize.unobserve(this);
++                resize.disconnect();
++      if (this.frameId !== undefined) cancelAnimationFrame(this.frameId);
+             });
+         }
+         doAdjustStyle() {
+diff --git a/src/core/component/overflow/overflow.ts b/src/core/component/overflow/overflow.ts
+index dd9bde3..1a62bbc 100644
+--- a/src/core/component/overflow/overflow.ts
++++ b/src/core/component/overflow/overflow.ts
+@@ -9,14 +9,21 @@ export class Overflow extends SignalWatcher(WithDisposable(ShadowlessElement)) {
+   static override styles = css`
+     component-overflow {
+       display: flex;
+-      flex-wrap: wrap;
++      flex-wrap: nowrap;
++      min-width: 0;
+       width: 100%;
+       position: relative;
+     }
+ 
+-    .component-overflow-item {
++    /* Measure the same intrinsic width whether a tab is visible or hidden.
++       Hidden tabs must also override the app-wide display:none utility. */
++    .component-overflow-item,
++    .component-overflow-more {
++      flex: 0 0 auto;
++      width: max-content;
+     }
+     .component-overflow-item.hidden {
++      display: block;
+       opacity: 0;
+       pointer-events: none;
+       position: absolute;
+@@ -44,7 +51,8 @@ export class Overflow extends SignalWatcher(WithDisposable(ShadowlessElement)) {
+     });
+     resize.observe(this);
+     this.disposables.add(() => {
+-      resize.unobserve(this);
++      resize.disconnect();
++      if (this.frameId !== undefined) cancelAnimationFrame(this.frameId);
+     });
+   }
+ 

@@ -1,3 +1,4 @@
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
@@ -39,7 +40,7 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -60,8 +61,10 @@ try {
   db.exec(
     "CREATE TRIGGER reject_backup_save BEFORE UPDATE ON documents BEGIN SELECT RAISE(FAIL,'backup save failure'); END;",
   );
+  await click("Close Backups panel");
   await page.locator("affine-paragraph [contenteditable=true]").click();
   await page.keyboard.type("Saved inside managed backup.");
+  await click("Manage backups");
   await click("Create backup");
   await page
     .getByRole("alert")
@@ -82,9 +85,11 @@ try {
       json: JSON.stringify(doc.spaceDoc.getMap("blocks").toJSON()),
     };
   });
+  await click("Close Backups panel");
   await page.locator("affine-paragraph [contenteditable=true]").click();
   await page.keyboard.press("End");
   await page.keyboard.type(" Newer original edit.");
+  await click("Manage backups");
   await click("Restore archive");
   await page.waitForSelector("affine-paragraph");
   const restored = await page.evaluate(() => {

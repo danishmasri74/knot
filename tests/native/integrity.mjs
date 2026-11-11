@@ -1,3 +1,4 @@
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
@@ -32,12 +33,15 @@ try {
   const page = browser.contexts()[0].pages()[0];
   await page.waitForSelector("affine-paragraph", { timeout: 60000 });
   const click = async (name) => {
-    await page.getByRole("button", { name, exact: true }).click();
+    await clickShellButton(page, name);
     await page.waitForFunction(
       () => document.querySelector(".primary")?.disabled === false,
     );
+    const report = page.locator(".health-report");
+    if ((await report.count()) && (await report.getAttribute("open")) === null)
+      await report.locator(":scope > summary").click();
   };
-  await click("✓ Check workspace");
+  await click("Check workspace");
   await page
     .getByText("SQLite integrity and stored relationships passed.")
     .waitFor();
@@ -91,9 +95,9 @@ try {
     .getByText(/Reference target broken is without a readable saved snapshot/)
     .waitFor();
   await page
-    .getByText(
-      "1 asset records checked; 1 missing, 0 corrupt, 1 unindexed files.",
-    )
+    .locator(".health-results > div")
+    .filter({ hasText: "Attachments" })
+    .getByText("1 to review", { exact: true })
     .waitFor();
   await page.getByText("Missing: fixture.png · 2 associated documents").click();
   await page
@@ -105,9 +109,9 @@ try {
   await writeFile(assetPath, "damaged");
   await click("Check again");
   await page
-    .getByText(
-      "1 asset records checked; 0 missing, 1 corrupt, 1 unindexed files.",
-    )
+    .locator(".health-results > div")
+    .filter({ hasText: "Attachments" })
+    .getByText("1 to review", { exact: true })
     .waitFor();
   assert.deepEqual(
     db.prepare("SELECT * FROM documents ORDER BY object_id").all(),
@@ -121,14 +125,13 @@ try {
     .waitFor();
   await click("Recovery backups");
   await page.getByRole("region", { name: "Backup management" }).waitFor();
-  await click("Close backups");
-  await click("Close report");
+  await click("Close Backups panel");
   assert.equal(
     await page.getByRole("region", { name: "Workspace integrity" }).count(),
     0,
   );
   // A failed audit must not leave a stale passing report visible.
-  await click("✓ Check workspace");
+  await click("Check workspace");
   await unlink(orphan);
   db.exec("DROP TABLE object_attachments");
   await click("Check again");

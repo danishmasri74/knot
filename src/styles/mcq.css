@@ -1,0 +1,495 @@
+knot-mcq,
+knot-mcq-reference {
+  display: block;
+}
+
+/* The canvas normally covers rich notes with a drag mask. A visible quiz
+   handles its controls directly while the surrounding card still receives drag events. */
+.edgeless-note-container:has(knot-mcq):not(
+    :has([data-knot-note-live][style*="pointer-events: none"])
+  )
+  > edgeless-note-mask
+  .affine-note-mask {
+  pointer-events: none !important;
+}
+.knot-mcq {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0;
+  min-width: 0;
+  color: var(--shell-text);
+  font:
+    400 15px/1.5 Inter,
+    "Segoe UI",
+    sans-serif;
+  text-align: start;
+}
+.knot-mcq header,
+.knot-mcq footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.mcq-player-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.knot-mcq header {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.knot-mcq fieldset,
+.mcq-form-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+.knot-mcq legend,
+.knot-mcq .mcq-question {
+  max-width: 100%;
+  padding: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.knot-mcq legend {
+  margin-bottom: 10px;
+}
+.knot-mcq .mcq-question {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.knot-mcq .mcq-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 32px;
+  padding: 5px 4px;
+  margin: 0;
+  border-radius: var(--shell-radius);
+  text-align: start;
+}
+.knot-mcq .mcq-choice:has(input:enabled) {
+  cursor: pointer;
+}
+.knot-mcq .mcq-choice:has(input:enabled):hover {
+  background: var(--shell-selected);
+}
+.knot-mcq .mcq-choice > input[type="radio"] {
+  appearance: none;
+  box-sizing: border-box;
+  flex: 0 0 18px;
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 2px 0 0;
+  border: 1px solid var(--shell-muted);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--shell-accent);
+  opacity: 1;
+  cursor: inherit;
+}
+.knot-mcq .mcq-choice > input[type="radio"]:checked {
+  border: 6px solid currentColor;
+}
+.knot-mcq .mcq-choice > input[type="radio"]:focus-visible {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: 2px;
+}
+.mcq-choice-text {
+  min-width: 0;
+}
+.knot-mcq legend,
+.knot-mcq .mcq-question,
+.mcq-choice-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.knot-mcq p {
+  margin: 0;
+}
+.knot-mcq footer {
+  justify-content: flex-start;
+}
+.mcq-feedback {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--shell-border);
+  padding-top: 12px;
+}
+.mcq-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+.mcq-result-icon {
+  width: 18px;
+  height: 18px;
+  color: light-dark(#a12623, #f28b82);
+}
+.mcq-feedback[data-correct="true"] .mcq-result-icon {
+  color: light-dark(#28734e, #74d5a2);
+}
+.knot-mcq .mcq-explanation {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.mcq-explanation-copy {
+  white-space: pre-wrap;
+}
+.knot-mcq button {
+  font: inherit;
+  font-size: 13px;
+  border-radius: var(--shell-radius);
+}
+.knot-mcq button.mcq-quiet-action {
+  padding: 3px 4px;
+  color: var(--shell-muted);
+}
+.knot-mcq button.mcq-quiet-action:hover:not(:disabled) {
+  color: var(--shell-text);
+  background: var(--shell-selected);
+}
+.knot-mcq button.mcq-check-action {
+  padding: 6px 12px;
+  font-weight: 600;
+  background: var(--shell-accent);
+  color: var(--shell-surface);
+}
+.knot-mcq button.mcq-check-action:disabled {
+  background: var(--shell-selected);
+  color: var(--shell-muted);
+}
+/* Only the embedded player's controls rise above the canvas drag mask. */
+[data-knot-note-live]:not([style*="pointer-events: none"])
+  .mcq-embedded
+  :is(label, button),
+[data-knot-note-live]:not([style*="pointer-events: none"])
+  .mcq-unavailable
+  button {
+  position: relative;
+  z-index: 2;
+}
+.mcq-embedded,
+.mcq-unavailable {
+  border-block-start: 1px solid var(--shell-border);
+  padding-block: 10px;
+}
+
+.mcq-composer {
+  margin: auto;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  overflow: visible;
+  box-sizing: border-box;
+  color: var(--dropdown-text);
+  background: var(--dropdown-surface);
+  border: 1px solid var(--dropdown-border);
+  border-radius: var(--dropdown-radius);
+  box-shadow: var(--dropdown-shadow);
+  font-size: var(--shell-font);
+}
+/* Same dim as the settings modal. */
+.mcq-composer::backdrop {
+  background: #0006;
+}
+.mcq-composer form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 26px);
+}
+.mcq-composer-header,
+.mcq-composer-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.mcq-composer h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+}
+.mcq-added {
+  margin-inline-start: 8px;
+  color: var(--shell-muted);
+  font-size: var(--shell-font);
+  font-weight: 400;
+}
+.mcq-composer-header > button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+}
+.mcq-composer-header .shell-icon {
+  width: 16px;
+  height: 16px;
+}
+.mcq-composer-tabs {
+  display: flex;
+  gap: var(--dropdown-gap);
+  padding: 0 16px 8px;
+  border-bottom: 1px solid var(--dropdown-border);
+}
+.mcq-composer-tabs button {
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: var(--dropdown-row-radius);
+}
+.mcq-composer-tabs button[aria-selected="true"] {
+  background: var(--dropdown-highlight);
+  font-weight: 600;
+}
+.mcq-composer-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 16px 16px;
+  scrollbar-gutter: stable;
+}
+.mcq-composer-body > p {
+  margin-block: 8px;
+}
+.mcq-form-fields {
+  display: grid;
+  gap: 16px;
+}
+.mcq-field,
+.mcq-answers {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.mcq-composer :is(textarea, input[type="search"]) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  color: inherit;
+  background: var(--dropdown-surface);
+  border: 1px solid var(--dropdown-border);
+  border-radius: var(--dropdown-row-radius);
+  font: inherit;
+  line-height: 1.4;
+  padding: 7px 9px;
+}
+.mcq-composer textarea {
+  field-sizing: content;
+  resize: none;
+  max-height: 130px;
+  min-height: calc(2.8em + 16px);
+}
+.mcq-composer textarea:focus,
+.mcq-composer input[type="search"]:focus {
+  outline: 1px solid var(--shell-accent);
+  outline-offset: 0;
+}
+.mcq-form-fields blockquote {
+  margin: 6px 0 0;
+  max-height: 8rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Answer rows: letter (marks correct) · text · remove. */
+.mcq-answer-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mcq-answer-heading small {
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+.mcq-option-editor {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  align-items: center;
+  column-gap: 8px;
+}
+.mcq-option-editor textarea {
+  min-height: calc(1.4em + 16px);
+}
+.mcq-key {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--dropdown-border);
+  border-radius: var(--dropdown-row-radius);
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.mcq-key input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.mcq-key:hover {
+  background: var(--dropdown-highlight);
+  color: var(--shell-text);
+}
+.mcq-key:has(input:checked) {
+  background: var(--shell-accent);
+  border-color: var(--shell-accent);
+  color: var(--shell-surface);
+}
+.mcq-key:has(input:focus-visible) {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: 2px;
+}
+.mcq-key:has(input[aria-invalid="true"]) {
+  border-color: light-dark(#a12623, #f28b82);
+}
+.mcq-remove-answer {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--shell-muted);
+  border-radius: var(--dropdown-row-radius);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.mcq-option-editor:is(:hover, :focus-within) .mcq-remove-answer {
+  opacity: 1;
+}
+.mcq-remove-answer:hover {
+  background: var(--dropdown-highlight);
+  color: var(--shell-text);
+}
+.mcq-remove-answer .shell-icon {
+  width: 14px;
+  height: 14px;
+}
+.mcq-option-editor > .mcq-field-error {
+  grid-column: 2 / -1;
+}
+.mcq-form-fields details textarea {
+  margin-top: 6px;
+}
+.mcq-add-answer {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 26px;
+  padding: 4px 6px;
+  color: var(--shell-muted);
+  border-radius: var(--dropdown-row-radius);
+}
+.mcq-add-answer:hover {
+  background: var(--dropdown-highlight);
+  color: var(--shell-text);
+}
+.mcq-add-answer .shell-icon {
+  width: 14px;
+  height: 14px;
+}
+.mcq-composer textarea::placeholder {
+  color: var(--shell-muted);
+  opacity: 0.7;
+}
+.mcq-another {
+  padding: 6px 10px;
+  color: var(--shell-muted);
+  border-radius: var(--dropdown-row-radius);
+}
+.mcq-another:hover:not(:disabled) {
+  background: var(--dropdown-highlight);
+  color: var(--shell-text);
+}
+.mcq-hint {
+  margin: 0;
+  color: var(--shell-muted);
+}
+.mcq-field-error {
+  color: light-dark(#a12623, #f28b82);
+}
+.mcq-composer-footer {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--dropdown-border);
+}
+.mcq-composer-footer > [role="status"] {
+  margin-inline-end: auto;
+}
+.mcq-picker ul {
+  list-style: none;
+  padding: var(--dropdown-padding);
+  margin: 8px 0 0;
+}
+.mcq-picker li button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: start;
+  padding: var(--dropdown-row-padding);
+  border-radius: var(--dropdown-row-radius);
+}
+.mcq-picker li button:hover,
+.mcq-picker li button:focus-visible {
+  background: var(--dropdown-highlight);
+}
+.mcq-picker strong,
+.mcq-picker small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.mcq-picker small {
+  color: var(--shell-muted);
+}
+.mcq-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mcq-deck-preview {
+  display: grid;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+.mcq-deck-preview small {
+  color: var(--shell-muted);
+}
+
+.note-page-pane:has(.note-page-insert) {
+  display: flex;
+  flex-direction: column;
+}
+.note-page-pane:has(.note-page-insert) > .note-page-host {
+  flex: 1;
+  height: auto;
+}
+.note-page-insert {
+  display: flex;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--shell-border);
+}
+.note-page-insert > button {
+  padding: 4px 8px;
+}

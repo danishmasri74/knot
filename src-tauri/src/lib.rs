@@ -1,13 +1,23 @@
+mod ai;
+mod ai_context;
+mod topic;
 mod backup;
+mod browser;
+mod canvas_previews;
+mod collections;
+mod diagnostics;
 mod exports;
+mod getting_started;
 mod managed_backups;
 mod migrations;
-mod organization;
+mod mcq;
+mod paths;
 mod quarantine;
 mod storage;
 #[cfg(test)]
 mod tests;
 mod workspaces;
+mod web_sources;
 use std::sync::Mutex;
 use storage::{Object, Snapshot, Workspace};
 use tauri::{Manager, State};
@@ -16,6 +26,18 @@ struct AppState {
     base: std::path::PathBuf,
 }
 type Reply<T> = Result<T, String>;
+#[tauri::command]
+async fn getting_started_status(state: State<'_, AppState>) -> Reply<getting_started::Status> {
+    with(&state, |w| w.getting_started_status())
+}
+#[tauri::command]
+async fn install_getting_started(
+    state: State<'_, AppState>,
+    tour: getting_started::Tour,
+    fresh: bool,
+) -> Reply<String> {
+    with(&state, |w| w.install_getting_started(tour, fresh))
+}
 #[tauri::command]
 async fn export_document(
     title: String,
@@ -64,12 +86,20 @@ async fn delete_backup(state: State<'_, AppState>, id: String) -> Reply<()> {
     managed_backups::delete(&state.base, &id).map_err(|e| e.to_string())
 }
 #[tauri::command]
-async fn restore_managed_backup(state: State<'_, AppState>, id: String) -> Reply<String> {
-    let mut guard = state
-        .workspace
-        .lock()
-        .map_err(|_| "Workspace lock unavailable")?;
-    managed_backups::restore(&state.base, &mut guard, &id).map_err(|e| e.to_string())
+async fn restore_managed_backup(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Reply<String> {
+    let restored = {
+        let mut guard = state
+            .workspace
+            .lock()
+            .map_err(|_| "Workspace lock unavailable")?;
+        managed_backups::restore(&state.base, &mut guard, &id).map_err(|e| e.to_string())?
+    };
+    browser::after_transition(&app).await;
+    Ok(restored)
 }
 #[tauri::command]
 async fn workspace_catalog(state: State<'_, AppState>) -> Reply<workspaces::Catalog> {
@@ -80,15 +110,23 @@ async fn workspace_catalog(state: State<'_, AppState>) -> Reply<workspaces::Cata
     workspaces::catalog(&state.base, &guard).map_err(|e| e.to_string())
 }
 #[tauri::command]
-async fn switch_workspace(state: State<'_, AppState>, id: String) -> Reply<()> {
-    let mut guard = state
-        .workspace
-        .lock()
-        .map_err(|_| "Workspace lock unavailable")?;
-    workspaces::switch(&state.base, &mut guard, &id).map_err(|e| e.to_string())
+async fn switch_workspace(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Reply<()> {
+    {
+        let mut guard = state
+            .workspace
+            .lock()
+            .map_err(|_| "Workspace lock unavailable")?;
+        workspaces::switch(&state.base, &mut guard, &id).map_err(|e| e.to_string())?;
+    }
+    browser::after_transition(&app).await;
+    Ok(())
 }
 #[tauri::command]
-async fn open_external_workspace(state: State<'_, AppState>) -> Reply<bool> {
+async fn open_external_workspace(app: tauri::AppHandle, state: State<'_, AppState>) -> Reply<bool> {
     let folder = rfd::AsyncFileDialog::new()
         .set_title("Open existing Knot workspace folder")
         .pick_folder()
@@ -96,15 +134,22 @@ async fn open_external_workspace(state: State<'_, AppState>) -> Reply<bool> {
     let Some(folder) = folder else {
         return Ok(false);
     };
-    let mut guard = state
-        .workspace
-        .lock()
-        .map_err(|_| "Workspace lock unavailable")?;
-    workspaces::open_external(&state.base, &mut guard, folder.path()).map_err(|e| e.to_string())?;
+    {
+        let mut guard = state
+            .workspace
+            .lock()
+            .map_err(|_| "Workspace lock unavailable")?;
+        workspaces::open_external(&state.base, &mut guard, folder.path())
+            .map_err(|e| e.to_string())?;
+    }
+    browser::after_transition(&app).await;
     Ok(true)
 }
 #[tauri::command]
-async fn relocate_workspace(state: State<'_, AppState>) -> Reply<Option<String>> {
+async fn relocate_workspace(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Reply<Option<String>> {
     let folder = rfd::AsyncFileDialog::new()
         .set_title("Choose destination parent folder — source copy will be kept")
         .pick_folder()
@@ -112,60 +157,67 @@ async fn relocate_workspace(state: State<'_, AppState>) -> Reply<Option<String>>
     let Some(folder) = folder else {
         return Ok(None);
     };
-    let mut guard = state
-        .workspace
-        .lock()
-        .map_err(|_| "Workspace lock unavailable")?;
-    workspaces::relocate(&state.base, &mut guard, folder.path())
-        .map(|p| Some(p.display().to_string()))
-        .map_err(|e| e.to_string())
+    let relocated = {
+        let mut guard = state
+            .workspace
+            .lock()
+            .map_err(|_| "Workspace lock unavailable")?;
+        workspaces::relocate(&state.base, &mut guard, folder.path())
+            .map(|p| Some(p.display().to_string()))
+            .map_err(|e| e.to_string())?
+    };
+    browser::after_transition(&app).await;
+    Ok(relocated)
 }
 #[tauri::command]
-async fn organization_catalog(state: State<'_, AppState>) -> Reply<organization::Catalog> {
+async fn set_favorite(state: State<'_, AppState>, id: String, favorite: bool) -> Reply<()> {
+    with(&state, |w| w.set_favorite(&id, favorite))
+}
+#[tauri::command]
+async fn collection_catalog(state: State<'_, AppState>) -> Reply<collections::Catalog> {
     with(&state, |w| w.catalog())
 }
 #[tauri::command]
-async fn create_label(state: State<'_, AppState>, kind: String, name: String) -> Reply<String> {
-    with(&state, |w| w.create_label(&kind, &name))
-}
-#[tauri::command]
-async fn rename_label(
+async fn create_collection(
     state: State<'_, AppState>,
-    kind: String,
-    id: String,
     name: String,
-) -> Reply<()> {
-    with(&state, |w| w.rename_label(&kind, &id, &name))
+    object: Option<String>,
+) -> Reply<String> {
+    with(&state, |w| w.create_collection(&name, object.as_deref()))
 }
 #[tauri::command]
-async fn delete_label(state: State<'_, AppState>, kind: String, id: String) -> Reply<()> {
-    with(&state, |w| w.delete_label(&kind, &id))
+async fn rename_collection(state: State<'_, AppState>, id: String, name: String) -> Reply<()> {
+    with(&state, |w| w.rename_collection(&id, &name))
 }
 #[tauri::command]
-async fn get_organization(
+async fn reorder_collections(state: State<'_, AppState>, ids: Vec<String>) -> Reply<()> {
+    with(&state, |w| w.reorder_collections(ids))
+}
+#[tauri::command]
+async fn delete_collection(state: State<'_, AppState>, id: String) -> Reply<()> {
+    with(&state, |w| w.delete_collection(&id))
+}
+#[tauri::command]
+async fn get_membership(state: State<'_, AppState>, id: String) -> Reply<collections::Membership> {
+    with(&state, |w| w.membership(&id))
+}
+#[tauri::command]
+async fn set_membership(
     state: State<'_, AppState>,
     id: String,
-) -> Reply<organization::Organization> {
-    with(&state, |w| w.organization(&id))
-}
-#[tauri::command]
-async fn organize_object(
-    state: State<'_, AppState>,
-    id: String,
-    value: organization::Organization,
+    value: collections::Membership,
 ) -> Reply<()> {
-    with(&state, |w| w.organize(&id, &value))
+    with(&state, |w| w.set_membership(&id, &value))
 }
 #[tauri::command]
 async fn filter_objects(
     state: State<'_, AppState>,
     search: String,
     offset: i64,
-    folder: Option<String>,
-    tag: Option<String>,
+    collection: Option<String>,
 ) -> Reply<Vec<Object>> {
     with(&state, |w| {
-        w.filtered_list(&search, offset, folder.as_deref(), tag.as_deref())
+        w.filtered_list(&search, offset, collection.as_deref())
     })
 }
 fn with<T>(
@@ -178,6 +230,18 @@ fn with<T>(
         .map_err(|_| "Workspace lock unavailable")?;
     let ws = guard.as_mut().map_err(|error| error.clone())?;
     f(ws).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn library_page(
+    state: State<'_, AppState>,
+    search: String,
+    collection: Option<String>,
+    created: bool,
+    offset: i64,
+) -> Reply<collections::LibraryPage> {
+    with(&state, |w| {
+        w.library_page(&search, collection.as_deref(), created, offset)
+    })
 }
 #[tauri::command]
 async fn list_objects(
@@ -205,11 +269,30 @@ async fn list_trash(
     search: String,
     offset: i64,
 ) -> Reply<Vec<storage::TrashedObject>> {
-    with(&state, |w| w.trash(&search, offset))
+    with(&state, |w| {
+        if offset == 0 {
+            w.clear_expired_trash(storage::now())?;
+        }
+        w.trash(&search, offset)
+    })
+}
+#[tauri::command]
+async fn clear_expired_trash(state: State<'_, AppState>) -> Reply<usize> {
+    with(&state, |w| w.clear_expired_trash(storage::now()))
+}
+#[tauri::command]
+async fn purge_trash(state: State<'_, AppState>, ids: Vec<String>) -> Reply<usize> {
+    with(&state, |w| w.purge_trash(&ids))
 }
 #[tauri::command]
 async fn restore_object(state: State<'_, AppState>, id: String) -> Reply<()> {
     with(&state, |w| w.restore_object(&id))
+}
+#[tauri::command]
+async fn load_card_deck(state: State<'_, AppState>) -> Reply<String> {
+    with(&state, |w| {
+        Ok(w.db.query_row("SELECT content FROM card_deck WHERE id=1", [], |r| r.get(0))?)
+    })
 }
 #[tauri::command]
 async fn load_document(state: State<'_, AppState>, id: String) -> Reply<Option<Snapshot>> {
@@ -223,8 +306,40 @@ async fn save_document(state: State<'_, AppState>, id: String, snapshot: Snapsho
 async fn save_documents(
     state: State<'_, AppState>,
     documents: Vec<storage::DocumentWrite>,
+    deck: Option<String>,
+    quiz: Option<Vec<mcq::Mutation>>,
+    published_draft: Option<String>,
 ) -> Reply<()> {
-    with(&state, |w| w.save_documents(&documents))
+    with(&state, |w| {
+        w.save_documents_with_mcq(&documents, deck.as_deref(), quiz.as_deref().unwrap_or_default(), published_draft.as_deref())
+    })
+}
+#[tauri::command]
+async fn load_mcq_progress(state: State<'_, AppState>, notebook: String) -> Reply<Vec<mcq::Progress>> {
+    with(&state, |w| mcq::load(w, &notebook))
+}
+#[tauri::command]
+async fn reset_mcq_progress(state: State<'_, AppState>, notebook: String) -> Reply<()> {
+    with(&state, |w| mcq::reset(w, &notebook))
+}
+#[tauri::command]
+async fn load_mcq_draft(state: State<'_, AppState>, id: String) -> Reply<Option<String>> {
+    use rusqlite::OptionalExtension;
+    with(&state, |w| Ok(w.db.query_row("SELECT content FROM mcq_drafts WHERE id=?1", [&id], |r| r.get(0)).optional()?))
+}
+#[tauri::command]
+async fn save_mcq_draft(state: State<'_, AppState>, id: String, content: Option<String>) -> Reply<()> {
+    with(&state, |w| {
+        if id.len() > 160 { return Err("Invalid draft ID".into()); }
+        if let Some(content) = content {
+            if content.len() > 65_536 { return Err("Draft is too large".into()); }
+            let _: serde_json::Value = serde_json::from_str(&content)?;
+            w.db.execute("INSERT INTO mcq_drafts VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET content=excluded.content", rusqlite::params![id, content])?;
+        } else {
+            w.db.execute("DELETE FROM mcq_drafts WHERE id=?1", [&id])?;
+        }
+        Ok(())
+    })
 }
 #[tauri::command]
 async fn put_blob(
@@ -244,6 +359,49 @@ async fn get_blob(state: State<'_, AppState>, key: String) -> Reply<Vec<u8>> {
 #[tauri::command]
 async fn list_blobs(state: State<'_, AppState>, object: String) -> Reply<Vec<String>> {
     with(&state, |w| w.blobs(&object))
+}
+/// Clone the active workspace root so cache file IO never holds the lock.
+fn workspace_root(state: &State<AppState>) -> Reply<std::path::PathBuf> {
+    with(state, |w| Ok(w.root.clone()))
+}
+#[tauri::command]
+async fn canvas_preview_load(
+    state: State<'_, AppState>,
+    document: String,
+    keys: Vec<(String, String)>,
+) -> Reply<tauri::ipc::Response> {
+    let root = workspace_root(&state)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || canvas_previews::load(&root, &document, &keys))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+#[tauri::command]
+async fn canvas_preview_save(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Reply<()> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Expected preview bytes".into());
+    };
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+            .ok_or_else(|| "Missing preview key".to_string())
+    };
+    let (document, note, fingerprint) = (header("knot-document")?, header("knot-note")?, header("knot-fingerprint")?);
+    let root = workspace_root(&state)?;
+    let bytes = bytes.clone();
+    tauri::async_runtime::spawn_blocking(move || canvas_previews::save(&root, &document, &note, &fingerprint, &bytes))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn canvas_preview_prune(state: State<'_, AppState>, document: String, keep: Vec<String>) -> Reply<usize> {
+    let root = workspace_root(&state)?;
+    tauri::async_runtime::spawn_blocking(move || canvas_previews::prune(&root, &document, &keep))
+        .await
+        .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 async fn check_workspace(state: State<'_, AppState>) -> Reply<storage::IntegrityReport> {
@@ -295,37 +453,64 @@ async fn export_backup(state: State<'_, AppState>) -> Reply<Option<String>> {
     }
 }
 #[tauri::command]
-async fn restore_backup(state: State<'_, AppState>) -> Reply<Option<String>> {
+async fn restore_backup(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Reply<Option<String>> {
     let file = rfd::AsyncFileDialog::new()
         .add_filter("Knot workspace", &["knot"])
         .pick_file()
         .await;
     match file {
         Some(p) => {
-            let mut guard = state
-                .workspace
-                .lock()
-                .map_err(|_| "Workspace lock unavailable")?;
-            let result = (|| -> storage::Result<String> {
-                let root = backup::restore(p.path(), &state.base)?;
-                let next = Workspace::open(root.clone())?;
-                workspaces::persist_selection(
-                    &state.base,
-                    root.file_name()
-                        .and_then(|name| name.to_str())
-                        .ok_or("Invalid workspace name")?,
-                )?;
-                *guard = Ok(next);
-                Ok(root.display().to_string())
-            })();
-            result.map(Some).map_err(|e| e.to_string())
+            let result = {
+                let mut guard = state
+                    .workspace
+                    .lock()
+                    .map_err(|_| "Workspace lock unavailable")?;
+                (|| -> storage::Result<String> {
+                    let root = backup::restore(p.path(), &state.base)?;
+                    let next = Workspace::open(root.clone())?;
+                    workspaces::persist_selection(
+                        &state.base,
+                        root.file_name()
+                            .and_then(|name| name.to_str())
+                            .ok_or("Invalid workspace name")?,
+                    )?;
+                    *guard = Ok(next);
+                    Ok(root.display().to_string())
+                })()
+            };
+            let restored = result.map_err(|e| e.to_string())?;
+            browser::after_transition(&app).await;
+            Ok(Some(restored))
         }
         None => Ok(None),
     }
 }
 pub fn run() {
+    let mut context = tauri::generate_context!();
+    #[cfg(debug_assertions)]
+    if let Some(root) = std::env::var_os("KNOT_TEST_DATA_DIR") {
+        let _ = root;
+        // Config dataDirectory accepts relative paths only. Build the isolated
+        // test shell explicitly so its absolute profile cannot be ignored.
+        context.config_mut().app.windows[0].create = false;
+    }
     tauri::Builder::default()
         .setup(|app| {
+            #[cfg(debug_assertions)]
+            if let Some(root) = std::env::var_os("KNOT_TEST_DATA_DIR") {
+                let mut builder = tauri::WebviewWindowBuilder::from_config(
+                    app.handle(),
+                    &app.config().app.windows[0],
+                )?
+                .data_directory(std::path::PathBuf::from(root).join("shell-webview"));
+                if let Ok(args) = std::env::var("KNOT_TEST_SHELL_ARGS") {
+                    builder = builder.additional_browser_args(&args);
+                }
+                builder.build()?;
+            }
             let base = app.path().app_local_data_dir()?;
             // Debug-only isolation for native acceptance tests. Release builds
             // always use the managed application data directory.
@@ -337,52 +522,118 @@ pub fn run() {
             let workspace = workspaces::startup(&base).map_err(|error| {
                 format!("Workspace could not open: {error}. Existing data has been preserved.")
             });
+            app.manage(diagnostics::Diagnostics::open(
+                base.join("ai-diagnostics.sqlite"),
+            ));
+            app.manage(topic::TopicCache(app.path().app_cache_dir()?.join("topic-v1"), Mutex::new(true), Mutex::new(std::collections::HashMap::new())));
             app.manage(AppState {
                 workspace: Mutex::new(workspace),
                 base,
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            export_document,
-            list_backups,
-            create_backup,
-            validate_backup,
-            delete_backup,
-            restore_managed_backup,
-            workspace_catalog,
-            switch_workspace,
-            open_external_workspace,
-            relocate_workspace,
-            organization_catalog,
-            create_label,
-            rename_label,
-            delete_label,
-            get_organization,
-            organize_object,
-            filter_objects,
-            list_objects,
-            create_object,
-            rename_object,
-            delete_object,
-            list_trash,
-            restore_object,
-            load_document,
-            save_document,
-            save_documents,
-            put_blob,
-            get_blob,
-            list_blobs,
-            check_workspace,
-            preview_orphans,
-            quarantine_catalog,
-            quarantine_orphans,
-            restore_quarantined,
-            dispose_quarantined,
-            recover_missing_attachment,
-            export_backup,
-            restore_backup
-        ])
-        .run(tauri::generate_context!())
+        .manage(ai::Requests::default())
+        .manage(web_sources::Requests::default())
+        .manage(browser::Browser::default())
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Started
+            {
+                browser::shell_loading(webview.app_handle());
+            }
+        })
+        .invoke_handler(|invoke| {
+            // Registered app commands default to available in Tauri. Check the
+            // actual native caller for ALL commands, including storage and AI.
+            if !browser::trusted(invoke.message.webview_ref()) {
+                invoke.resolver.reject("Untrusted webview");
+                return true;
+            }
+            #[cfg(debug_assertions)]
+            if invoke.message.command() == "browser_test_window" {
+                let handler: fn(tauri::ipc::Invoke) -> bool =
+                    tauri::generate_handler![browser::browser_test_window];
+                return handler(invoke);
+            }
+            let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+                browser::browser_create,
+                browser::browser_bounds,
+                browser::browser_dispose,
+                browser::browser_navigate,
+                browser::browser_action,
+                browser::browser_status,
+                browser::browser_open_external,
+                ai::ai_open_api_keys,
+                ai::ai_connected,
+                ai::ai_connect,
+                ai::ai_disconnect,
+                ai::ai_models,
+                ai::ai_respond,
+                topic::topic_enabled, topic::topic_catalog, topic::topic_pending, topic::topic_load, topic::topic_replace, topic::topic_search,
+                ai::ai_cancel,
+                web_sources::web_sources_fetch,
+                web_sources::web_sources_cancel,
+                diagnostics::ai_diagnostics,
+                diagnostics::ai_diagnostics_enabled,
+                diagnostics::ai_diagnostics_clear,
+                diagnostics::ai_diagnostics_outcome,
+                diagnostics::ai_diagnostics_export,
+                export_document,
+                list_backups,
+                create_backup,
+                validate_backup,
+                delete_backup,
+                restore_managed_backup,
+                workspace_catalog,
+                switch_workspace,
+                open_external_workspace,
+                relocate_workspace,
+                collection_catalog,
+                set_favorite,
+                create_collection,
+                getting_started_status,
+                install_getting_started,
+                rename_collection,
+                delete_collection,
+                reorder_collections,
+                get_membership,
+                set_membership,
+                filter_objects,
+                library_page,
+                list_objects,
+                create_object,
+                rename_object,
+                delete_object,
+                list_trash,
+                purge_trash,
+                clear_expired_trash,
+                restore_object,
+                load_card_deck,
+                load_mcq_progress,
+                reset_mcq_progress,
+                load_mcq_draft,
+                save_mcq_draft,
+                load_document,
+                save_document,
+                save_documents,
+                put_blob,
+                get_blob,
+                list_blobs,
+                canvas_preview_load,
+                canvas_preview_save,
+                canvas_preview_prune,
+                check_workspace,
+                preview_orphans,
+                quarantine_catalog,
+                quarantine_orphans,
+                restore_quarantined,
+                dispose_quarantined,
+                recover_missing_attachment,
+                export_backup,
+                restore_backup
+            ];
+            handler(invoke)
+        })
+        .run(context)
         .expect("Knot could not start; workspace was not reset");
 }

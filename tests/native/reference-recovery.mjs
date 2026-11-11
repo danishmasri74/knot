@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
@@ -40,8 +43,11 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
+  const report = page.locator(".health-report");
+  if ((await report.count()) && !((await report.getAttribute("open")) !== null))
+    await report.locator(":scope > summary").click();
 }
 async function stop() {
   await browser?.close();
@@ -53,7 +59,7 @@ async function stop() {
   child = null;
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
@@ -69,9 +75,7 @@ async function select(title) {
   await ready();
 }
 async function place(title, shared = true) {
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption({ label: title });
-  await click(shared ? "Place shared note" : "Insert link");
+  await placeLegacyReference(page, title, shared);
 }
 async function body(id) {
   return page.evaluate((id) => {
@@ -103,15 +107,15 @@ try {
   await ready();
   await save();
   const source = await body();
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   await rename("Recovery board");
   await place("Recover source");
   await save();
   await preview("Retained authoritative content.");
   await select("Recover source");
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await ready();
-  await click("✓ Check workspace");
+  await click("Check workspace");
   await page
     .getByRole("button", {
       name: "Restore reference target Recover source",
@@ -234,7 +238,7 @@ try {
   );
   db.close();
   await page.screenshot({ path: path.join(root, "restored.png") });
-  await click("Close report");
+  await click("Close Workspace health panel");
   await select("Recover source");
   assert.equal((await body()).id, source.id);
   assert.equal((await body()).json, source.json);
@@ -244,15 +248,15 @@ try {
   await preview("Retained authoritative content.");
   await click("Trash & recovery");
   await page.getByText("Trash is empty.").waitFor();
-  await click("Close Trash");
-  await page.getByTitle("Delete document").click();
+  await click("Close Trash & recovery panel");
+  await clickShellButton(page, "Delete document");
   await ready();
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await ready();
   assert.equal(await page.locator(".document-row").count(), 0);
   await click("Trash & recovery");
   await click("Restore Recover source");
-  await click("Close Trash");
+  await click("Close Trash & recovery panel");
   await select("Recover source");
   assert.equal((await body()).json, source.json);
   console.log(

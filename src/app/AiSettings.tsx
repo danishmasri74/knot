@@ -1,0 +1,344 @@
+import { AiDiagnostics } from "./AiDiagnostics";
+import { useEffect, useId, useRef, useState } from "react";
+import { ShellIcon } from "./ShellIcon";
+import {
+  getAiSuggestionsEnabled,
+  setAiSuggestionsEnabled,
+  AI_MODELS,
+  AI_CONNECTOR_SHAPES,
+  getAiConnectorShape,
+  setAiConnectorShape,
+  type AiConnectorShape,
+  getWorkspaceSearchEnabled,
+  setWorkspaceSearchEnabled,
+  getAiModels,
+  setAiModels,
+  setAiEnabled,
+} from "../services/ai-preferences";
+
+export function AiSettings({
+  enabled,
+  beforeReload,
+}: {
+  enabled: boolean;
+  beforeReload: () => Promise<void>;
+}) {
+  const [workspaceSearch, setWorkspaceSearch] = useState(
+    getWorkspaceSearchEnabled,
+  );
+  const [suggestions, setSuggestions] = useState(getAiSuggestionsEnabled);
+  const [confirm, setConfirm] = useState(false);
+  const [models, setModels] = useState(getAiModels);
+  const [connectorShape, setConnectorShape] = useState(getAiConnectorShape);
+  const [saveError, setSaveError] = useState("");
+  return (
+    <section className="settings-page settings-ai">
+      <h3>AI</h3>
+      <p className="settings-description">
+        Make room for a little help with your notes.
+      </p>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-enabled-label">AI features</strong>
+          <p>
+            Show Ask Knot and AI tools. Changing this setting reloads the app.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-enabled-label"
+          aria-checked={enabled}
+          onClick={() => setConfirm(true)}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-workspace-search-label">
+            Search workspace automatically
+          </strong>
+          <p>
+            Search runs on this device. Selected excerpts are sent to your
+            configured AI provider when you ask. AI features must be enabled.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-workspace-search-label"
+          aria-checked={workspaceSearch}
+          disabled={!enabled}
+          onClick={() => {
+            try {
+              setWorkspaceSearchEnabled(!workspaceSearch);
+              setWorkspaceSearch(!workspaceSearch);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save workspace search preference.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-suggestions-label">AI suggestions</strong>
+          <p>
+            Suggest useful questions and actions when you open Ask Knot. Uses
+            text from your current note with your connected AI provider.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-suggestions-label"
+          aria-checked={suggestions}
+          disabled={!enabled}
+          onClick={() => {
+            try {
+              setAiSuggestionsEnabled(!suggestions);
+              setSuggestions(!suggestions);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save AI suggestions preference.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row ai-connector-setting">
+        <div>
+          <strong id="ai-connector-shape-label">Default connector shape</strong>
+          <p id="ai-connector-shape-description">
+            Shape of arrows between cards created by AI. Applies to new arrows
+            on this device.
+          </p>
+        </div>
+        <div
+          className="ai-connector-choices"
+          role="radiogroup"
+          aria-labelledby="ai-connector-shape-label"
+          aria-describedby="ai-connector-shape-description"
+        >
+          {AI_CONNECTOR_SHAPES.map((shape) => (
+            <label key={shape} className="ai-connector-choice">
+              <input
+                type="radio"
+                name="ai-connector-shape"
+                value={shape}
+                checked={connectorShape === shape}
+                onChange={() => {
+                  try {
+                    setAiConnectorShape(shape);
+                    setConnectorShape(shape);
+                    setSaveError("");
+                  } catch {
+                    setSaveError(
+                      "Could not save connector shape. Please try again.",
+                    );
+                  }
+                }}
+              />
+              <ConnectorShapePreview shape={shape} />
+              <span className="ai-connector-choice-label">
+                <span>{shape[0].toUpperCase() + shape.slice(1)}</span>
+                {connectorShape === shape && <ShellIcon name="check" />}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <h3 className="settings-section-title">Model list</h3>
+      <p id="ai-models-description" className="settings-description">
+        Choose which models appear in Ask Knot on this device. Keep at least one
+        enabled.
+      </p>
+      <div
+        className="ai-model-list"
+        role="group"
+        aria-label="AI models"
+        aria-describedby="ai-models-description"
+      >
+        {AI_MODELS.map((model) => {
+          const checked = models.includes(model.id);
+          const last = checked && models.length === 1;
+          return (
+            <div className="settings-row ai-model-row" key={model.id}>
+              <div>
+                <strong id={`model-${model.id}`}>
+                  {model.name} <span className="ai-model-tag">{model.tag}</span>
+                </strong>
+                <p>OpenAI &middot; {model.description}</p>
+              </div>
+              <button
+                className="settings-toggle"
+                role="switch"
+                aria-labelledby={`model-${model.id}`}
+                aria-checked={checked}
+                disabled={last}
+                title={
+                  last ? "At least one model must stay enabled" : undefined
+                }
+                onClick={() => {
+                  const next = checked
+                    ? models.filter((id) => id !== model.id)
+                    : [...models, model.id];
+                  try {
+                    setAiModels(next);
+                    setModels(next);
+                    setSaveError("");
+                  } catch {
+                    setSaveError(
+                      "Could not save model preferences. Please try again.",
+                    );
+                  }
+                }}
+              >
+                <span />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="ai-model-note">
+        Model access depends on your OpenAI API account. Manage your connection
+        in Ask Knot. Model choices are kept when AI is turned off.
+      </p>
+      <AiDiagnostics />
+      {saveError && <p role="alert">{saveError}</p>}
+      {confirm && (
+        <AiReloadConfirmation
+          enabled={!enabled}
+          onClose={() => setConfirm(false)}
+          beforeReload={beforeReload}
+        />
+      )}
+    </section>
+  );
+}
+
+function ConnectorShapePreview({ shape }: { shape: AiConnectorShape }) {
+  const arrowId = useId();
+  const path = {
+    curve: "M22 18 C74 18 54 54 106 54",
+    elbowed: "M22 18 H64 V54 H106",
+    straight: "M22 18 L106 54",
+  }[shape];
+  return (
+    <svg
+      className="ai-connector-preview"
+      viewBox="0 0 128 72"
+      fill="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <marker
+          id={arrowId}
+          markerWidth="6"
+          markerHeight="6"
+          refX="5"
+          refY="3"
+          orient="auto"
+        >
+          <path
+            d="M1 1 L5 3 L1 5"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </marker>
+      </defs>
+      <g stroke="currentColor" strokeWidth="1.5" opacity="0.5">
+        <rect x="4" y="9" width="18" height="18" rx="3" />
+        <rect x="106" y="45" width="18" height="18" rx="3" />
+      </g>
+      <path
+        d={path}
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        markerEnd={`url(#${arrowId})`}
+      />
+    </svg>
+  );
+}
+
+function AiReloadConfirmation({
+  enabled,
+  onClose,
+  beforeReload,
+}: {
+  enabled: boolean;
+  onClose: () => void;
+  beforeReload: () => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const element = dialog.current!;
+    element.showModal();
+    cancel.current?.focus();
+    return () => {
+      element.close();
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="trash-confirmation"
+      aria-labelledby="ai-reload-title"
+      aria-describedby="ai-reload-description"
+      aria-busy={busy}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <div className="confirmation-icon">
+        <ShellIcon name="sparkles" />
+      </div>
+      <h2 id="ai-reload-title">
+        {enabled ? "Enable" : "Disable"} AI features?
+      </h2>
+      <p id="ai-reload-description">
+        Knot will save your notes and reload to {enabled ? "show" : "hide"} Ask
+        Knot and AI tools. Your saved chats and connection settings will be
+        kept.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="trash-actions">
+        <button ref={cancel} disabled={busy} onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          className="primary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await beforeReload();
+              setAiEnabled(enabled);
+              window.location.reload();
+            } catch (cause) {
+              setError(`Could not apply the change. ${String(cause)}`);
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Saving…" : "Apply & reload"}
+        </button>
+      </div>
+    </dialog>
+  );
+}

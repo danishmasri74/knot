@@ -3,215 +3,276 @@ import type { IntegrityReport } from "../services/workspace";
 export function IntegrityPanel({
   report,
   busy,
-  onClose,
   onCheck,
+  onFiles,
   onBackups,
   onRestoreTarget,
   onRecoverAttachment,
 }: {
   report: IntegrityReport;
   busy: boolean;
-  onClose: () => void;
   onCheck: () => void;
+  onFiles: () => void;
   onBackups: () => void;
   onRestoreTarget: (id: string) => void;
   onRecoverAttachment: (hash: string) => void;
 }) {
+  const issues =
+    report.database_issues.length +
+    report.documents.issues.length +
+    report.missing.length +
+    report.corrupt.length;
   return (
     <section
-      className="recovery-panel integrity-panel"
+      className="settings-page recovery-panel integrity-panel"
       aria-label="Workspace integrity"
     >
-      <h2>Workspace integrity</h2>
-      <p>
-        Checked {new Date(report.checked_at).toLocaleString()}. This report
-        describes saved data at that time. No files were changed or removed.
-      </p>
-      <button disabled={busy} onClick={onCheck}>
-        Check again
-      </button>{" "}
-      <button disabled={busy} onClick={onBackups}>
-        Recovery backups
-      </button>{" "}
-      <button disabled={busy} onClick={onClose}>
-        Close report
-      </button>
-      <p>
-        {report.checked} asset records checked; {report.missing.length} missing,{" "}
-        {report.corrupt.length} corrupt, {report.orphan_files.length} unindexed
-        files.
-      </p>
-      <h3>Database and relationships</h3>
-      <p>Database schema: {report.database_version}.</p>
-      {report.migration_backups.length > 0 && (
-        <details>
-          <summary>
-            Pre-migration recovery archives ({report.migration_backups.length})
-          </summary>
-          <p>
-            These archives retain the catalog, document snapshots and indexed
-            attachments from before an upgrade. Use “Restore backup” in the
-            sidebar and choose an archive below to recover into a separate
-            workspace. Restoration upgrades the recovered copy. These local
-            archives are excluded from regular backups and relocation; copy them
-            elsewhere for protection against disk loss. This report lists them
-            without re-verifying their contents.
-          </p>
-          <ul>
-            {report.migration_backups.map((path) => (
-              <li key={path}>
-                <code>{path}</code>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {report.database_issues.length ? (
-        <ul>
-          {report.database_issues.map((issue, i) => (
-            <li key={i}>{issue}</li>
-          ))}
-        </ul>
-      ) : (
-        <p>SQLite integrity and stored relationships passed.</p>
-      )}
-      <h3>Documents and shared references</h3>
-      {report.documents.recoverableTargets.length > 0 && (
+      <div className="health-summary">
+        <span className="health-symbol" aria-hidden="true">
+          {issues ? "!" : "✓"}
+        </span>
         <div>
-          <h3>Recover referenced documents</h3>
+          <h3>
+            {issues ? "Some items need attention" : "Your workspace looks good"}
+          </h3>
           <p>
-            These targets are in Trash and their saved snapshots pass the basic
-            document checks. Restoring retains their original IDs and content,
-            making them available to every referring document. Other content or
-            attachment issues may still need recovery.
+            Last checked{" "}
+            {new Date(report.checked_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </p>
-          {report.documents.recoverableTargets.map((target) => (
-            <div className="trash-row" key={target.id}>
-              <span>
-                <strong>{target.title}</strong>
-                <small>
-                  {target.sources} referring documents, including Trash ·{" "}
-                  <code>{target.id}</code>
-                </small>
-              </span>
-              <button
-                disabled={busy}
-                aria-label={`Restore reference target ${target.title}`}
-                onClick={() => onRestoreTarget(target.id)}
-              >
-                Restore from Trash
-              </button>
-            </div>
-          ))}
         </div>
-      )}
-      <p>
-        {report.documents.checked} documents checked, including Trash;{" "}
-        {report.documents.issues.length} findings.
-      </p>
-      {report.documents.issues.map((issue, i) => (
-        <details key={i}>
-          <summary>
-            {issue.title}
-            {issue.deleted ? " (in Trash)" : ""}: {issue.message}
-          </summary>
-          <p>
-            Source document: <code>{issue.id}</code>
-          </p>
-        </details>
-      ))}
-      <p>
-        Checks cover saved Yjs decoding, document identity metadata, page roots
-        and card/inline reference targets. A missing snapshot can mean a
-        document has never been opened. Restore trashed targets through Trash.
-        No references are rewritten.
-      </p>
-      <h3>Attachment issues</h3>
-      {report.missing.length > 0 && (
+        <button disabled={busy} onClick={onCheck}>
+          Check again
+        </button>
+      </div>
+      <div className="health-results">
         <div>
-          <p>
-            Search misplaced asset files and quarantine for an exact copy of a
-            missing attachment. Recovery keeps the source copy and never
-            replaces an existing file.
-          </p>
-          {report.missing.map((hash) => (
-            <div className="trash-row" key={hash}>
-              <span>
-                <strong>
-                  {report.affected_attachments.find((a) => a.hash === hash)
-                    ?.name ?? hash}
-                </strong>
-                <small>
-                  <code>{hash}</code>
-                </small>
-              </span>
-              <button
-                disabled={busy || report.database_issues.length > 0}
-                aria-label={`Recover missing attachment ${hash}`}
-                onClick={() => onRecoverAttachment(hash)}
-              >
-                Find local recovery copy
-              </button>
-            </div>
-          ))}
+          <span>Storage</span>
+          <strong>
+            {report.database_issues.length ? "Needs attention" : "No issues"}
+          </strong>
         </div>
-      )}
-      {!report.affected_attachments.length && (
-        <p>No missing or corrupt indexed attachments found.</p>
-      )}
-      {report.affected_attachments.map((asset) => (
-        <details key={asset.key}>
-          <summary>
-            {report.missing.includes(asset.hash) ? "Missing" : "Corrupt"}:{" "}
-            {asset.name} · {asset.documents.length} associated documents
-          </summary>
-          <p>
-            Attachment key: <code>{asset.key}</code>
-            <br />
-            SHA-256: <code>{asset.hash}</code>
-          </p>
-          <ul>
-            {asset.documents.map((doc) => (
-              <li key={doc.id}>
-                {doc.title}
-                {doc.deleted ? " (in Trash)" : ""} · <code>{doc.id}</code>
-              </li>
-            ))}
-          </ul>
-          {!asset.documents.length && <p>No stored document associations.</p>}
-        </details>
-      ))}
-      <p>
-        Associations include retained import history and Trash; they do not
-        prove an attachment is still visible in a document. Shared placements
-        may display attachments from their source document.
-      </p>
-      <details>
-        <summary>Unindexed files ({report.orphan_files.length})</summary>
-        <p>
-          Files found in the asset folder without a matching index entry at that
-          location. They may be interrupted imports or recovery material. They
-          are retained.
+        <div>
+          <span>
+            Documents <small>{report.documents.checked}</small>
+          </span>
+          <strong>
+            {report.documents.issues.length
+              ? `${report.documents.issues.length} to review`
+              : "No issues"}
+          </strong>
+        </div>
+        <div>
+          <span>
+            Attachments <small>{report.checked}</small>
+          </span>
+          <strong>
+            {report.missing.length + report.corrupt.length
+              ? `${report.missing.length + report.corrupt.length} to review`
+              : "No issues"}
+          </strong>
+        </div>
+        {report.orphan_files.length > 0 && (
+          <div>
+            <span>
+              Unlinked files <small>{report.orphan_files.length}</small>
+            </span>
+            <button disabled={busy} onClick={onFiles}>
+              Review files
+            </button>
+          </div>
+        )}
+      </div>
+      {issues > 0 && (
+        <p className="health-hint">
+          Open the report below to review issues and recovery options.
         </p>
-        <ul>
-          {report.orphan_files.map((file) => (
-            <li key={file}>
-              <code>{file}</code>
-            </li>
-          ))}
-        </ul>
+      )}
+      <div className="health-secondary">
+        <button disabled={busy} onClick={onBackups}>
+          Recovery backups
+        </button>
+      </div>
+      <details className="health-report">
+        <summary>
+          {issues ? "Review issues & recovery" : "Technical details"}
+        </summary>
+        <h3>Database and relationships</h3>
+        <p>Database schema: {report.database_version}.</p>
+        {report.migration_backups.length > 0 && (
+          <details>
+            <summary>
+              Pre-migration recovery archives ({report.migration_backups.length}
+              )
+            </summary>
+            <p>
+              These archives retain the catalog, document snapshots and indexed
+              attachments from before an upgrade. Use “Restore backup” in the
+              sidebar and choose an archive below to recover into a separate
+              workspace. Restoration upgrades the recovered copy. These local
+              archives are excluded from regular backups and relocation; copy
+              them elsewhere for protection against disk loss. This report lists
+              them without re-verifying their contents.
+            </p>
+            <ul>
+              {report.migration_backups.map((path) => (
+                <li key={path}>
+                  <code>{path}</code>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {report.database_issues.length ? (
+          <ul>
+            {report.database_issues.map((issue, i) => (
+              <li key={i}>{issue}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>SQLite integrity and stored relationships passed.</p>
+        )}
+        <h3>Documents and shared references</h3>
+        {report.documents.recoverableTargets.length > 0 && (
+          <div>
+            <h3>Recover referenced documents</h3>
+            <p>
+              These targets are in Trash and their saved snapshots pass the
+              basic document checks. Restoring retains their original IDs and
+              content, making them available to every referring document. Other
+              content or attachment issues may still need recovery.
+            </p>
+            {report.documents.recoverableTargets.map((target) => (
+              <div className="trash-row" key={target.id}>
+                <span>
+                  <strong>{target.title}</strong>
+                  <small>
+                    {target.sources} referring documents, including Trash ·{" "}
+                    <code>{target.id}</code>
+                  </small>
+                </span>
+                <button
+                  disabled={busy}
+                  aria-label={`Restore reference target ${target.title}`}
+                  onClick={() => onRestoreTarget(target.id)}
+                >
+                  Restore from Trash
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p>
+          {report.documents.checked} documents checked, including Trash;{" "}
+          {report.documents.issues.length} findings.
+        </p>
+        {report.documents.issues.map((issue, i) => (
+          <details key={i}>
+            <summary>
+              {issue.title}
+              {issue.deleted ? " (in Trash)" : ""}: {issue.message}
+            </summary>
+            <p>
+              Source document: <code>{issue.id}</code>
+            </p>
+          </details>
+        ))}
+        <p>
+          Checks cover saved Yjs decoding, document identity metadata, page
+          roots and card/inline reference targets. A missing snapshot can mean a
+          document has never been opened. Restore trashed targets through Trash.
+          No references are rewritten.
+        </p>
+        <h3>Attachment issues</h3>
+        {report.missing.length > 0 && (
+          <div>
+            <p>
+              Search misplaced asset files and quarantine for an exact copy of a
+              missing attachment. Recovery keeps the source copy and never
+              replaces an existing file.
+            </p>
+            {report.missing.map((hash) => (
+              <div className="trash-row" key={hash}>
+                <span>
+                  <strong>
+                    {report.affected_attachments.find((a) => a.hash === hash)
+                      ?.name ?? hash}
+                  </strong>
+                  <small>
+                    <code>{hash}</code>
+                  </small>
+                </span>
+                <button
+                  disabled={busy || report.database_issues.length > 0}
+                  aria-label={`Recover missing attachment ${hash}`}
+                  onClick={() => onRecoverAttachment(hash)}
+                >
+                  Find local recovery copy
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!report.affected_attachments.length && (
+          <p>No missing or corrupt indexed attachments found.</p>
+        )}
+        {report.affected_attachments.map((asset) => (
+          <details key={asset.key}>
+            <summary>
+              {report.missing.includes(asset.hash) ? "Missing" : "Corrupt"}:{" "}
+              {asset.name} · {asset.documents.length} associated documents
+            </summary>
+            <p>
+              Attachment key: <code>{asset.key}</code>
+              <br />
+              SHA-256: <code>{asset.hash}</code>
+            </p>
+            <ul>
+              {asset.documents.map((doc) => (
+                <li key={doc.id}>
+                  {doc.title}
+                  {doc.deleted ? " (in Trash)" : ""} · <code>{doc.id}</code>
+                </li>
+              ))}
+            </ul>
+            {!asset.documents.length && <p>No stored document associations.</p>}
+          </details>
+        ))}
+        <p>
+          Associations include retained import history and Trash; they do not
+          prove an attachment is still visible in a document. Shared placements
+          may display attachments from their source document.
+        </p>
+        <details>
+          <summary>Unindexed files ({report.orphan_files.length})</summary>
+          <p>
+            Files found in the asset folder without a matching index entry at
+            that location. They may be interrupted imports or recovery material.
+            They are retained.
+          </p>
+          <ul>
+            {report.orphan_files.map((file) => (
+              <li key={file}>
+                <code>{file}</code>
+              </li>
+            ))}
+          </ul>
+        </details>
+        <p>
+          For damaged or missing data, verify a known backup, then restore it
+          into a separate workspace to inspect its content. The current
+          workspace is retained. A new backup may fail if indexed attachments
+          are damaged.
+        </p>
+        <p>
+          This is not a complete block-schema or rendering validation. It scans
+          indexed attachment bytes and files directly inside the asset folder
+          and its immediate subfolders; nested folders and symbolic links are
+          not audited.
+        </p>
       </details>
-      <p>
-        For damaged or missing data, verify a known backup, then restore it into
-        a separate workspace to inspect its content. The current workspace is
-        retained. A new backup may fail if indexed attachments are damaged.
-      </p>
-      <p>
-        This is not a complete block-schema or rendering validation. It scans
-        indexed attachment bytes and files directly inside the asset folder and
-        its immediate subfolders; nested folders and symbolic links are not
-        audited.
-      </p>
     </section>
   );
 }

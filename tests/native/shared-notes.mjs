@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
@@ -35,11 +38,15 @@ async function launch() {
 }
 async function ready() {
   await page.waitForFunction(
-    () => document.querySelector(".primary")?.disabled === false,
+    () =>
+      document.querySelector(".app-shell")?.getAttribute("aria-busy") ===
+        "false" &&
+      document.querySelector(".editor-area")?.getAttribute("aria-busy") ===
+        "false",
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -52,7 +59,9 @@ async function stop() {
   child = null;
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page
+    .getByRole("button", { name: "Save now / retry", exact: true })
+    .click();
   await ready();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
@@ -64,13 +73,17 @@ async function rename(title) {
   await ready();
 }
 async function select(title) {
-  await page.locator(".document-row").filter({ hasText: title }).click();
+  const row = page.locator(".document-row").filter({ hasText: title });
+  if (await row.count()) await row.click();
+  else {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search workspace" }).fill(title);
+    await page.getByRole("option", { name: title, exact: true }).click();
+  }
   await ready();
 }
 async function place(title, shared = true) {
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption({ label: title });
-  await click(shared ? "Place shared note" : "Insert link");
+  await placeLegacyReference(page, title, shared);
 }
 async function body(id) {
   return page.evaluate((id) => {
@@ -83,6 +96,8 @@ async function body(id) {
   }, id);
 }
 async function preview(text) {
+  if (!(await page.locator("affine-edgeless-root").count()))
+    await click("Canvas");
   await page.waitForFunction(
     (text) =>
       [
@@ -93,19 +108,27 @@ async function preview(text) {
 }
 try {
   await launch();
+  const fixtureDb = new DatabaseSync(path.join(root, "Workspace/knot.db"), {
+    readOnly: true,
+  });
+  const initialBodies = fixtureDb
+    .prepare("SELECT count(*) n FROM documents")
+    .get().n;
+  fixtureDb.close();
+  await createNotebook(page);
   await rename("Shared source");
   await page.locator("affine-paragraph [contenteditable=true]").click();
   await page.keyboard.type("One authoritative thought.");
   await save();
   const source = await body();
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   await rename("Board Alpha");
   await place("Shared source");
   const alpha = await body();
   assert.match(alpha.json, new RegExp(source.id));
   assert.doesNotMatch(alpha.json, /One authoritative thought/);
   await preview("One authoritative thought.");
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   await rename("Board Beta");
   await place("Shared source");
   await preview("One authoritative thought.");
@@ -142,7 +165,14 @@ try {
     (id) => document.querySelector("affine-editor-container").doc.id === id,
     source.id,
   );
+  await ready();
   await click("Go back");
+  await page.waitForFunction(
+    (id) =>
+      document.querySelector(".editor-area > affine-editor-container").doc
+        .id === id,
+    beta.id,
+  );
   assert.equal((await body()).id, beta.id);
   console.log("PASS native card navigation and Back history");
   // Removing a placement leaves its source and the other placement intact.
@@ -185,10 +215,6 @@ try {
     return linked.id;
   });
   await save();
-  await page
-    .locator(".document-row")
-    .filter({ hasText: "Native linked note" })
-    .waitFor();
   await select("Board Alpha");
   await select("Board Beta");
   await preview("Created by BlockSuite");
@@ -198,9 +224,11 @@ try {
   );
 
   await select("Renamed source");
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await ready();
   await select("Board Alpha");
+  if (!(await page.locator("affine-edgeless-root").count()))
+    await click("Canvas");
   await page.waitForFunction(
     () =>
       document.querySelector("affine-embed-edgeless-synced-doc-block")
@@ -213,7 +241,10 @@ try {
       .get(source.id).n,
     1,
   );
-  assert.equal(db.prepare("SELECT count(*) n FROM documents").get().n, 4);
+  assert.equal(
+    db.prepare("SELECT count(*) n FROM documents").get().n,
+    initialBodies + 4,
+  );
   assert.ok(
     db.prepare("SELECT deleted_at FROM objects WHERE id=?").get(source.id)
       .deleted_at,

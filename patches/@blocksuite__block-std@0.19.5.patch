@@ -1,0 +1,436 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+deleted file mode 100644
+index 8a50d7446bca96a9e7e7b8463538080d0b7fe93d..0000000000000000000000000000000000000000
+diff --git a/dist/event/control/pointer.js b/dist/event/control/pointer.js
+index 2813f685c6af1f3382092b296589532128232e1d..ae7735d0b55b8fe26276cf145520c6800100e11a 100644
+--- a/dist/event/control/pointer.js
++++ b/dist/event/control/pointer.js
+@@ -398,6 +398,10 @@ export class PointerControl {
+     constructor(_dispatcher) {
+         this._dispatcher = _dispatcher;
+         this._cachedRect = null;
++        this._refreshOnPointerDown = (event) => {
++            const host = this._dispatcher.host;
++            if (host && event.composedPath().includes(host)) this._updateRect();
++        };
+         this._getRect = () => {
+             if (this._cachedRect === null) {
+                 this._updateRect();
+@@ -430,12 +434,15 @@ export class PointerControl {
+         this._cachedRect = this._dispatcher.host.getBoundingClientRect();
+     }
+     dispose() {
++    document.removeEventListener('pointerdown', this._refreshOnPointerDown, true);
+         if (this._pollingInterval !== null) {
+             clearInterval(this._pollingInterval);
+             this._pollingInterval = null;
+         }
+     }
+     listen() {
++    // Refresh before gesture handlers: the host may move without resizing.
++    document.addEventListener('pointerdown', this._refreshOnPointerDown, true);
+         this._startPolling();
+         this.controllers.forEach(controller => controller.listen());
+     }
+diff --git a/dist/event/dispatcher.js b/dist/event/dispatcher.js
+index 5191aa20875627e96cffdcd6d506789eab36e062..2444c74f42d9f047b7e5790d7accb3e964370594 100644
+--- a/dist/event/dispatcher.js
++++ b/dist/event/dispatcher.js
+@@ -273,7 +273,11 @@ export class UIEventDispatcher extends LifeCycleWatcher {
+         });
+     }
+     run(name, context, runners) {
+-        if (!this.active)
++        // Pointer-targeted wheel must not depend on keyboard focus.
++        const hoveredWheel = name === 'wheel' &&
++            context.get('defaultState').event.composedPath().includes(this.host) &&
++            !this.host.closest('[inert]');
++        if (!this.active && !hoveredWheel)
+             return;
+         const sourceState = context.get('sourceState');
+         if (!runners) {
+diff --git a/dist/gfx/layer.js b/dist/gfx/layer.js
+index ed77774284878c4e09c08fc7c73251b2001f376a..c569b5066cbd0eebb643ebdafc351f7f671e6104 100644
+--- a/dist/gfx/layer.js
++++ b/dist/gfx/layer.js
+@@ -591,7 +591,28 @@ export class LayerManager {
+             this._disposable.add(surface.localElementDeleted.on(elm => {
+                 this.delete(elm);
+             }));
+-            surface.elementModels.forEach(el => this.add(el));
++            // Preserve the original path for groups and ambiguous ties. The
++      // shared lowest block/canvas index is safe: both paths place blocks first.
++      const initial = surface.elementModels;
++      const ordered = [...this.blocks, ...initial];
++      const indexes = new Set(ordered.map(el => el.index));
++      const minimum = ordered.reduce((min, el) => el.index < min ? el.index : min, ordered[0]?.index ?? '');
++      const lowestTie = indexes.size === ordered.length - 1 &&
++        initial.some(el => el.index === minimum) && this.blocks.some(el => el.index === minimum) &&
++        new Set(initial.map(el => el.index)).size === initial.length &&
++        new Set(this.blocks.map(el => el.index)).size === this.blocks.length;
++      const bulk = (indexes.size === ordered.length || lowestTie) && ordered.every(el =>
++        !isGfxGroupCompatibleModel(el) && el.groups.length === 0);
++      const started = performance.now();
++      if (bulk) {
++        performance.mark('knot:canvas-layer-bulk');
++        this._reset();
++        const last = initial[initial.length - 1];
++        if (last) this.slots.layerUpdated.emit({ type: 'add', initiatingElement: last });
++      } else {
++        initial.forEach(el => this.add(el));
++      }
++      performance.measure('knot:canvas-layer-init', { start: started, end: performance.now() });
+         }
+     }
+ }
+diff --git a/dist/gfx/viewport-element.js b/dist/gfx/viewport-element.js
+index 397e542894da4eb3f583eaa7de5aba75ee74ee36..fd6066a2953c949d761a94b78b91b720c6b7f7d0 100644
+--- a/dist/gfx/viewport-element.js
++++ b/dist/gfx/viewport-element.js
+@@ -104,7 +104,29 @@ let GfxViewportElement = (() => {
+   `; }
+         connectedCallback() {
+             super.connectedCallback();
+-            const viewportUpdateCallback = () => {
++            // Keep DOM cards in the existing stacking tree. The raster surface already
++    // renders in screen coordinates: relative offsets cancel this translation
++    // without creating a surface stacking context (which would flatten its
++    // interleaved canvases above/below cards). Never reparent editor DOM.
++    this.setAttribute('data-knot-shared-translation', '');
++    const translate = () => {
++      const { translateX, translateY } = this.viewport;
++      const transform = `translate(${translateX}px, ${translateY}px)`;
++      if (this.style.transform !== transform) this.style.transform = transform;
++      const surface = this.querySelector(':scope > affine-surface');
++      if (surface instanceof HTMLElement) {
++        surface.style.position = 'relative';
++        surface.style.left = `${-translateX}px`;
++        surface.style.top = `${-translateY}px`;
++      }
++    };
++    // Child attachment and model edits can create a new raster layer between
++    // viewport events. It must inherit the current compensation immediately.
++    const surfaceObserver = new MutationObserver(translate);
++    surfaceObserver.observe(this, { childList: true });
++    this.disposables.add(() => surfaceObserver.disconnect());
++    const viewportUpdateCallback = () => {
++      translate();
+                 this._refreshViewport();
+                 this._hideOutsideBlock();
+             };
+diff --git a/dist/gfx/viewport.d.ts b/dist/gfx/viewport.d.ts
+index 5b15e65269b4b0f0d5cd79888b12751d4f787dbe..b29fe7be331c87d927c41ece5c93136ab651a5ed 100644
+--- a/dist/gfx/viewport.d.ts
++++ b/dist/gfx/viewport.d.ts
+@@ -1,6 +1,6 @@
+ import { Bound, type IPoint, type IVec, Slot } from '@blocksuite/global/utils';
+ export declare const ZOOM_MAX = 6;
+-export declare const ZOOM_MIN = 0.1;
++export declare const ZOOM_MIN = 0.2;
+ export declare class Viewport {
+     private _cachedBoundingClientRect;
+     private _cachedOffsetWidth;
+diff --git a/dist/gfx/viewport.js b/dist/gfx/viewport.js
+index bce402e545fc0fbebac20bf1c4ed7f15eba9bf94..7c7d7a64963e5b6856280de36265decc47debb3c 100644
+--- a/dist/gfx/viewport.js
++++ b/dist/gfx/viewport.js
+@@ -7,7 +7,7 @@ function cutoff(value, ref, sign) {
+     return value;
+ }
+ export const ZOOM_MAX = 6.0;
+-export const ZOOM_MIN = 0.1;
++export const ZOOM_MIN = 0.2;
+ export class Viewport {
+     constructor() {
+         this._cachedBoundingClientRect = null;
+@@ -154,6 +154,9 @@ export class Viewport {
+     onResize() {
+         if (!this._el)
+             return;
++    // Explicit geometry refresh must also pick up position-only layout changes.
++    this._cachedBoundingClientRect = null;
++
+         const { centerX, centerY, zoom, width: oldWidth, height: oldHeight } = this;
+         const { left, top, width, height } = this.boundingClientRect;
+         this._cachedOffsetWidth = this._el.offsetWidth;
+diff --git a/dist/range/range-binding.js b/dist/range/range-binding.js
+index b1e8696bd8c415cfac8d50c77031cf8532a78f6b..b89e2aa1098db39c6ffb4f914880416821c28c73 100644
+--- a/dist/range/range-binding.js
++++ b/dist/range/range-binding.js
+@@ -219,14 +219,20 @@ export class RangeBinding {
+             };
+             this.rangeManager?.syncRangeToTextSelection(range, isRangeReversed);
+         };
++        this._selectionUpdateVersion = 0;
+         this._onStdSelectionChanged = (selections) => {
+-            const text = selections.find((selection) => selection.is('text')) ?? null;
++            const version = ++this._selectionUpdateVersion;
++    const host = this.host;
++    const text = selections.find((selection) => selection.is('text')) ?? null;
+             if (text === this._prevTextSelection) {
+                 return;
+             }
+             // wait for lit updated
+-            this.host.updateComplete
++            host.updateComplete
+                 .then(() => {
++        // Detached views and superseded selections must not clear a new caret.
++        if (!host.isConnected || !host.event || host !== this.host || version !== this._selectionUpdateVersion) return;
++
+                 const id = text?.blockId;
+                 const path = id && this._computePath(id);
+                 if (this.host.event.active) {
+diff --git a/dist/view/element/gfx-block-component.js b/dist/view/element/gfx-block-component.js
+index b17d4c7d57e588c544648f41cbf9d64c5e9c6106..07210152e40cbcf2091b6b7f14ff5d584e2d2cc0 100644
+--- a/dist/view/element/gfx-block-component.js
++++ b/dist/view/element/gfx-block-component.js
+@@ -14,8 +14,11 @@ function updateTransform(element) {
+ }
+ function handleGfxConnection(instance) {
+     instance.style.position = 'absolute';
++  let zoom = instance.gfx.viewport.zoom;
+     instance.disposables.add(instance.gfx.viewport.viewportUpdated.on(() => {
+-        updateTransform(instance);
++        if (instance.parentElement?.hasAttribute('data-knot-shared-translation') && zoom === instance.gfx.viewport.zoom) return;
++      zoom = instance.gfx.viewport.zoom;
++      updateTransform(instance);
+     }));
+     instance.disposables.add(instance.doc.slots.blockUpdated.on(({ type, id }) => {
+         if (id === instance.model.id && type === 'update') {
+@@ -39,7 +42,10 @@ export class GfxBlockComponent extends BlockComponent {
+     }
+     getCSSTransform() {
+         const viewport = this.gfx.viewport;
+-        const { translateX, translateY, zoom } = viewport;
++        const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+         const bound = Bound.deserialize(this.model.xywh);
+         const scaledX = bound.x * zoom;
+         const scaledY = bound.y * zoom;
+@@ -107,7 +113,10 @@ export function toGfxBlockComponent(CustomBlock) {
+         }
+         getCSSTransform() {
+             const viewport = this.gfx.viewport;
+-            const { translateX, translateY, zoom } = viewport;
++            const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+             const bound = Bound.deserialize(this.model.xywh);
+             const scaledX = bound.x * zoom;
+             const scaledY = bound.y * zoom;
+diff --git a/src/event/control/pointer.ts b/src/event/control/pointer.ts
+index c314f9f8716e39336bf0e2247979026e368f1154..595cbfdc5633675e9e74939565ed841832148ebb 100644
+--- a/src/event/control/pointer.ts
++++ b/src/event/control/pointer.ts
+@@ -543,6 +543,11 @@ class PanController extends DualDragControllerBase {
+ export class PointerControl {
+   private _cachedRect: DOMRect | null = null;
+ 
++  private _refreshOnPointerDown = (event: Event) => {
++    const host = this._dispatcher.host;
++    if (host && event.composedPath().includes(host)) this._updateRect();
++  };
++
+   private _getRect = () => {
+     if (this._cachedRect === null) {
+       this._updateRect();
+@@ -582,6 +587,7 @@ export class PointerControl {
+   }
+ 
+   dispose() {
++    document.removeEventListener('pointerdown', this._refreshOnPointerDown, true);
+     if (this._pollingInterval !== null) {
+       clearInterval(this._pollingInterval);
+       this._pollingInterval = null;
+@@ -589,6 +595,8 @@ export class PointerControl {
+   }
+ 
+   listen() {
++    // Refresh before gesture handlers: the host may move without resizing.
++    document.addEventListener('pointerdown', this._refreshOnPointerDown, true);
+     this._startPolling();
+     this.controllers.forEach(controller => controller.listen());
+   }
+diff --git a/src/event/dispatcher.ts b/src/event/dispatcher.ts
+index 05502bc409907750177af57a70e615a991a6cf5b..896afb99f1499a6604587b9548f6302bb9885613 100644
+--- a/src/event/dispatcher.ts
++++ b/src/event/dispatcher.ts
+@@ -380,7 +380,13 @@ export class UIEventDispatcher extends LifeCycleWatcher {
+     context: UIEventStateContext,
+     runners?: EventHandlerRunner[]
+   ) {
+-    if (!this.active) return;
++    // Wheel belongs to the hovered host even when another input has focus.
++    // Keyboard routing still follows the active dispatcher.
++    const hoveredWheel =
++      name === 'wheel' &&
++      context.get('defaultState').event.composedPath().includes(this.host) &&
++      !this.host.closest('[inert]');
++    if (!this.active && !hoveredWheel) return;
+ 
+     const sourceState = context.get('sourceState');
+     if (!runners) {
+diff --git a/src/gfx/layer.ts b/src/gfx/layer.ts
+index 1c1c9a528ed5f3cb0924ccc746d880bbe31cff8b..1a453bb7c6d4d9fc0abd93e6999f51988e56bee3 100644
+--- a/src/gfx/layer.ts
++++ b/src/gfx/layer.ts
+@@ -867,7 +867,28 @@ export class LayerManager {
+         })
+       );
+ 
+-      surface.elementModels.forEach(el => this.add(el));
++      // Preserve the original path for groups and ambiguous ties. The
++      // shared lowest block/canvas index is safe: both paths place blocks first.
++      const initial = surface.elementModels;
++      const ordered = [...this.blocks, ...initial];
++      const indexes = new Set(ordered.map(el => el.index));
++      const minimum = ordered.reduce((min, el) => el.index < min ? el.index : min, ordered[0]?.index ?? '');
++      const lowestTie = indexes.size === ordered.length - 1 &&
++        initial.some(el => el.index === minimum) && this.blocks.some(el => el.index === minimum) &&
++        new Set(initial.map(el => el.index)).size === initial.length &&
++        new Set(this.blocks.map(el => el.index)).size === this.blocks.length;
++      const bulk = (indexes.size === ordered.length || lowestTie) && ordered.every(el =>
++        !isGfxGroupCompatibleModel(el) && el.groups.length === 0);
++      const started = performance.now();
++      if (bulk) {
++        performance.mark('knot:canvas-layer-bulk');
++        this._reset();
++        const last = initial[initial.length - 1];
++        if (last) this.slots.layerUpdated.emit({ type: 'add', initiatingElement: last });
++      } else {
++        initial.forEach(el => this.add(el));
++      }
++      performance.measure('knot:canvas-layer-init', { start: started, end: performance.now() });
+     }
+   }
+ }
+diff --git a/src/gfx/viewport-element.ts b/src/gfx/viewport-element.ts
+index 1d23e8c8f69ab497fd18aeda0a549155626a95a0..6bfd0b4b0fda9cd85d1cce7e3484647553d19d6b 100644
+--- a/src/gfx/viewport-element.ts
++++ b/src/gfx/viewport-element.ts
+@@ -94,7 +94,29 @@ export class GfxViewportElement extends WithDisposable(ShadowlessElement) {
+   override connectedCallback(): void {
+     super.connectedCallback();
+ 
++    // Keep DOM cards in the existing stacking tree. The raster surface already
++    // renders in screen coordinates: relative offsets cancel this translation
++    // without creating a surface stacking context (which would flatten its
++    // interleaved canvases above/below cards). Never reparent editor DOM.
++    this.setAttribute('data-knot-shared-translation', '');
++    const translate = () => {
++      const { translateX, translateY } = this.viewport;
++      const transform = `translate(${translateX}px, ${translateY}px)`;
++      if (this.style.transform !== transform) this.style.transform = transform;
++      const surface = this.querySelector(':scope > affine-surface');
++      if (surface instanceof HTMLElement) {
++        surface.style.position = 'relative';
++        surface.style.left = `${-translateX}px`;
++        surface.style.top = `${-translateY}px`;
++      }
++    };
++    // Child attachment and model edits can create a new raster layer between
++    // viewport events. It must inherit the current compensation immediately.
++    const surfaceObserver = new MutationObserver(translate);
++    surfaceObserver.observe(this, { childList: true });
++    this.disposables.add(() => surfaceObserver.disconnect());
+     const viewportUpdateCallback = () => {
++      translate();
+       this._refreshViewport();
+       this._hideOutsideBlock();
+     };
+diff --git a/src/gfx/viewport.ts b/src/gfx/viewport.ts
+index d7cb61ceda2262689dda7153f677c3a90b27e3c4..6bf0f36bbfb5d39fe69b378cdcfbaf3cb373e977 100644
+--- a/src/gfx/viewport.ts
++++ b/src/gfx/viewport.ts
+@@ -14,7 +14,7 @@ function cutoff(value: number, ref: number, sign: number) {
+ }
+ 
+ export const ZOOM_MAX = 6.0;
+-export const ZOOM_MIN = 0.1;
++export const ZOOM_MIN = 0.2;
+ 
+ export class Viewport {
+   private _cachedBoundingClientRect: DOMRect | null = null;
+@@ -219,6 +219,9 @@ export class Viewport {
+ 
+   onResize() {
+     if (!this._el) return;
++    // Explicit geometry refresh must also pick up position-only layout changes.
++    this._cachedBoundingClientRect = null;
++
+     const { centerX, centerY, zoom, width: oldWidth, height: oldHeight } = this;
+     const { left, top, width, height } = this.boundingClientRect;
+     this._cachedOffsetWidth = this._el.offsetWidth;
+diff --git a/src/range/range-binding.ts b/src/range/range-binding.ts
+index 898a39168c4c7d4b7f8573e91303bbb95445fe65..8416d7dd26a10d482cbc53a2b043a78e7591f91b 100644
+--- a/src/range/range-binding.ts
++++ b/src/range/range-binding.ts
+@@ -248,7 +248,11 @@ export class RangeBinding {
+     this.rangeManager?.syncRangeToTextSelection(range, isRangeReversed);
+   };
+ 
++  private _selectionUpdateVersion = 0;
++
+   private _onStdSelectionChanged = (selections: BaseSelection[]) => {
++    const version = ++this._selectionUpdateVersion;
++    const host = this.host;
+     const text =
+       selections.find((selection): selection is TextSelection =>
+         selection.is('text')
+@@ -258,8 +262,11 @@ export class RangeBinding {
+       return;
+     }
+     // wait for lit updated
+-    this.host.updateComplete
++    host.updateComplete
+       .then(() => {
++        // Detached views and superseded selections must not clear a new caret.
++        if (!host.isConnected || !host.event || host !== this.host || version !== this._selectionUpdateVersion) return;
++
+         const id = text?.blockId;
+         const path = id && this._computePath(id);
+ 
+diff --git a/src/view/element/gfx-block-component.ts b/src/view/element/gfx-block-component.ts
+index 4d0e7a93b0bcc2dce922703124e877c113d988a9..97aa88ab2684895553e868e6bea5ef362dc3ab5e 100644
+--- a/src/view/element/gfx-block-component.ts
++++ b/src/view/element/gfx-block-component.ts
+@@ -23,9 +23,12 @@ function updateTransform(element: GfxBlockComponent) {
+ 
+ function handleGfxConnection(instance: GfxBlockComponent) {
+   instance.style.position = 'absolute';
++  let zoom = instance.gfx.viewport.zoom;
+ 
+   instance.disposables.add(
+     instance.gfx.viewport.viewportUpdated.on(() => {
++      if (instance.parentElement?.hasAttribute('data-knot-shared-translation') && zoom === instance.gfx.viewport.zoom) return;
++      zoom = instance.gfx.viewport.zoom;
+       updateTransform(instance);
+     })
+   );
+@@ -59,7 +62,10 @@ export abstract class GfxBlockComponent<
+ 
+   getCSSTransform() {
+     const viewport = this.gfx.viewport;
+-    const { translateX, translateY, zoom } = viewport;
++    const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+     const bound = Bound.deserialize(this.model.xywh);
+ 
+     const scaledX = bound.x * zoom;
+@@ -150,7 +156,10 @@ export function toGfxBlockComponent<
+ 
+     getCSSTransform() {
+       const viewport = this.gfx.viewport;
+-      const { translateX, translateY, zoom } = viewport;
++      const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+       const bound = Bound.deserialize(this.model.xywh);
+ 
+       const scaledX = bound.x * zoom;

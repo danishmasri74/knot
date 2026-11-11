@@ -1,3 +1,5 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, cp } from "node:fs/promises";
@@ -38,10 +40,6 @@ async function ready() {
   await page.waitForFunction(
     () => document.querySelector(".primary")?.disabled === false,
   );
-}
-async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
-  await ready();
 }
 async function stop() {
   await browser?.close();
@@ -86,10 +84,8 @@ try {
   });
   assert.equal(actual.id, source.id);
   assert.equal(actual.json, expected);
-  await click("◇ New whiteboard");
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption(source.id);
-  await click("Place shared note");
+  await createNotebook(page, true);
+  await placeLegacyReference(page, source.id);
   await page.waitForSelector("affine-embed-edgeless-synced-doc-block");
   assert.equal(
     await page.evaluate(

@@ -1,4 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  editorFontFamily,
+  getEditorPreferences,
+} from "../services/editor-preferences";
+import { ShellIcon } from "./ShellIcon";
+import {
+  useCallback,
+  useLayoutEffect,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { attachments } from "../services/workspace";
 import type {
   PdfHighlight,
@@ -6,29 +17,39 @@ import type {
   PdfRect,
   PdfSource,
 } from "../features/editor/blocksuite/pdf-highlights";
-import { validatePdfHighlight } from "../features/editor/blocksuite/pdf-highlights";
 import {
-  getDocument,
-  GlobalWorkerOptions,
-  TextLayer,
-  type PDFDocumentProxy,
-} from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
-GlobalWorkerOptions.workerSrc = workerUrl;
+  type PdfCitation,
+  passageSegments,
+  samePassage,
+  pdfSourceLabel,
+  validatePdfHighlight,
+} from "../features/editor/blocksuite/pdf-highlights";
+import { TextLayer, type PDFDocumentProxy } from "pdfjs-dist";
+import { openPdfBytes } from "../services/pdf-input";
+import type { AiPdfSource } from "../services/pdf-input";
 
 export function PdfReader({
   sources,
+  watchCitations,
+  onJump,
+  onDetach,
+  onAsk,
+  onReplace,
   initial,
   busy,
   onCreate,
-  onClose,
+  onRemove,
 }: {
   sources: PdfSource[];
+  onAsk?: (label: string, text: string, source: AiPdfSource) => void;
+  onReplace: (id: string, value: PdfHighlight) => Promise<void>;
+  onDetach: (citation: PdfCitation) => Promise<() => Promise<void>>;
+  onJump: (id: string) => void;
+  watchCitations?: (listener: (locations: PdfCitation[]) => void) => () => void;
   initial?: PdfLocation;
   busy: boolean;
   onCreate: (highlight: PdfHighlight) => Promise<void>;
-  onClose: () => void;
+  onRemove: (location: PdfLocation, id?: string) => Promise<void>;
 }) {
   const [key, setKey] = useState(initial?.key ?? sources[0]?.key ?? "");
   const [pageNumber, setPageNumber] = useState(initial?.page ?? 1);
@@ -37,17 +58,215 @@ export function PdfReader({
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
   const [hasText, setHasText] = useState(false);
+  const root = useRef<HTMLElement>(null);
+  const floating = useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = useState(false);
+  const [position, setPosition] = useState({ left: 12, top: 90 });
   const [draft, setDraft] = useState<PdfHighlight | null>(null);
+  const [saved, setSaved] = useState<(PdfLocation & { id?: string }) | null>(
+    initial?.rects.length ? initial : null,
+  );
+  useEffect(() => {
+    if (!initial) return;
+    setKey(initial.key);
+    setPageNumber(initial.page);
+    setSaved(initial.rects.length ? initial : null);
+  }, [initial]);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
-  const [rects, setRects] = useState<PdfRect[]>(initial?.rects ?? []);
-  const layer = useRef<HTMLDivElement>(null);
-  const frame = useRef<HTMLDivElement>(null);
+  const [rects, setRects] = useState<PdfRect[]>([]);
+  const [citations, setCitations] = useState<PdfCitation[]>([]);
+  useEffect(() => watchCitations?.(setCitations), [watchCitations]);
+  const pageMarks = citations.filter(
+    (entry) => entry.key === key && entry.page === pageNumber,
+  );
+  const [referenceIds, setReferenceIds] = useState<string[]>([]);
+  const [anchor, setAnchor] = useState<PdfRect | null>(null);
+  const popover = useRef<HTMLElement>(null);
+  const undoDetach = useRef<() => Promise<void>>();
+  const [pinned, setPinned] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hoverTarget = useRef("");
+  function cancelHover() {
+    clearTimeout(hoverTimer.current);
+    hoverTarget.current = "";
+  }
+  useEffect(() => cancelHover, []);
+  const closeRefs = () => {
+    cancelHover();
+    setReferenceIds([]);
+    setPinned(false);
+  };
+  useEffect(closeRefs, [key, pageNumber]);
+  const duplicate = draft && pageMarks.find((c) => samePassage(c, draft));
+  const destinations = [
+    ...new Map(
+      pageMarks
+        .filter((c) =>
+          referenceIds.includes(JSON.stringify([c.noteId, c.rects])),
+        )
+        .map((c) => [c.noteId, c]),
+    ).values(),
+  ];
+  const citationColor = (index: number) =>
+    `hsl(${(45 + index * 137.508) % 360} 88% 58% / 60%)`;
+  const marks = passageSegments(pageMarks).map(({ rect, refs }) => ({
+    rects: [rect],
+    refs,
+    active:
+      !draft && !!saved && refs.some((i) => samePassage(pageMarks[i], saved)),
+    color: `hsl(${(45 + refs[0] * 137.508) % 360} 88% 58% / 36%)`,
+  }));
+  if (rects.length)
+    marks.push({ rects, refs: [], active: true, color: "#ffd54f66" });
+  function hitPassage(page: HTMLElement, clientX: number, clientY: number) {
+    const bounds = page.getBoundingClientRect();
+    const x = (clientX - bounds.left) / bounds.width,
+      y = (clientY - bounds.top) / bounds.height;
+    return marks.findIndex((m) =>
+      m.rects.some(
+        ([a, b, w, h]) => x >= a && x <= a + w && y >= b && y <= b + h,
+      ),
+    );
+  }
+  function showRefs(index: number, pin: boolean) {
+    const mark = marks[index];
+    if (!mark || !mark.refs.length) return;
+    cancelHover();
+    setAnchor(mark.rects[0]);
+    setReferenceIds(
+      mark.refs.map((i) =>
+        JSON.stringify([pageMarks[i].noteId, pageMarks[i].rects]),
+      ),
+    );
+    setPinned(pin);
+  }
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pageFrame = scrollRef.current?.querySelector<HTMLDivElement>(
+    `[data-page="${pageNumber}"]`,
+  );
+  const textLayer = pageFrame?.querySelector<HTMLDivElement>(".textLayer");
+  const pageStatus = useCallback((ready: boolean, text: boolean) => {
+    setReady(ready);
+    setHasText(text);
+  }, []);
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    const target = scroller?.querySelector<HTMLElement>(
+      `[data-page="${initial?.key === key ? initial.page : 1}"]`,
+    );
+    if (target && scroller)
+      scroller.scrollTop +=
+        target.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top;
+  }, [pdf, key, initial]);
+  useLayoutEffect(() => {
+    const box = popover.current,
+      reader = root.current,
+      page = pageFrame,
+      scroll = page?.parentElement;
+    if (!box || !reader || !page || !scroll || !anchor) return;
+    const place = () => {
+      const bounds = reader.getBoundingClientRect(),
+        sheet = page.getBoundingClientRect(),
+        view = scroll.getBoundingClientRect();
+      const x = sheet.left + anchor[0] * sheet.width - bounds.left;
+      const y = sheet.top + anchor[1] * sheet.height - bounds.top;
+      const bottom = y + anchor[3] * sheet.height;
+      box.style.left =
+        Math.max(6, Math.min(x, bounds.width - box.offsetWidth - 8)) + "px";
+      const top = view.top - bounds.top,
+        limit = view.bottom - bounds.top;
+      box.style.visibility = bottom < top || y > limit ? "hidden" : "visible";
+      box.style.top =
+        Math.max(
+          top + 4,
+          bottom + 8 + box.offsetHeight <= limit
+            ? bottom + 8
+            : y - box.offsetHeight - 8,
+        ) + "px";
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    [box, reader, page].forEach((el) => observer.observe(el));
+    scroll.addEventListener("scroll", place);
+    return () => {
+      observer.disconnect();
+      scroll.removeEventListener("scroll", place);
+    };
+  }, [anchor, destinations.length, draft]);
+  const locatedInitial = useRef(false);
+  const [readerWidth, setReaderWidth] = useState(320);
+  const [zoom, setZoom] = useState(1);
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const observer = new ResizeObserver(() => {
+      if (!container.clientWidth) return;
+      clearTimeout(timer);
+      timer = setTimeout(
+        () => setReaderWidth(Math.max(240, Math.floor(container.clientWidth))),
+        100,
+      );
+    });
+    observer.observe(container);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    setDraft(null);
+    setRects([]);
+  }, [key, pageNumber]);
   const source = sources.find((entry) => entry.key === key);
+  const [askScope, setAskScope] = useState("document");
+  const [readingForAi, setReadingForAi] = useState(false);
+  const aiRead = useRef(0);
+  useEffect(() => {
+    setReadingForAi(false);
+    return () => {
+      aiRead.current++;
+    };
+  }, [pdf, key, pageNumber]);
+  async function askAboutPdf() {
+    if (!pdf || !source || !onAsk) return;
+    const ticket = ++aiRead.current;
+    setReadingForAi(true);
+    try {
+      const number = askScope === "page" ? pageNumber : undefined;
+      let text = `Attached PDF with ${pdf.numPages} pages. Use the page text and visual layout.`;
+      if (number) {
+        const page = await pdf.getPage(number);
+        const content = await page.getTextContent();
+        text =
+          "Page " +
+          number +
+          "\n" +
+          content.items
+            .map((item) =>
+              "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "",
+            )
+            .join("")
+            .slice(0, 24000);
+      }
+      if (ticket !== aiRead.current) return;
+      onAsk(source.name + (number ? " · Page " + number : " · PDF"), text, {
+        key,
+        page: number,
+      });
+    } catch (e) {
+      if (ticket === aiRead.current)
+        setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (ticket === aiRead.current) setReadingForAi(false);
+    }
+  }
   useEffect(() => {
     let cancelled = false;
     let passwordRequired = false;
-    let task: ReturnType<typeof getDocument> | undefined;
+    let task: ReturnType<typeof openPdfBytes> | undefined;
     setPdf(null);
     setError("");
     setLoading(true);
@@ -61,17 +280,7 @@ export function PdfReader({
           throw new Error(
             "PDF reader limit is 10 MiB. The original attachment is retained.",
           );
-        const base = import.meta.env.DEV
-          ? "/node_modules/pdfjs-dist/"
-          : "/pdfjs/";
-        task = getDocument({
-          data: new Uint8Array(bytes),
-          cMapUrl: `${base}cmaps/`,
-          cMapPacked: true,
-          standardFontDataUrl: `${base}standard_fonts/`,
-          wasmUrl: `${base}wasm/`,
-          stopAtErrors: true,
-        });
+        task = openPdfBytes(new Uint8Array(bytes));
         task.onPassword = () => {
           passwordRequired = true;
           setError("Password-protected PDFs are not supported in this reader.");
@@ -101,83 +310,104 @@ export function PdfReader({
   }, [key]);
 
   useEffect(() => {
-    if (!pdf || !frame.current || !layer.current) return;
-    let cancelled = false;
-    let render:
-      | ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]>
-      | undefined;
-    let text: TextLayer | undefined;
-    const canvas = document.createElement("canvas");
-    const container = layer.current;
-    frame.current.prepend(canvas);
-    container.replaceChildren();
-    setReady(false);
-    setError("");
-    setDraft(null);
-    void (async () => {
-      try {
-        const page = await pdf.getPage(pageNumber);
-        if (cancelled) return;
-        const unscaled = page.getViewport({ scale: 1 });
-        const scale = Math.min(1.5, 900 / unscaled.width);
-        const viewport = page.getViewport({ scale });
-        if (
-          !Number.isFinite(viewport.width * viewport.height) ||
-          viewport.width * viewport.height > 4_000_000 ||
-          viewport.height > 8000
-        )
-          throw new Error("PDF page exceeds the reader rendering limit");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        frame.current!.style.width = `${viewport.width}px`;
-        frame.current!.style.height = `${viewport.height}px`;
-        container.style.setProperty("--total-scale-factor", String(scale));
-        render = page.render({ canvas, viewport });
-        await render.promise;
-        const content = await page.getTextContent();
-        if (cancelled) return;
-        setHasText(
-          content.items.some((item) => "str" in item && item.str.trim()),
-        );
-        text = new TextLayer({
-          textContentSource: content,
-          container,
-          viewport,
-        });
-        await text.render();
-        if (!cancelled) setReady(true);
-      } catch (e) {
-        if (!cancelled) setError(`Unable to render page: ${String(e)}`);
+    if (
+      ready &&
+      !locatedInitial.current &&
+      initial?.key === key &&
+      initial.page === pageNumber
+    ) {
+      const highlight = pageFrame?.querySelector<HTMLElement>(
+        ".pdf-highlight.active",
+      );
+      const scroller = pageFrame?.parentElement;
+      if (highlight && scroller) {
+        // Only move the PDF viewport, never the surrounding panel or editor.
+        scroller.scrollTop =
+          scroller.scrollTop +
+          highlight.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top -
+          scroller.clientHeight / 2;
+        locatedInitial.current = true;
       }
-    })();
-    return () => {
-      cancelled = true;
-      render?.cancel();
-      text?.cancel();
-      canvas.remove();
-      container.replaceChildren();
-    };
-  }, [pdf, pageNumber]);
+    }
+  }, [ready, initial, key, pageNumber]);
 
   useEffect(() => {
-    if (ready && initial?.key === key && initial.page === pageNumber)
-      frame.current
-        ?.querySelector(".pdf-highlight")
-        ?.scrollIntoView({ block: "center", inline: "nearest" });
-  }, [ready, initial, key, pageNumber]);
+    setPreview(false);
+  }, [draft?.id]);
+  const clearDraft = useCallback(() => {
+    setDraft(null);
+    setRects([]);
+    setError("");
+  }, []);
+  useEffect(() => {
+    if (!draft || pending || busy) return;
+    const dismiss = (event: PointerEvent) => {
+      const panel = floating.current;
+      if (!panel || event.button !== 0 || event.composedPath().includes(panel))
+        return;
+      clearDraft();
+    };
+    // Dismiss before a new selection starts, even if the editor stops bubbling.
+    document.addEventListener("pointerdown", dismiss, true);
+    return () => document.removeEventListener("pointerdown", dismiss, true);
+  }, [draft, pending, busy, clearDraft]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 6000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => {
+    if (!draft) return;
+    const update = () => {
+      const bounds = root.current?.getBoundingClientRect();
+      const mark = pageFrame
+        ?.querySelector(".pdf-highlight.active")
+        ?.getBoundingClientRect();
+      const viewport = pageFrame?.parentElement?.getBoundingClientRect();
+      if (!bounds || !mark || !viewport) return;
+      const height = floating.current?.offsetHeight ?? 40;
+      const width = floating.current?.offsetWidth ?? 240;
+      const above = mark.top - bounds.top - height - 8;
+      setPosition({
+        left: Math.max(
+          8,
+          Math.min(mark.left - bounds.left, bounds.width - width - 8),
+        ),
+        top: Math.max(
+          viewport.top - bounds.top + 8,
+          Math.min(
+            above >= viewport.top - bounds.top
+              ? above
+              : mark.bottom - bounds.top + 8,
+            bounds.height - height - 8,
+          ),
+        ),
+      });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (root.current) observer.observe(root.current);
+    if (floating.current) observer.observe(floating.current);
+    const scroller = pageFrame?.parentElement;
+    scroller?.addEventListener("scroll", update);
+    return () => {
+      observer.disconnect();
+      scroller?.removeEventListener("scroll", update);
+    };
+  }, [draft, preview, ready, zoom]);
 
   function captureSelection() {
     if (!ready || pending || busy || !source) return;
     const selection = window.getSelection();
-    if (!selection?.rangeCount || selection.isCollapsed || !layer.current)
-      return;
+    if (!selection?.rangeCount || selection.isCollapsed || !textLayer) return;
     const range = selection.getRangeAt(0);
     if (
-      !layer.current.contains(range.startContainer) ||
-      !layer.current.contains(range.endContainer)
+      !textLayer.contains(range.startContainer) ||
+      !textLayer.contains(range.endContainer)
     )
       return;
-    const bounds = layer.current.getBoundingClientRect();
+    const bounds = textLayer.getBoundingClientRect();
     const selected: PdfRect[] = [...range.getClientRects()]
       .filter((r) => r.width > 0 && r.height > 0)
       .map((r) => {
@@ -205,10 +435,15 @@ export function PdfReader({
     };
     try {
       validatePdfHighlight(value);
+      closeRefs();
       setDraft(value);
       setRects(selected);
       setNotice("");
       setError("");
+      selection.removeAllRanges();
+      pageFrame
+        ?.closest<HTMLElement>(".pdf-reader")
+        ?.focus({ preventScroll: true });
     } catch (e) {
       setDraft(null);
       setError(String(e));
@@ -216,106 +451,611 @@ export function PdfReader({
   }
 
   return (
-    <section className="pdf-reader" aria-label="PDF reader">
-      <div className="actions">
-        <strong>PDF reader</strong>
-        <select
-          aria-label="PDF attachment"
-          value={key}
-          disabled={busy || pending}
-          onChange={(e) => {
-            setKey(e.target.value);
-            setPageNumber(1);
-            setRects([]);
-            setNotice("");
-          }}
-        >
-          {sources.map((entry) => (
-            <option key={entry.key} value={entry.key}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
-        <button
-          disabled={busy || pending || !pdf || pageNumber <= 1}
-          onClick={() => {
-            setPageNumber(pageNumber - 1);
-            setRects([]);
-          }}
-        >
-          Previous PDF page
-        </button>
-        <span>
-          Page {pageNumber}
-          {pdf ? ` of ${pdf.numPages}` : ""}
-        </span>
-        <button
-          disabled={busy || pending || !pdf || pageNumber >= pdf.numPages}
-          onClick={() => {
-            setPageNumber(pageNumber + 1);
-            setRects([]);
-          }}
-        >
-          Next PDF page
-        </button>
-        <button disabled={busy || pending} onClick={onClose}>
-          Close PDF reader
-        </button>
+    <section
+      ref={root}
+      className="pdf-reader"
+      aria-label="PDF reader"
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (
+          draft &&
+          (event.key === "Escape" ||
+            ((event.ctrlKey || event.metaKey) &&
+              event.key.toLowerCase() === "z" &&
+              !event.shiftKey))
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (preview && event.key === "Escape") {
+            setPreview(false);
+            return;
+          }
+          clearDraft();
+          window.getSelection()?.removeAllRanges();
+        }
+      }}
+    >
+      <div className="pdf-reader-toolbar">
+        <div className="pdf-toolbar">
+          <select
+            aria-label="PDF attachment"
+            value={key}
+            disabled={busy || pending}
+            onChange={(e) => {
+              setKey(e.target.value);
+              setPageNumber(1);
+              setRects([]);
+              setNotice("");
+            }}
+          >
+            {sources.map((entry) => (
+              <option key={entry.key} value={entry.key}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+          {onAsk && (
+            <div className="pdf-ai-controls">
+              <select
+                aria-label="PDF context for Ask Knot"
+                title="Send the full PDF or a visual of only the current page with your question"
+                value={askScope}
+                disabled={readingForAi}
+                onChange={(e) => setAskScope(e.target.value)}
+              >
+                <option value="document">Entire PDF</option>
+                <option value="page">Current page</option>
+              </select>
+              <button
+                disabled={!pdf || loading || busy || pending || readingForAi}
+                onClick={() => void askAboutPdf()}
+              >
+                <ShellIcon name="sparkles" size={15} />
+                {readingForAi ? "Reading PDF…" : "Ask Knot"}
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="pdf-controls">
+          <div className="pdf-pagination" role="group" aria-label="PDF pages">
+            <span>
+              Page {pageNumber} of {pdf?.numPages ?? "–"}
+            </span>
+          </div>
+          <div className="pdf-view-tools" role="group" aria-label="PDF zoom">
+            <button
+              aria-label="Zoom out PDF"
+              title="Zoom out"
+              disabled={zoom <= 0.5}
+              onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
+            >
+              −
+            </button>
+            <span>{Math.round(zoom * 100)}%</span>
+            <button
+              aria-label="Zoom in PDF"
+              title="Zoom in"
+              disabled={zoom >= 1.5}
+              onClick={() => setZoom((value) => Math.min(1.5, value + 0.25))}
+            >
+              +
+            </button>
+            <button
+              aria-label="Fit width"
+              title="Fit width"
+              onClick={() => setZoom(1)}
+            >
+              ↔
+            </button>
+          </div>
+        </div>
       </div>
-      <p>
-        Select text on this page, then create a highlight card in the current
-        document.
-      </p>
       {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {notice && (
+        <p className="pdf-toast" role="status">
+          {notice}
+          {notice === "Excerpt unlinked" && undoDetach.current && (
+            <button
+              disabled={pending}
+              onClick={async () => {
+                setPending(true);
+                try {
+                  await undoDetach.current?.();
+                  undoDetach.current = undefined;
+                  setNotice("Excerpt restored");
+                } catch (e) {
+                  setError(String(e));
+                } finally {
+                  setPending(false);
+                }
+              }}
+            >
+              Undo
+            </button>
+          )}
+        </p>
+      )}
       {loading && <p>Loading local PDF…</p>}
       {ready && !hasText && (
         <p>This page has no selectable text. OCR is not supported.</p>
       )}
-      <button
-        disabled={!draft || !ready || busy || pending}
-        onClick={() => {
-          if (!draft) return;
-          setPending(true);
-          setError("");
-          void onCreate(draft)
-            .then(() => {
-              setDraft(null);
-              setNotice("Highlight card saved.");
-            })
-            .catch((e) =>
-              setError(
-                `Card not saved: ${String(e)}. Retry Create highlight card to save the same card.`,
-              ),
-            )
-            .finally(() => setPending(false));
+      {draft && (
+        <div ref={floating} className="pdf-selection-panel" style={position}>
+          {preview && (
+            <>
+              <div className="pdf-selection-label">
+                Card preview · not saved
+              </div>
+              <div
+                className="pdf-card-preview"
+                aria-label="Highlight card preview"
+                style={{
+                  fontFamily: editorFontFamily(getEditorPreferences()),
+                  fontSize: getEditorPreferences().fontSize,
+                }}
+              >
+                <blockquote className="pdf-quote">{draft.quote}</blockquote>
+                <button
+                  className="pdf-card-source"
+                  onClick={() => {
+                    const highlight = pageFrame?.querySelector<HTMLElement>(
+                      ".pdf-highlight.active",
+                    );
+                    const scroller = pageFrame?.parentElement;
+                    if (highlight && scroller)
+                      scroller.scrollTop =
+                        scroller.scrollTop +
+                        highlight.getBoundingClientRect().top -
+                        scroller.getBoundingClientRect().top -
+                        scroller.clientHeight / 2;
+                  }}
+                >
+                  {pdfSourceLabel(draft)}
+                </button>
+              </div>
+            </>
+          )}
+          <div
+            className="pdf-selection-actions"
+            role="group"
+            aria-label="Selected passage actions"
+          >
+            {saved?.blockId &&
+              citations.some((c) => c.blockId === saved.blockId) && (
+                <button
+                  disabled={busy || pending}
+                  onClick={async () => {
+                    if (!saved.blockId) return;
+                    setPending(true);
+                    try {
+                      await onReplace(saved.blockId, draft);
+                      setSaved({
+                        ...draft,
+                        id: undefined,
+                        blockId: saved.blockId,
+                      });
+                      setDraft(null);
+                      setRects([]);
+                      setNotice("Excerpt replaced");
+                    } catch (e) {
+                      setError(String(e));
+                    } finally {
+                      setPending(false);
+                    }
+                  }}
+                >
+                  Replace excerpt
+                </button>
+              )}
+            {duplicate && (
+              <button onClick={() => onJump(duplicate.noteId)}>
+                View existing card
+              </button>
+            )}
+            <button
+              className="pdf-save-highlight"
+              aria-label="Create highlight card"
+              disabled={!draft || !ready || busy || pending}
+              onClick={() => {
+                if (!draft) return;
+                setPending(true);
+                setError("");
+                void onCreate(draft)
+                  .then(() => {
+                    setSaved(draft);
+                    setDraft(null);
+                    setRects([]);
+                    setNotice("Highlight card saved.");
+                  })
+                  .catch((e) =>
+                    setError(
+                      `Card not saved: ${String(e)}. Retry Create highlight card to save the same card.`,
+                    ),
+                  )
+                  .finally(() => setPending(false));
+              }}
+            >
+              {pending
+                ? "Saving…"
+                : duplicate
+                  ? "Create another card"
+                  : "Highlight"}
+            </button>
+            <button
+              aria-label="Preview highlight card"
+              aria-expanded={preview}
+              disabled={pending}
+              onClick={() => setPreview(!preview)}
+            >
+              Preview
+            </button>
+            <button
+              aria-label="Clear selection"
+              title="Clear selection"
+              disabled={!draft || pending || busy}
+              onClick={() => {
+                clearDraft();
+                window.getSelection()?.removeAllRanges();
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+      {saved?.id &&
+        saved.key === key &&
+        saved.page === pageNumber &&
+        marks.some((mark) => mark.active) &&
+        !draft && (
+          <button
+            className="pdf-undo-highlight"
+            disabled={busy || pending}
+            onClick={() => {
+              setPending(true);
+              setError("");
+              void onRemove(saved, saved.id)
+                .then(() => {
+                  setSaved(null);
+                  setRects([]);
+                  setDraft(null);
+                  setNotice(
+                    "Highlight card removed. Document Undo restores it.",
+                  );
+                })
+                .catch((e) =>
+                  setError(`Could not remove highlight: ${String(e)}`),
+                )
+                .finally(() => setPending(false));
+            }}
+          >
+            {saved.id ? "Undo saved highlight" : "Remove this highlight card"}
+          </button>
+        )}
+      {!!destinations.length && !draft && (
+        <aside
+          ref={popover}
+          className="pdf-reference-list"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") closeRefs();
+          }}
+        >
+          <header>
+            <span>References</span>
+            <button aria-label="Dismiss references" onClick={closeRefs}>
+              <ShellIcon name="close" size={14} />
+            </button>
+          </header>
+          {destinations.map((c) => (
+            <div className="pdf-reference-row" key={c.noteId}>
+              <button
+                className="pdf-reference-jump"
+                title={c.label}
+                onClick={() => {
+                  onJump(c.noteId);
+                  closeRefs();
+                }}
+              >
+                <i
+                  style={{ background: citationColor(pageMarks.indexOf(c)) }}
+                />
+                <span>
+                  <small>
+                    {c.noteId.startsWith("pdf-")
+                      ? "Highlight card"
+                      : "Notebook note"}
+                  </small>
+                  {c.label}
+                </span>
+              </button>
+              <button
+                className="pdf-reference-clear"
+                aria-label="Unlink excerpt and clear highlight"
+                title="Unlink excerpt and clear highlight"
+                disabled={pending || busy}
+                onClick={async () => {
+                  setPending(true);
+                  try {
+                    undoDetach.current = await onDetach(c);
+                    setSaved(null);
+                    closeRefs();
+                    setNotice("Excerpt unlinked");
+                  } catch (e) {
+                    setError(String(e));
+                  } finally {
+                    setPending(false);
+                  }
+                }}
+              >
+                <ShellIcon name="eraser" size={16} />
+              </button>
+            </div>
+          ))}
+        </aside>
+      )}
+      <div
+        className="pdf-scroll"
+        ref={scrollRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const pages = el.children;
+          if (!pages.length) return;
+          const target = el.getBoundingClientRect().top + el.clientHeight / 2;
+          let low = 0,
+            high = pages.length - 1;
+          while (low < high) {
+            const mid = Math.floor((low + high) / 2);
+            if (pages[mid].getBoundingClientRect().bottom < target)
+              low = mid + 1;
+            else high = mid;
+          }
+          setPageNumber(
+            el.scrollTop <= 1
+              ? 1
+              : el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+                ? pages.length
+                : low + 1,
+          );
         }}
       >
-        Create highlight card
-      </button>
-      {draft && <blockquote className="pdf-quote">{draft.quote}</blockquote>}
-      <div className="pdf-scroll">
-        <div
-          ref={frame}
-          className="pdf-page"
-          onMouseUp={captureSelection}
-          onKeyUp={captureSelection}
-        >
-          <div ref={layer} className="textLayer" />
-          {rects.map((r, i) => (
-            <span
-              key={i}
-              className="pdf-highlight"
-              style={{
-                left: `${r[0] * 100}%`,
-                top: `${r[1] * 100}%`,
-                width: `${r[2] * 100}%`,
-                height: `${r[3] * 100}%`,
-              }}
-            />
-          ))}
-        </div>
+        {pdf &&
+          Array.from({ length: pdf.numPages }, (_, index) => {
+            const number = index + 1;
+            const activePage = number === pageNumber;
+            return (
+              <ReaderPage
+                key={key + ":" + number}
+                pdf={pdf}
+                pageNumber={number}
+                readerWidth={readerWidth}
+                zoom={zoom}
+                active={activePage}
+                onStatus={pageStatus}
+                onPointerDownCapture={() => setPageNumber(number)}
+                onPointerLeave={cancelHover}
+                onPointerMove={(e) => {
+                  if (!activePage || pinned || draft || e.buttons) return;
+                  const index = hitPassage(
+                    e.currentTarget,
+                    e.clientX,
+                    e.clientY,
+                  );
+                  const ids =
+                    marks[index]?.refs.map((i) =>
+                      JSON.stringify([pageMarks[i].noteId, pageMarks[i].rects]),
+                    ) ?? [];
+                  const target = JSON.stringify(ids);
+                  if (!ids.length || target === JSON.stringify(referenceIds)) {
+                    cancelHover();
+                  } else if (target !== hoverTarget.current) {
+                    cancelHover();
+                    hoverTarget.current = target;
+                    hoverTimer.current = setTimeout(
+                      () => showRefs(index, false),
+                      150,
+                    );
+                  }
+                }}
+                onClick={(e) => {
+                  if (draft || !window.getSelection()?.isCollapsed) return;
+                  const i = hitPassage(e.currentTarget, e.clientX, e.clientY);
+                  if (i >= 0) showRefs(i, true);
+                  else closeRefs();
+                }}
+                onMouseUp={captureSelection}
+                onKeyUp={captureSelection}
+              >
+                {!activePage &&
+                  citations
+                    .filter((c) => c.key === key && c.page === number)
+                    .flatMap((c) =>
+                      c.rects.map((r, i) => (
+                        <span
+                          key={JSON.stringify([c.noteId, r, i])}
+                          className="pdf-highlight"
+                          style={{
+                            left: `${r[0] * 100}%`,
+                            top: `${r[1] * 100}%`,
+                            width: `${r[2] * 100}%`,
+                            height: `${r[3] * 100}%`,
+                          }}
+                        />
+                      )),
+                    )}
+                {activePage &&
+                  marks.flatMap((mark, group) =>
+                    mark.rects.map((r, i) => (
+                      <span
+                        key={`${group}-${i}`}
+                        data-count={
+                          new Set(mark.refs.map((i) => pageMarks[i].noteId))
+                            .size > 1
+                            ? new Set(mark.refs.map((i) => pageMarks[i].noteId))
+                                .size
+                            : undefined
+                        }
+                        tabIndex={mark.refs.length ? 0 : undefined}
+                        role={mark.refs.length ? "button" : undefined}
+                        aria-label={
+                          mark.refs.length
+                            ? "Show passage references"
+                            : undefined
+                        }
+                        onFocus={() => showRefs(group, false)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            showRefs(group, true);
+                            root.current
+                              ?.querySelector<HTMLButtonElement>(
+                                ".pdf-reference-jump",
+                              )
+                              ?.focus();
+                          }
+                        }}
+                        className={`pdf-highlight${mark.active ? " active" : ""}`}
+                        style={{
+                          background: mark.color,
+                          borderBottom:
+                            new Set(mark.refs.map((i) => pageMarks[i].noteId))
+                              .size > 1
+                              ? "2px dotted #555"
+                              : undefined,
+                          outline:
+                            mark.active && !draft
+                              ? "1px solid #474747"
+                              : undefined,
+                          left: `${r[0] * 100}%`,
+                          top: `${r[1] * 100}%`,
+                          width: `${r[2] * 100}%`,
+                          height: `${r[3] * 100}%`,
+                        }}
+                      />
+                    )),
+                  )}
+              </ReaderPage>
+            );
+          })}
       </div>
     </section>
+  );
+}
+
+function ReaderPage({
+  pdf,
+  pageNumber,
+  readerWidth,
+  zoom,
+  active,
+  onStatus,
+  children,
+  ...events
+}: {
+  pdf: PDFDocumentProxy;
+  pageNumber: number;
+  readerWidth: number;
+  zoom: number;
+  active: boolean;
+  onStatus: (ready: boolean, hasText: boolean) => void;
+} & React.HTMLAttributes<HTMLDivElement>) {
+  const frame = useRef<HTMLDivElement>(null);
+  const layer = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [hasText, setHasText] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const el = frame.current!;
+    const observer = new IntersectionObserver(
+      ([entry]) => setNear(entry.isIntersecting),
+      { root: el.parentElement, rootMargin: "100% 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    if (active) onStatus(near && ready, hasText);
+  }, [active, near, ready, hasText, onStatus]);
+  useEffect(() => {
+    if (!near || !frame.current || !layer.current) return;
+    let cancelled = false;
+    let render:
+      | ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]>
+      | undefined;
+    let text: TextLayer | undefined;
+    const canvas = document.createElement("canvas");
+    const container = layer.current;
+    frame.current.prepend(canvas);
+    container.replaceChildren();
+    setReady(false);
+    setError("");
+    void (async () => {
+      try {
+        const page = await pdf.getPage(pageNumber);
+        if (cancelled) return;
+        const unscaled = page.getViewport({ scale: 1 });
+        const scale = (readerWidth / unscaled.width) * zoom;
+        const viewport = page.getViewport({ scale });
+        if (
+          !Number.isFinite(viewport.width * viewport.height) ||
+          viewport.width * viewport.height > 4_000_000 ||
+          viewport.height > 8000
+        )
+          throw new Error("PDF page exceeds the reader rendering limit");
+        const pixelRatio = Math.min(
+          window.devicePixelRatio || 1,
+          Math.sqrt(3_900_000 / (viewport.width * viewport.height)),
+        );
+        canvas.width = Math.ceil(viewport.width * pixelRatio);
+        canvas.height = Math.ceil(viewport.height * pixelRatio);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        frame.current!.style.aspectRatio = String(
+          unscaled.width / unscaled.height,
+        );
+        container.style.setProperty("--total-scale-factor", String(scale));
+        render = page.render({
+          canvas,
+          viewport,
+          transform: [pixelRatio, 0, 0, pixelRatio, 0, 0],
+        });
+        await render.promise;
+        const content = await page.getTextContent();
+        if (cancelled) return;
+        setHasText(
+          content.items.some((item) => "str" in item && item.str.trim()),
+        );
+        text = new TextLayer({
+          textContentSource: content,
+          container,
+          viewport,
+        });
+        await text.render();
+        if (!cancelled) setReady(true);
+      } catch (e) {
+        if (!cancelled) setError(`Unable to render page: ${String(e)}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      render?.cancel();
+      text?.cancel();
+      canvas.remove();
+      container.replaceChildren();
+    };
+  }, [near, pdf, pageNumber, readerWidth, zoom]);
+
+  return (
+    <div
+      {...events}
+      className="pdf-page"
+      ref={frame}
+      data-page={pageNumber}
+      style={{ width: readerWidth * zoom }}
+    >
+      <div ref={layer} className="textLayer" />
+      {error && <p role="alert">{error}</p>}
+      {children}
+    </div>
   );
 }

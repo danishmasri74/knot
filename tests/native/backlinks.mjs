@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
@@ -40,7 +43,7 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -53,7 +56,7 @@ async function stop() {
   child = null;
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
@@ -69,9 +72,7 @@ async function select(title) {
   await ready();
 }
 async function place(title, shared = true) {
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption({ label: title });
-  await click(shared ? "Place shared note" : "Insert link");
+  await placeLegacyReference(page, title, shared);
 }
 async function body(id) {
   return page.evaluate((id) => {
@@ -92,7 +93,7 @@ try {
   await ready();
   await save();
   const target = await body();
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   await rename("Board source");
   await place("Target note");
   await place("Target note", false);
@@ -229,7 +230,7 @@ try {
     .getByRole("button", { name: "Renamed source", exact: true })
     .waitFor();
   await select("Renamed source");
-  await page.getByTitle("Delete document").click();
+  await clickShellButton(page, "Delete document");
   await ready();
   await select("Target note");
   await click("Backlinks");

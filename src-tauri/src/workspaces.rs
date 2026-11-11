@@ -97,8 +97,7 @@ fn existing_root(base: &Path, id: &str) -> Result<PathBuf> {
         return Ok(entry.path);
     }
     let root = base.join(id);
-    let canonical = root.canonicalize()?;
-    if canonical.parent() != Some(base.canonicalize()?.as_path())
+    if !crate::paths::is_direct_child(&root, base)?
         || !root.join("workspace.json").is_file()
         || !root.join("knot.db").is_file()
     {
@@ -236,10 +235,6 @@ pub fn startup(base: &Path) -> Result<Workspace> {
             } else {
                 Workspace::open(existing_root(base, "Workspace")?)?
             };
-            if first_launch {
-                let id = ws.create("note")?;
-                ws.rename(&id, "Welcome to Knot")?;
-            }
             Ok(ws)
         }
         Err(error) => Err(error.into()),

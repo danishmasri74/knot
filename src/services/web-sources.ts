@@ -1,0 +1,304 @@
+import { Channel, invoke } from "@tauri-apps/api/core";
+import {
+  WEB_LIMITS,
+  type NativeWebResult,
+  type WebAttempt,
+  type WebCapture,
+} from "./web-source-types";
+import type { extractWebSource } from "./web-source-extraction";
+
+export function normalizeWebUrl(
+  candidate: string,
+  bare = false,
+): string | null {
+  try {
+    const url = new URL(
+      bare && !/^https?:\/\//i.test(candidate)
+        ? `https://${candidate}`
+        : candidate,
+    );
+    if (
+      !/^https?:$/.test(url.protocol) ||
+      url.username ||
+      url.password ||
+      (bare && !url.hostname.includes(".") && !url.hostname.includes(":")) ||
+      url.href.length > 8192
+    )
+      return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+export function detectWebUrls(text: string, bare = false): string[] {
+  const candidates = bare
+    ? text.split(/[\s<>]+/)
+    : (text.match(/https?:\/\/[^\s<>"`]+/gi) ?? []);
+  return [
+    ...new Set(
+      candidates.flatMap((candidate) => {
+        // Remove Markdown/prose wrappers, but do not rewrite a signed query value.
+        const wrapper = candidate.match(/([)\]])[.,;:!?]*$/);
+        if (wrapper) {
+          const close = wrapper[1],
+            open = close === ")" ? "(" : "[";
+          if (candidate.split(close).length > candidate.split(open).length)
+            candidate = candidate.slice(0, candidate.lastIndexOf(close));
+        }
+        if (!candidate.includes("?") || candidate.includes("#"))
+          candidate = candidate.replace(/[.,;:!?]+$/, "");
+        while (
+          candidate.endsWith(")") &&
+          (candidate.match(/\)/g)?.length ?? 0) >
+            (candidate.match(/\(/g)?.length ?? 0)
+        )
+          candidate = candidate.slice(0, -1);
+        while (
+          candidate.endsWith("]") &&
+          (candidate.match(/\]/g)?.length ?? 0) >
+            (candidate.match(/\[/g)?.length ?? 0)
+        )
+          candidate = candidate.slice(0, -1);
+        const url = normalizeWebUrl(candidate, bare);
+        return url ? [url] : [];
+      }),
+    ),
+  ];
+}
+export function webFetchKey(url: string) {
+  const value = new URL(url);
+  value.hash = "";
+  return value.href;
+}
+export function webSourceLabel(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname + parsed.pathname;
+  } catch {
+    return "Website";
+  }
+}
+
+export function extractInWorker(
+  body: string,
+  contentType: string,
+  signal: AbortSignal,
+): Promise<ReturnType<typeof extractWebSource>> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL("./web-source-extract.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    const finish = () => {
+      worker.terminate();
+      clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
+    };
+    const abort = () => {
+      finish();
+      reject(new Error("Capture stopped"));
+    };
+    const timer = setTimeout(() => {
+      finish();
+      reject(new Error("Extraction timed out. Try a smaller page."));
+    }, WEB_LIMITS.extractionMs);
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    worker.onmessage = ({ data }) => {
+      finish();
+      if (data.error) reject(new Error(data.error));
+      else resolve(data.result);
+    };
+    worker.onerror = () => {
+      finish();
+      reject(new Error("The extraction worker failed."));
+    };
+    worker.postMessage({ body, contentType });
+  });
+}
+
+/** One generation owns all callbacks; cancelled/late results cannot escape it. */
+export class WebSourceCoordinator {
+  private active?: {
+    id: string;
+    controller: AbortController;
+    stopped: () => void;
+  };
+  cancel() {
+    const active = this.active;
+    if (!active) return;
+    active.controller.abort();
+    active.stopped();
+    void invoke("web_sources_cancel", { id: active.id }).catch(() => {});
+    this.active = undefined;
+  }
+  async capture(
+    session: string,
+    attempts: WebAttempt[],
+    update: (attempt: WebAttempt) => void,
+  ) {
+    this.cancel();
+    if (attempts.length > WEB_LIMITS.urls)
+      throw new Error(`Use at most ${WEB_LIMITS.urls} website URLs.`);
+    const id = crypto.randomUUID(),
+      controller = new AbortController();
+    const finished = new Set<string>();
+    const report = (attempt: WebAttempt) => {
+      if (["ready", "partial", "failed", "cancelled"].includes(attempt.state))
+        finished.add(attempt.id);
+      update(attempt);
+    };
+    this.active = {
+      id,
+      controller,
+      stopped: () =>
+        attempts
+          .filter((a) => !finished.has(a.id))
+          .forEach((a) =>
+            report({ ...a, state: "cancelled", reason: "Capture stopped" }),
+          ),
+    };
+    const pending: Promise<void>[] = [];
+    const groups = new Map<string, WebAttempt[]>();
+    for (const attempt of attempts) {
+      if (/^#(?:!|\/)/.test(new URL(attempt.url).hash)) {
+        report({
+          ...attempt,
+          state: "failed",
+          reason:
+            "This hash-route page needs rendered browser capture, which is not available yet. Open it externally or attach a saved document.",
+        });
+        continue;
+      }
+      const key = webFetchKey(attempt.url);
+      groups.set(key, [...(groups.get(key) ?? []), attempt]);
+      update({ ...attempt, state: "queued" });
+    }
+    const valid = () => this.active?.id === id && !controller.signal.aborted;
+    let resolveDelivered: () => void = () => {};
+    const delivered = new Promise<void>((resolve, reject) => {
+      resolveDelivered = resolve;
+      controller.signal.addEventListener(
+        "abort",
+        () => reject(new Error("Capture stopped")),
+        { once: true },
+      );
+    });
+    void delivered.catch(() => {});
+    const channel = new Channel<{
+      url: string;
+      status: string;
+      result?: NativeWebResult;
+    }>();
+    channel.onmessage = (event) => {
+      if (!valid()) return;
+      if (event.status === "complete") {
+        resolveDelivered();
+        return;
+      }
+      const group = groups.get(event.url) ?? [];
+      if (!event.result) {
+        group.forEach((a) => update({ ...a, state: "fetching" }));
+        return;
+      }
+      const result = event.result;
+      pending.push(
+        (async () => {
+          if (result.code || result.body === undefined) {
+            group.forEach((a) =>
+              report({
+                ...a,
+                state: "failed",
+                reason: result.message ?? "Capture failed",
+              }),
+            );
+            return;
+          }
+          group.forEach((a) => update({ ...a, state: "extracting" }));
+          try {
+            const extracted = await extractInWorker(
+              result.body,
+              result.contentType!,
+              controller.signal,
+            );
+            const hash = Array.from(
+              new Uint8Array(
+                await crypto.subtle.digest(
+                  "SHA-256",
+                  new TextEncoder().encode(
+                    extracted.sections.map((s) => s.text).join("\n"),
+                  ),
+                ),
+              ),
+            )
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+            if (!valid()) return;
+            const captureId = crypto.randomUUID();
+            for (const attempt of group) {
+              const capture: WebCapture = {
+                version: 1,
+                sourceId: attempt.id,
+                captureId,
+                requestedUrl: attempt.url,
+                finalUrl: result.finalUrl!,
+                fetchedAt: result.fetchedAt!,
+                contentType: result.contentType!,
+                contentHash: hash,
+                ...extracted,
+                title: extracted.title || webSourceLabel(result.finalUrl!),
+              };
+              report({
+                ...attempt,
+                capture,
+                state: capture.warnings.length ? "partial" : "ready",
+                reason: undefined,
+              });
+            }
+          } catch (error) {
+            if (valid())
+              group.forEach((a) =>
+                report({ ...a, state: "failed", reason: String(error) }),
+              );
+          }
+        })(),
+      );
+    };
+    const deadline = setTimeout(() => {
+      if (this.active?.id === id) this.cancel();
+    }, WEB_LIMITS.batchMs);
+    try {
+      if (groups.size)
+        await Promise.all([
+          invoke("web_sources_fetch", {
+            id,
+            session,
+            urls: [...groups.keys()],
+            onEvent: channel,
+          }),
+          delivered,
+        ]);
+      await Promise.all(pending);
+      if (!valid()) throw new Error("Capture stopped");
+    } catch (error) {
+      if (valid())
+        attempts
+          .filter((a) => !finished.has(a.id))
+          .forEach((a) =>
+            report({
+              ...a,
+              state: "failed",
+              reason: "The source batch could not finish. Retry this source.",
+            }),
+          );
+      throw error;
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+      if (this.active?.id === id) this.active = undefined;
+    }
+  }
+}

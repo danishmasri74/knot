@@ -1,3 +1,4 @@
+import { createNotebook } from "./create-notebook.mjs";
 // Run against the isolated native test app, never a normal user workspace.
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -9,7 +10,7 @@ const { root, port } = JSON.parse(
 const b = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
 const p = b.contexts()[0].pages()[0];
 try {
-  await p.getByRole("button", { name: "New whiteboard" }).click();
+  await createNotebook(p, true);
   await p.waitForSelector("affine-edgeless-root");
   const result = await p.evaluate(async () => {
     const d = document.querySelector("affine-editor-container").doc;
@@ -39,7 +40,7 @@ try {
     };
   });
   assert.equal(result.elements, 500);
-  await p.getByTitle("Save now / retry").click();
+  await p.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await p.waitForFunction(() =>
     document.querySelector(".save-status").textContent.includes("Saved"),
   );

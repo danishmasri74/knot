@@ -1,0 +1,922 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+deleted file mode 100644
+index 3a2a72dbc489800a6ba2e369b46c04decb2a43a6..0000000000000000000000000000000000000000
+diff --git a/dist/edgeless-text-block/edgeless-text-block.js b/dist/edgeless-text-block/edgeless-text-block.js
+index 42cb9d2796bd4a309b9735637118436ba6cd6289..e730148018449f2d9cff4684a14ad37906f550ad 100644
+--- a/dist/edgeless-text-block/edgeless-text-block.js
++++ b/dist/edgeless-text-block/edgeless-text-block.js
+@@ -65,6 +65,12 @@ let EdgelessTextBlockComponent = (() => {
+             if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+         }
+         static { this.styles = css `
++    /* Text sizes from its content, not the previous host height plus borders. */
++    .edgeless-text-block-container rich-text,
++    .edgeless-text-block-container .inline-editor {
++      height: auto;
++    }
++
+     .edgeless-text-block-container[data-max-width='false'] .inline-editor span {
+       word-break: keep-all !important;
+       text-wrap: nowrap !important;
+@@ -84,16 +90,22 @@ let EdgelessTextBlockComponent = (() => {
+         }
+         _updateH() {
+             const bound = Bound.deserialize(this.model.xywh);
+-            const rect = this._textContainer.getBoundingClientRect();
+-            bound.h = rect.height / this.gfx.viewport.zoom;
++            // Layout dimensions exclude viewport scale and inner text rotation.
++    // Measuring the rotated screen rect feeds increasing bounds back into layout.
++    const height = this._textContainer.offsetHeight * this.model.scale;
++    if (!height || Math.abs(bound.h - height) < 0.01) return;
++    bound.h = height;
+             this.doc.updateBlock(this.model, {
+                 xywh: bound.serialize(),
+             });
+         }
+         _updateW() {
+             const bound = Bound.deserialize(this.model.xywh);
+-            const rect = this._textContainer.getBoundingClientRect();
+-            bound.w = Math.max(rect.width / this.gfx.viewport.zoom, EDGELESS_TEXT_BLOCK_MIN_WIDTH * this.gfx.viewport.zoom);
++            const width = this._textContainer.offsetWidth * this.model.scale;
++    if (!width) return;
++    const nextWidth = Math.max(width, EDGELESS_TEXT_BLOCK_MIN_WIDTH);
++    if (Math.abs(bound.w - nextWidth) < 0.01) return;
++    bound.w = nextWidth;
+             this.doc.updateBlock(this.model, {
+                 xywh: bound.serialize(),
+             });
+@@ -221,7 +233,10 @@ let EdgelessTextBlockComponent = (() => {
+         }
+         getCSSTransform() {
+             const viewport = this.gfx.viewport;
+-            const { translateX, translateY, zoom } = viewport;
++            const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+             const bound = Bound.deserialize(this.model.xywh);
+             const scaledX = bound.x * zoom;
+             const scaledY = bound.y * zoom;
+diff --git a/dist/frame-block/frame-block.js b/dist/frame-block/frame-block.js
+index 53a07fbedd31b53ad068470672b377cc292b9964..63ce27bbf976c695d28476d3d75ab36f130824aa 100644
+--- a/dist/frame-block/frame-block.js
++++ b/dist/frame-block/frame-block.js
+@@ -56,12 +56,15 @@ let FrameBlockComponent = (() => {
+         }
+         connectedCallback() {
+             super.connectedCallback();
++    let zoom = this.gfx.viewport.zoom;
+             this._disposables.add(this.doc.slots.blockUpdated.on(({ type, id }) => {
+                 if (id === this.model.id && type === 'update') {
+                     this.requestUpdate();
+                 }
+             }));
+             this._disposables.add(this.gfx.viewport.viewportUpdated.on(() => {
++        if (this.parentElement?.hasAttribute('data-knot-shared-translation') && zoom === this.gfx.viewport.zoom) return;
++        zoom = this.gfx.viewport.zoom;
+                 this.requestUpdate();
+             }));
+         }
+@@ -74,7 +77,10 @@ let FrameBlockComponent = (() => {
+         }
+         getRenderingRect() {
+             const viewport = this.gfx.viewport;
+-            const { translateX, translateY, zoom } = viewport;
++            const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+             const { xywh, rotate } = this.model;
+             const bound = Bound.deserialize(xywh);
+             const scaledX = bound.x * zoom + translateX;
+diff --git a/dist/note-block/note-edgeless-block.js b/dist/note-block/note-edgeless-block.js
+index 731bd6f6d92466df48112bebe4eb757f0ca95191..865c95c64e2d8cc18c95c4931b345f54bbebc872 100644
+--- a/dist/note-block/note-edgeless-block.js
++++ b/dist/note-block/note-edgeless-block.js
+@@ -80,7 +80,7 @@ let EdgelessNoteMask = (() => {
+             const maskDOM = this.renderRoot.querySelector('.affine-note-mask');
+             const observer = new ResizeObserver(entries => {
+                 for (const entry of entries) {
+-                    if (!this.model.edgeless.collapse) {
++                    if (!this.model.edgeless.collapse && !this.closest('affine-edgeless-note')?._knotPreserveBounds) {
+                         const bound = Bound.deserialize(this.model.xywh);
+                         const scale = this.model.edgeless.scale ?? 1;
+                         const height = entry.contentRect.height * scale;
+@@ -140,6 +140,28 @@ let EdgelessNoteMask = (() => {
+ })();
+ export { EdgelessNoteMask };
+ const ACTIVE_NOTE_EXTRA_PADDING = 20;
++// One visible rich note per frame; offscreen notes keep their saved bounds.
++const knotPending = new Set();
++let knotFrame = 0;
++function scheduleKnotNotes() {
++  if (knotFrame || knotPending.size === 0) return;
++  knotFrame = requestAnimationFrame(() => {
++    knotFrame = 0;
++    const visible = new Map();
++    for (const note of knotPending) {
++      if (!note.isConnected) { knotPending.delete(note); continue; }
++      const movingUntil = (note.closest('affine-editor-container'))?._knotCanvasMovingUntil ?? 0;
++      if (performance.now() < movingUntil) continue;
++      const viewport = note.closest('gfx-viewport');
++      if (!visible.has(viewport)) visible.set(viewport, viewport?.getModelsInViewport?.());
++      if (!visible.get(viewport)?.has(note.model)) continue;
++      note._knotMount(false);
++      scheduleKnotNotes();
++      break;
++    }
++  });
++}
++
+ let EdgelessNoteBlockComponent = (() => {
+     let _classSuper = toGfxBlockComponent(NoteBlockComponent);
+     let __editing_decorators;
+@@ -340,10 +362,89 @@ let EdgelessNoteBlockComponent = (() => {
+                     .catch(console.error);
+             }
+         }
++
++
++  _knotObserved = null; _knotPreviewSize = '';
++  _knotObserveContent() {
++    const content = this._notePageContent;
++    if (!content || this._knotObserved === content) return;
++    this._knotObserved = content;
++    const observer = new ResizeObserver(([entry]) => {
++      const height = entry.borderBoxSize[0]?.blockSize;
++      if (height) this._noteFullHeight = height + 2 * EDGELESS_BLOCK_CHILD_PADDING;
++      const size = `${entry.borderBoxSize[0]?.inlineSize}:${height}`; if (height && size !== this._knotPreviewSize) { this._knotPreviewSize = size; this._knotCapture(); }
++    });
++    observer.observe(content, { box: 'border-box' });
++    this._disposables.add(() => observer.disconnect());
++    const mutations = new MutationObserver(() => this._knotCapture());
++    mutations.observe(content, { subtree: true, childList: true, characterData: true });
++    this._disposables.add(() => mutations.disconnect());
++    this._knotCapture();
++  }
++
++  _knotRich = false;
++  _knotForced = false;
++  _knotLive = true;
++  _knotPreviewUrl = '';
++  _knotPreviewBitmap = null;
++  get _knotDetailed() {
++    return this._knotRich && (this._knotForced || this._editing || this._knotLive);
++  }
++  get _knotPreserveBounds() {
++    return !this._knotRich;
++  }
++  _knotCapture() {
++    if (!this._knotRich || !this.isConnected) return;
++    this.dispatchEvent(new CustomEvent('knot-note-preview', { bubbles: true, composed: true }));
++  }
++  _knotResumeMount() { scheduleKnotNotes(); }
++  _knotSetPreview(url, bitmap) {
++    if (this._knotPreviewUrl === url && (!bitmap || bitmap === this._knotPreviewBitmap)) return;
++    this._knotPreviewBitmap = url ? (bitmap ?? this._knotPreviewBitmap) : null;
++    this._knotPreviewUrl = url;
++    this.requestUpdate();
++  }
++
++  _knotMount(force = true) {
++    const changed = force && !this._knotForced;
++    if (force) this._knotForced = true;
++    if (this._knotRich) { if (changed) this.requestUpdate(); return; }
++    this._knotRich = true;
++    knotPending.delete(this);
++    this.requestUpdate();
++    performance.mark('knot:canvas-note-mount');
++    this.updateComplete.then(() => this._knotObserveContent()).catch(console.error);
++  }
++
++
+         connectedCallback() {
+             super.connectedCallback();
+             const selection = this.rootService.selection;
+             this._editing = selection.has(this.model.id) && selection.editing;
++    knotPending.add(this);
++    if (selection.has(this.model.id)) this._knotMount(false);
++    scheduleKnotNotes();
++    const promote = () => this._knotMount(false);
++    this.addEventListener('pointerdown', promote, { capture: true });
++    this._disposables.add(() => {
++      knotPending.delete(this);
++      this.removeEventListener('pointerdown', promote, true);
++    });
++    const updateLOD = () => {
++      const previous = this._knotLive;
++      const zoom = this.gfx.viewport.zoom;
++      if (zoom >= 0.4) this._knotLive = true;
++      else if (zoom <= 0.3) this._knotLive = false;
++      if (this._knotLive !== previous) this.requestUpdate();
++      scheduleKnotNotes();
++    };
++    updateLOD();
++    this._disposables.add(this.gfx.viewport.viewportUpdated.on(updateLOD));
++    this._disposables.add(this.rootService.selection.slots.updated.on(() => {
++      if (this.rootService.selection.has(this.model.id)) this._knotMount(false);
++      this.requestUpdate();
++    }));
++
+             this._disposables.add(selection.slots.updated.on(() => {
+                 if (selection.has(this.model.id) && selection.editing) {
+                     this._editing = true;
+@@ -364,19 +465,7 @@ let EdgelessNoteBlockComponent = (() => {
+             _disposables.add(this.rootService.slots.elementResizeEnd.on(() => {
+                 this._isResizing = false;
+             }));
+-            const observer = new MutationObserver(() => {
+-                const rect = this._notePageContent?.getBoundingClientRect();
+-                if (!rect)
+-                    return;
+-                const zoom = this.gfx.viewport.zoom;
+-                const scale = this.model.edgeless.scale ?? 1;
+-                this._noteFullHeight =
+-                    rect.height / scale / zoom + 2 * EDGELESS_BLOCK_CHILD_PADDING;
+-            });
+-            if (this._notePageContent) {
+-                observer.observe(this, { childList: true, subtree: true });
+-                _disposables.add(() => observer.disconnect());
+-            }
++            this._knotObserveContent();
+         }
+         getRenderingRect() {
+             const { xywh, edgeless } = this.model;
+@@ -388,7 +477,7 @@ let EdgelessNoteBlockComponent = (() => {
+                 x: bound.x,
+                 y: bound.y,
+                 w: width,
+-                h: collapse ? height : 'inherit',
++                h: collapse || !this._knotRich ? height : 'inherit',
+                 zIndex: this.toZIndex(),
+             };
+         }
+@@ -463,10 +552,26 @@ let EdgelessNoteBlockComponent = (() => {
+           style=${styleMap({
+                 width: '100%',
+                 height: '100%',
++                position: 'relative',
+                 'overflow-y': this._isShowCollapsedContent ? 'initial' : 'clip',
+             })}
+         >
+-          ${this.renderPageContent()}
++          <div data-knot-note-live style=${styleMap({
++            position: 'relative',
++            opacity: this._knotDetailed || !this._knotPreviewUrl ? '1' : '0',
++            pointerEvents: this._knotDetailed || !this._knotPreviewUrl ? 'auto' : 'none',
++            transition: 'opacity var(--knot-note-fade, 140ms) ease',
++          })}>${this._knotRich ? this.renderPageContent() : nothing}</div>
++          ${this._knotPreviewUrl ? html`<div data-knot-note-preview data-html2canvas-ignore="true" aria-hidden="true"
++            data-knot-lod="thumbnail" alt="" draggable="false"
++            src=${this._knotPreviewUrl}
++            style=${styleMap({
++              position: 'absolute', left: '0', top: '0', width: '100%',
++              height: 'auto', pointerEvents: 'none',
++              opacity: this._knotDetailed ? '0' : '1',
++              transition: 'opacity var(--knot-note-fade, 140ms) ease',
++            })}
++          >${this._knotPreviewBitmap}</div>` : nothing}
+         </div>
+ 
+         ${isCollapsable
+diff --git a/src/edgeless-text-block/edgeless-text-block.ts b/src/edgeless-text-block/edgeless-text-block.ts
+index 70bc7e151ab7134faff72b33cc486c5a2c319555..c0c8ef2c38a71225edf423ab1c970b3dc16d8c7c 100644
+--- a/src/edgeless-text-block/edgeless-text-block.ts
++++ b/src/edgeless-text-block/edgeless-text-block.ts
+@@ -17,6 +17,12 @@ export const EDGELESS_TEXT_BLOCK_MIN_HEIGHT = 50;
+ 
+ export class EdgelessTextBlockComponent extends GfxBlockComponent<EdgelessTextBlockModel> {
+   static override styles = css`
++    /* Text sizes from its content, not the previous host height plus borders. */
++    .edgeless-text-block-container rich-text,
++    .edgeless-text-block-container .inline-editor {
++      height: auto;
++    }
++
+     .edgeless-text-block-container[data-max-width='false'] .inline-editor span {
+       word-break: keep-all !important;
+       text-wrap: nowrap !important;
+@@ -50,8 +56,11 @@ export class EdgelessTextBlockComponent extends GfxBlockComponent<EdgelessTextBl
+ 
+   private _updateH() {
+     const bound = Bound.deserialize(this.model.xywh);
+-    const rect = this._textContainer.getBoundingClientRect();
+-    bound.h = rect.height / this.gfx.viewport.zoom;
++    // Layout dimensions exclude viewport scale and inner text rotation.
++    // Measuring the rotated screen rect feeds increasing bounds back into layout.
++    const height = this._textContainer.offsetHeight * this.model.scale;
++    if (!height || Math.abs(bound.h - height) < 0.01) return;
++    bound.h = height;
+ 
+     this.doc.updateBlock(this.model, {
+       xywh: bound.serialize(),
+@@ -60,11 +69,11 @@ export class EdgelessTextBlockComponent extends GfxBlockComponent<EdgelessTextBl
+ 
+   private _updateW() {
+     const bound = Bound.deserialize(this.model.xywh);
+-    const rect = this._textContainer.getBoundingClientRect();
+-    bound.w = Math.max(
+-      rect.width / this.gfx.viewport.zoom,
+-      EDGELESS_TEXT_BLOCK_MIN_WIDTH * this.gfx.viewport.zoom
+-    );
++    const width = this._textContainer.offsetWidth * this.model.scale;
++    if (!width) return;
++    const nextWidth = Math.max(width, EDGELESS_TEXT_BLOCK_MIN_WIDTH);
++    if (Math.abs(bound.w - nextWidth) < 0.01) return;
++    bound.w = nextWidth;
+ 
+     this.doc.updateBlock(this.model, {
+       xywh: bound.serialize(),
+@@ -229,7 +238,10 @@ export class EdgelessTextBlockComponent extends GfxBlockComponent<EdgelessTextBl
+ 
+   override getCSSTransform(): string {
+     const viewport = this.gfx.viewport;
+-    const { translateX, translateY, zoom } = viewport;
++    const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+     const bound = Bound.deserialize(this.model.xywh);
+ 
+     const scaledX = bound.x * zoom;
+diff --git a/src/frame-block/frame-block.ts b/src/frame-block/frame-block.ts
+index e17cf9d5d6d33d2eece2163c48a3f212c27444c2..59e2ab5e011bed70e7d376f0259e5dcdfa18e7ff 100644
+--- a/src/frame-block/frame-block.ts
++++ b/src/frame-block/frame-block.ts
+@@ -17,6 +17,7 @@ export class FrameBlockComponent extends GfxBlockComponent<FrameBlockModel> {
+ 
+   override connectedCallback() {
+     super.connectedCallback();
++    let zoom = this.gfx.viewport.zoom;
+ 
+     this._disposables.add(
+       this.doc.slots.blockUpdated.on(({ type, id }) => {
+@@ -27,6 +28,8 @@ export class FrameBlockComponent extends GfxBlockComponent<FrameBlockModel> {
+     );
+     this._disposables.add(
+       this.gfx.viewport.viewportUpdated.on(() => {
++        if (this.parentElement?.hasAttribute('data-knot-shared-translation') && zoom === this.gfx.viewport.zoom) return;
++        zoom = this.gfx.viewport.zoom;
+         this.requestUpdate();
+       })
+     );
+@@ -42,7 +45,10 @@ export class FrameBlockComponent extends GfxBlockComponent<FrameBlockModel> {
+ 
+   override getRenderingRect() {
+     const viewport = this.gfx.viewport;
+-    const { translateX, translateY, zoom } = viewport;
++    const zoom = viewport.zoom;
++    const shared = this.parentElement?.hasAttribute('data-knot-shared-translation');
++    const translateX = shared ? 0 : viewport.translateX;
++    const translateY = shared ? 0 : viewport.translateY;
+     const { xywh, rotate } = this.model;
+     const bound = Bound.deserialize(xywh);
+ 
+diff --git a/src/note-block/note-edgeless-block.ts b/src/note-block/note-edgeless-block.ts
+index d6835d7ccec196e83e033f9fbf7c6860dc6ed833..9e097dacc9247d97e081e8b53e938d5f8efcbb54 100644
+--- a/src/note-block/note-edgeless-block.ts
++++ b/src/note-block/note-edgeless-block.ts
+@@ -38,7 +38,7 @@ export class EdgelessNoteMask extends WithDisposable(ShadowlessElement) {
+     const maskDOM = this.renderRoot!.querySelector('.affine-note-mask');
+     const observer = new ResizeObserver(entries => {
+       for (const entry of entries) {
+-        if (!this.model.edgeless.collapse) {
++        if (!this.model.edgeless.collapse && !this.closest<EdgelessNoteBlockComponent>('affine-edgeless-note')?._knotPreserveBounds) {
+           const bound = Bound.deserialize(this.model.xywh);
+           const scale = this.model.edgeless.scale ?? 1;
+           const height = entry.contentRect.height * scale;
+@@ -100,6 +100,28 @@ export class EdgelessNoteMask extends WithDisposable(ShadowlessElement) {
+ }
+ 
+ const ACTIVE_NOTE_EXTRA_PADDING = 20;
++// One visible rich note per frame; offscreen notes keep their saved bounds.
++const knotPending = new Set<EdgelessNoteBlockComponent>();
++let knotFrame = 0;
++function scheduleKnotNotes() {
++  if (knotFrame || knotPending.size === 0) return;
++  knotFrame = requestAnimationFrame(() => {
++    knotFrame = 0;
++    const visible = new Map();
++    for (const note of knotPending) {
++      if (!note.isConnected) { knotPending.delete(note); continue; }
++      const movingUntil = (note.closest('affine-editor-container') as (HTMLElement & { _knotCanvasMovingUntil?: number }) | null)?._knotCanvasMovingUntil ?? 0;
++      if (performance.now() < movingUntil) continue;
++      const viewport = note.closest('gfx-viewport');
++      if (!visible.has(viewport)) visible.set(viewport, viewport?.getModelsInViewport?.());
++      if (!visible.get(viewport)?.has(note.model)) continue;
++      note._knotMount(false);
++      scheduleKnotNotes();
++      break;
++    }
++  });
++}
++
+ 
+ export class EdgelessNoteBlockComponent extends toGfxBlockComponent(
+   NoteBlockComponent
+@@ -310,12 +332,91 @@ export class EdgelessNoteBlockComponent extends toGfxBlockComponent(
+     }
+   }
+ 
++
++
++  _knotObserved: HTMLElement | null = null; _knotPreviewSize = '';
++  _knotObserveContent() {
++    const content = this._notePageContent;
++    if (!content || this._knotObserved === content) return;
++    this._knotObserved = content;
++    const observer = new ResizeObserver(([entry]) => {
++      const height = entry.borderBoxSize[0]?.blockSize;
++      if (height) this._noteFullHeight = height + 2 * EDGELESS_BLOCK_CHILD_PADDING;
++      const size = `${entry.borderBoxSize[0]?.inlineSize}:${height}`; if (height && size !== this._knotPreviewSize) { this._knotPreviewSize = size; this._knotCapture(); }
++    });
++    observer.observe(content, { box: 'border-box' });
++    this._disposables.add(() => observer.disconnect());
++    const mutations = new MutationObserver(() => this._knotCapture());
++    mutations.observe(content, { subtree: true, childList: true, characterData: true });
++    this._disposables.add(() => mutations.disconnect());
++    this._knotCapture();
++  }
++
++  _knotRich = false;
++  _knotForced = false;
++  _knotLive = true;
++  _knotPreviewUrl = '';
++  _knotPreviewBitmap: HTMLCanvasElement | null = null;
++  get _knotDetailed() {
++    return this._knotRich && (this._knotForced || this._editing || this._knotLive);
++  }
++  get _knotPreserveBounds() {
++    return !this._knotRich;
++  }
++  _knotCapture() {
++    if (!this._knotRich || !this.isConnected) return;
++    this.dispatchEvent(new CustomEvent('knot-note-preview', { bubbles: true, composed: true }));
++  }
++  _knotResumeMount() { scheduleKnotNotes(); }
++  _knotSetPreview(url: string, bitmap?: HTMLCanvasElement) {
++    if (this._knotPreviewUrl === url && (!bitmap || bitmap === this._knotPreviewBitmap)) return;
++    this._knotPreviewBitmap = url ? (bitmap ?? this._knotPreviewBitmap) : null;
++    this._knotPreviewUrl = url;
++    this.requestUpdate();
++  }
++
++  _knotMount(force = true) {
++    const changed = force && !this._knotForced;
++    if (force) this._knotForced = true;
++    if (this._knotRich) { if (changed) this.requestUpdate(); return; }
++    this._knotRich = true;
++    knotPending.delete(this);
++    this.requestUpdate();
++    performance.mark('knot:canvas-note-mount');
++    this.updateComplete.then(() => this._knotObserveContent()).catch(console.error);
++  }
++
++
+   override connectedCallback(): void {
+     super.connectedCallback();
+ 
+     const selection = this.rootService.selection;
+ 
+     this._editing = selection.has(this.model.id) && selection.editing;
++    knotPending.add(this);
++    if (selection.has(this.model.id)) this._knotMount(false);
++    scheduleKnotNotes();
++    const promote = () => this._knotMount(false);
++    this.addEventListener('pointerdown', promote, { capture: true });
++    this._disposables.add(() => {
++      knotPending.delete(this);
++      this.removeEventListener('pointerdown', promote, true);
++    });
++    const updateLOD = () => {
++      const previous = this._knotLive;
++      const zoom = this.gfx.viewport.zoom;
++      if (zoom >= 0.4) this._knotLive = true;
++      else if (zoom <= 0.3) this._knotLive = false;
++      if (this._knotLive !== previous) this.requestUpdate();
++      scheduleKnotNotes();
++    };
++    updateLOD();
++    this._disposables.add(this.gfx.viewport.viewportUpdated.on(updateLOD));
++    this._disposables.add(this.rootService.selection.slots.updated.on(() => {
++      if (this.rootService.selection.has(this.model.id)) this._knotMount(false);
++      this.requestUpdate();
++    }));
++
+     this._disposables.add(
+       selection.slots.updated.on(() => {
+         if (selection.has(this.model.id) && selection.editing) {
+@@ -345,18 +446,7 @@ export class EdgelessNoteBlockComponent extends toGfxBlockComponent(
+       })
+     );
+ 
+-    const observer = new MutationObserver(() => {
+-      const rect = this._notePageContent?.getBoundingClientRect();
+-      if (!rect) return;
+-      const zoom = this.gfx.viewport.zoom;
+-      const scale = this.model.edgeless.scale ?? 1;
+-      this._noteFullHeight =
+-        rect.height / scale / zoom + 2 * EDGELESS_BLOCK_CHILD_PADDING;
+-    });
+-    if (this._notePageContent) {
+-      observer.observe(this, { childList: true, subtree: true });
+-      _disposables.add(() => observer.disconnect());
+-    }
++    this._knotObserveContent();
+   }
+ 
+   override getRenderingRect() {
+@@ -371,7 +461,7 @@ export class EdgelessNoteBlockComponent extends toGfxBlockComponent(
+       x: bound.x,
+       y: bound.y,
+       w: width,
+-      h: collapse ? height : 'inherit',
++      h: collapse || !this._knotRich ? height : 'inherit',
+       zIndex: this.toZIndex(),
+     };
+   }
+@@ -459,10 +549,26 @@ export class EdgelessNoteBlockComponent extends toGfxBlockComponent(
+           style=${styleMap({
+             width: '100%',
+             height: '100%',
++            position: 'relative',
+             'overflow-y': this._isShowCollapsedContent ? 'initial' : 'clip',
+           })}
+         >
+-          ${this.renderPageContent()}
++          <div data-knot-note-live style=${styleMap({
++            position: 'relative',
++            opacity: this._knotDetailed || !this._knotPreviewUrl ? '1' : '0',
++            pointerEvents: this._knotDetailed || !this._knotPreviewUrl ? 'auto' : 'none',
++            transition: 'opacity var(--knot-note-fade, 140ms) ease',
++          })}>${this._knotRich ? this.renderPageContent() : nothing}</div>
++          ${this._knotPreviewUrl ? html`<div data-knot-note-preview data-html2canvas-ignore="true" aria-hidden="true"
++            data-knot-lod="thumbnail" alt="" draggable="false"
++            src=${this._knotPreviewUrl}
++            style=${styleMap({
++              position: 'absolute', left: '0', top: '0', width: '100%',
++              height: 'auto', pointerEvents: 'none',
++              opacity: this._knotDetailed ? '0' : '1',
++              transition: 'opacity var(--knot-note-fade, 140ms) ease',
++            })}
++          >${this._knotPreviewBitmap}</div>` : nothing}
+         </div>
+ 
+         ${isCollapsable
+diff --git a/dist/root-block/edgeless/utils/zoom.js b/dist/root-block/edgeless/utils/zoom.js
+--- a/dist/root-block/edgeless/utils/zoom.js
++++ b/dist/root-block/edgeless/utils/zoom.js
+@@ -2,1 +2,1 @@
+-export const ZOOM_MIN = 0.1;
++export const ZOOM_MIN = 0.2;
+diff --git a/dist/root-block/edgeless/utils/zoom.d.ts b/dist/root-block/edgeless/utils/zoom.d.ts
+--- a/dist/root-block/edgeless/utils/zoom.d.ts
++++ b/dist/root-block/edgeless/utils/zoom.d.ts
+@@ -3,1 +3,1 @@
+-export declare const ZOOM_MIN = 0.1;
++export declare const ZOOM_MIN = 0.2;
+diff --git a/src/root-block/edgeless/utils/zoom.ts b/src/root-block/edgeless/utils/zoom.ts
+--- a/src/root-block/edgeless/utils/zoom.ts
++++ b/src/root-block/edgeless/utils/zoom.ts
+@@ -3,1 +3,1 @@
+-export const ZOOM_MIN = 0.1;
++export const ZOOM_MIN = 0.2;
+diff --git a/dist/root-block/widgets/slash-menu/slash-menu-popover.js b/dist/root-block/widgets/slash-menu/slash-menu-popover.js
+--- a/dist/root-block/widgets/slash-menu/slash-menu-popover.js
++++ b/dist/root-block/widgets/slash-menu/slash-menu-popover.js
+@@ -97,7 +97,16 @@
+                 // Need to remove the search string
+                 // We must to do clean the slash string before we do the action
+                 // Otherwise, the action may change the model and cause the slash string to be changed
+-                cleanSpecifiedTail(this.host, this.context.model, this.triggerKey + (this._query || ''));
++                const query = this._query;
++                const range = this.inlineEditor.getInlineRange();
++                const command = this.triggerKey + (query ?? '');
++                const index = (range?.index ?? 0) - command.length;
++                if (query === null || !range || index < 0 ||
++                    this.inlineEditor.yText.toString().slice(index, range.index) !== command) {
++                  this.abortController.abort();
++                  return;
++                }
++                cleanSpecifiedTail(this.host, this.context.model, command);
+                 this.inlineEditor
+                     .waitForUpdate()
+                     .then(() => {
+@@ -152,10 +161,14 @@
+                         .flat();
+                     depth++;
+                 }
+-                this._filteredItems = this._filteredItems.sort((a, b) => {
+-                    return -(substringMatchScore(a.name, searchStr) -
+-                        substringMatchScore(b.name, searchStr));
+-                });
++                const score = (item) => {
++                  if (isGroupDivider(item)) return 0;
++                  const exact = [item.name, ...(item.alias ?? [])].some(
++                    name => name.toLowerCase() === searchStr
++                  );
++                  return exact ? 2 : substringMatchScore(item.name, searchStr);
++                };
++                this._filteredItems.sort((a, b) => score(b) - score(a));
+                 this._queryState = this._filteredItems.length === 0 ? 'no_result' : 'on';
+             };
+             this.updatePosition = (position) => {
+@@ -432,7 +445,7 @@
+                 return nothing;
+             const style = styleMap(this.mainMenuStyle ?? { position: 'relative' });
+             return html `<div
+-      class="slash-menu"
++      class="slash-menu knot-dropdown"
+       style=${style}
+       data-testid=${`sub-menu-${this.depth}`}
+     >
+@@ -517,7 +530,7 @@
+                 return html `<icon-button
+       class="slash-menu-item ${slashItemClassName(item)}"
+       width="100%"
+-      height="44px"
++      height="var(--dropdown-row-height, 44px)"
+       text=${customTemplate ?? name}
+       subText=${ifDefined(description)}
+       data-testid="${name}"
+@@ -566,7 +579,7 @@
+                 return html `<icon-button
+       class="slash-menu-item ${slashItemClassName(item)}"
+       width="100%"
+-      height="44px"
++      height="var(--dropdown-row-height, 44px)"
+       text=${name}
+       subText=${ifDefined(description)}
+       data-testid="${name}"
+diff --git a/src/root-block/widgets/slash-menu/slash-menu-popover.ts b/src/root-block/widgets/slash-menu/slash-menu-popover.ts
+--- a/src/root-block/widgets/slash-menu/slash-menu-popover.ts
++++ b/src/root-block/widgets/slash-menu/slash-menu-popover.ts
+@@ -52,11 +52,16 @@
+     // Need to remove the search string
+     // We must to do clean the slash string before we do the action
+     // Otherwise, the action may change the model and cause the slash string to be changed
+-    cleanSpecifiedTail(
+-      this.host,
+-      this.context.model,
+-      this.triggerKey + (this._query || '')
+-    );
++    const query = this._query;
++    const range = this.inlineEditor.getInlineRange();
++    const command = this.triggerKey + (query ?? '');
++    const index = (range?.index ?? 0) - command.length;
++    if (query === null || !range || index < 0 ||
++        this.inlineEditor.yText.toString().slice(index, range.index) !== command) {
++      this.abortController.abort();
++      return;
++    }
++    cleanSpecifiedTail(this.host, this.context.model, command);
+     this.inlineEditor
+       .waitForUpdate()
+       .then(() => {
+@@ -131,12 +136,14 @@
+       depth++;
+     }
+ 
+-    this._filteredItems = this._filteredItems.sort((a, b) => {
+-      return -(
+-        substringMatchScore(a.name, searchStr) -
+-        substringMatchScore(b.name, searchStr)
++    const score = (item: SlashMenuStaticItem) => {
++      if (isGroupDivider(item)) return 0;
++      const exact = [item.name, ...(item.alias ?? [])].some(
++        name => name.toLowerCase() === searchStr
+       );
+-    });
++      return exact ? 2 : substringMatchScore(item.name, searchStr);
++    };
++    this._filteredItems.sort((a, b) => score(b) - score(a));
+ 
+     this._queryState = this._filteredItems.length === 0 ? 'no_result' : 'on';
+   };
+@@ -361,7 +368,7 @@
+     return html`<icon-button
+       class="slash-menu-item ${slashItemClassName(item)}"
+       width="100%"
+-      height="44px"
++      height="var(--dropdown-row-height, 44px)"
+       text=${customTemplate ?? name}
+       subText=${ifDefined(description)}
+       data-testid="${name}"
+@@ -412,7 +419,7 @@
+     return html`<icon-button
+       class="slash-menu-item ${slashItemClassName(item)}"
+       width="100%"
+-      height="44px"
++      height="var(--dropdown-row-height, 44px)"
+       text=${name}
+       subText=${ifDefined(description)}
+       data-testid="${name}"
+@@ -566,7 +573,7 @@
+     const style = styleMap(this.mainMenuStyle ?? { position: 'relative' });
+ 
+     return html`<div
+-      class="slash-menu"
++      class="slash-menu knot-dropdown"
+       style=${style}
+       data-testid=${`sub-menu-${this.depth}`}
+     >
+diff --git a/dist/root-block/widgets/slash-menu/index.js b/dist/root-block/widgets/slash-menu/index.js
+--- a/dist/root-block/widgets/slash-menu/index.js
++++ b/dist/root-block/widgets/slash-menu/index.js
+@@ -1,7 +1,7 @@
+ import { getInlineEditorByModel, } from '@blocksuite/affine-components/rich-text';
+ import { getCurrentNativeRange, matchFlavours, } from '@blocksuite/affine-shared/utils';
+ import { WidgetComponent } from '@blocksuite/block-std';
+-import { assertExists, assertType, debounce, DisposableGroup, throttle, } from '@blocksuite/global/utils';
++import { assertExists, assertType, DisposableGroup, throttle, } from '@blocksuite/global/utils';
+ import { InlineEditor } from '@blocksuite/inline';
+ import { getPopperPosition } from '../../utils/position.js';
+ import { defaultSlashMenuConfig, } from './config.js';
+@@ -11,7 +11,7 @@
+ function closeSlashMenu() {
+     globalAbortController.abort();
+ }
+-const showSlashMenu = debounce(({ context, container = document.body, abortController = new AbortController(), config, triggerKey, }) => {
++const showSlashMenu = ({ context, container = document.body, abortController = new AbortController(), config, triggerKey, }) => {
+     const curRange = getCurrentNativeRange();
+     if (!curRange)
+         return;
+@@ -41,7 +41,7 @@
+     // Wait for the Node to be mounted
+     setTimeout(updatePosition);
+     return slashMenu;
+-}, 100);
++};
+ export const AFFINE_SLASH_MENU_WIDGET = 'affine-slash-menu-widget';
+ export class AffineSlashMenuWidget extends WidgetComponent {
+     constructor() {
+diff --git a/src/root-block/widgets/slash-menu/index.ts b/src/root-block/widgets/slash-menu/index.ts
+--- a/src/root-block/widgets/slash-menu/index.ts
++++ b/src/root-block/widgets/slash-menu/index.ts
+@@ -12,7 +12,6 @@
+ import {
+   assertExists,
+   assertType,
+-  debounce,
+   DisposableGroup,
+   throttle,
+ } from '@blocksuite/global/utils';
+@@ -47,8 +46,7 @@
+   globalAbortController.abort();
+ }
+ 
+-const showSlashMenu = debounce(
+-  ({
++const showSlashMenu = ({
+     context,
+     container = document.body,
+     abortController = new AbortController(),
+@@ -60,7 +58,7 @@
+     abortController?: AbortController;
+     config: SlashMenuStaticConfig;
+     triggerKey: string;
+-  }) => {
++}) => {
+     const curRange = getCurrentNativeRange();
+     if (!curRange) return;
+ 
+@@ -101,9 +99,7 @@
+     // Wait for the Node to be mounted
+     setTimeout(updatePosition);
+     return slashMenu;
+-  },
+-  100
+-);
++};
+ 
+ export const AFFINE_SLASH_MENU_WIDGET = 'affine-slash-menu-widget';
+ 
+diff --git a/dist/root-block/widgets/slash-menu/styles.js b/dist/root-block/widgets/slash-menu/styles.js
+--- a/dist/root-block/widgets/slash-menu/styles.js
++++ b/dist/root-block/widgets/slash-menu/styles.js
+@@ -17,14 +17,16 @@
+     left: 0;
+     top: 0;
+     box-sizing: border-box;
+-    padding: 8px 4px 8px 8px;
+-    width: 258px;
++    padding: var(--dropdown-padding, 5px);
++    width: min(258px, calc(100vw - 16px));
+     overflow-y: auto;
+     font-family: ${unsafeCSS(baseTheme.fontSansFamily)};
+ 
+-    background: var(--affine-background-overlay-panel-color);
+-    box-shadow: var(--affine-shadow-2);
+-    border-radius: 8px;
++    background: var(--dropdown-surface, var(--affine-background-overlay-panel-color));
++    color: var(--dropdown-text, inherit);
++    box-shadow: var(--dropdown-shadow, var(--affine-shadow-2));
++    border: 1px solid var(--dropdown-border, var(--affine-border-color));
++    border-radius: var(--dropdown-radius, 6px);
+     z-index: var(--affine-z-index-popover);
+     user-select: none;
+     /* transition: max-height 0.2s ease-in-out; */
+@@ -47,7 +49,9 @@
+   }
+ 
+   .slash-menu-item {
+-    padding: 2px 8px 2px 8px;
++    padding-inline: var(--dropdown-row-padding, 8px);
++    border-radius: var(--dropdown-row-radius, 5px);
++    --affine-hover-color: var(--dropdown-highlight);
+     justify-content: flex-start;
+     gap: 10px;
+   }
+diff --git a/src/root-block/widgets/slash-menu/styles.ts b/src/root-block/widgets/slash-menu/styles.ts
+--- a/src/root-block/widgets/slash-menu/styles.ts
++++ b/src/root-block/widgets/slash-menu/styles.ts
+@@ -19,14 +19,16 @@
+     left: 0;
+     top: 0;
+     box-sizing: border-box;
+-    padding: 8px 4px 8px 8px;
+-    width: 258px;
++    padding: var(--dropdown-padding, 5px);
++    width: min(258px, calc(100vw - 16px));
+     overflow-y: auto;
+     font-family: ${unsafeCSS(baseTheme.fontSansFamily)};
+ 
+-    background: var(--affine-background-overlay-panel-color);
+-    box-shadow: var(--affine-shadow-2);
+-    border-radius: 8px;
++    background: var(--dropdown-surface, var(--affine-background-overlay-panel-color));
++    color: var(--dropdown-text, inherit);
++    box-shadow: var(--dropdown-shadow, var(--affine-shadow-2));
++    border: 1px solid var(--dropdown-border, var(--affine-border-color));
++    border-radius: var(--dropdown-radius, 6px);
+     z-index: var(--affine-z-index-popover);
+     user-select: none;
+     /* transition: max-height 0.2s ease-in-out; */
+@@ -49,7 +51,9 @@
+   }
+ 
+   .slash-menu-item {
+-    padding: 2px 8px 2px 8px;
++    padding-inline: var(--dropdown-row-padding, 8px);
++    border-radius: var(--dropdown-row-radius, 5px);
++    --affine-hover-color: var(--dropdown-highlight);
+     justify-content: flex-start;
+     gap: 10px;
+   }
+diff --git a/dist/root-block/edgeless/components/toolbar/note/note-menu.d.ts b/dist/root-block/edgeless/components/toolbar/note/note-menu.d.ts
+index bc60c7c..a85ba63 100644
+--- a/dist/root-block/edgeless/components/toolbar/note/note-menu.d.ts
++++ b/dist/root-block/edgeless/components/toolbar/note/note-menu.d.ts
+@@ -4,6 +4,7 @@ import type { NoteToolOption } from '../../../gfx-tool/note-tool.js';
+ import { type NoteChildrenFlavour } from '../../../../../_common/utils/index.js';
+ declare const EdgelessNoteMenu_base: typeof LitElement & import("@blocksuite/global/utils").Constructor<import("../mixins/tool.mixin.js").EdgelessToolbarToolClass>;
+ export declare class EdgelessNoteMenu extends EdgelessNoteMenu_base {
++    static extraTools: Array<(menu: EdgelessNoteMenu) => unknown>;
+     static styles: import("lit").CSSResult;
+     type: GfxToolsFullOptionValue['type'];
+     private _addImages;
+diff --git a/dist/root-block/edgeless/components/toolbar/note/note-menu.js b/dist/root-block/edgeless/components/toolbar/note/note-menu.js
+index fbbc74c..a17d665 100644
+--- a/dist/root-block/edgeless/components/toolbar/note/note-menu.js
++++ b/dist/root-block/edgeless/components/toolbar/note/note-menu.js
+@@ -62,6 +62,8 @@ let EdgelessNoteMenu = (() => {
+     let _tip_initializers = [];
+     let _tip_extraInitializers = [];
+     return class EdgelessNoteMenu extends _classSuper {
++        // Knot: application-owned tools rendered after the add-to-canvas group.
++        static { this.extraTools = []; }
+         static {
+             const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+             __imageLoading_decorators = [state()];
+@@ -193,6 +195,7 @@ let EdgelessNoteMenu = (() => {
+             >
+               ${AttachmentIcon}
+             </edgeless-tool-icon-button>
++            ${this.constructor.extraTools.map(render => render(this))}
+           </div>
+ 
+           <div class="divider"></div>
+diff --git a/src/root-block/edgeless/components/toolbar/note/note-menu.ts b/src/root-block/edgeless/components/toolbar/note/note-menu.ts
+index 6c3e987..16094bf 100644
+--- a/src/root-block/edgeless/components/toolbar/note/note-menu.ts
++++ b/src/root-block/edgeless/components/toolbar/note/note-menu.ts
+@@ -21,6 +21,9 @@ import { EdgelessToolbarToolMixin } from '../mixins/tool.mixin.js';
+ import { NOTE_MENU_ITEMS } from './note-menu-config.js';
+ 
+ export class EdgelessNoteMenu extends EdgelessToolbarToolMixin(LitElement) {
++  // Knot: application-owned tools rendered after the add-to-canvas group.
++  static extraTools: Array<(menu: EdgelessNoteMenu) => unknown> = [];
++
+   static override styles = css`
+     :host {
+       position: absolute;
+@@ -150,6 +153,9 @@ export class EdgelessNoteMenu extends EdgelessToolbarToolMixin(LitElement) {
+             >
+               ${AttachmentIcon}
+             </edgeless-tool-icon-button>
++            ${(this.constructor as typeof EdgelessNoteMenu).extraTools.map(
++              render => render(this)
++            )}
+           </div>
+ 
+           <div class="divider"></div>

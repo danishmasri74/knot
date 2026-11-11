@@ -14,6 +14,7 @@
       {
         "label": "main",
         "title": "Knot",
+        "dragDropEnabled": false,
         "width": 1280,
         "height": 850,
         "minWidth": 760,
@@ -21,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost blob:; worker-src 'self' blob:; frame-src blob: 'self'"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://img.youtube.com; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost blob: https://youtube.com/oembed https://www.youtube.com/oembed; worker-src 'self' blob:; frame-src blob: 'self' https://www.youtube.com/embed/"
     }
   },
   "bundle": {

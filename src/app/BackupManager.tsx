@@ -5,7 +5,6 @@ export function BackupManager({
   busy,
   available,
   onAction,
-  onClose,
 }: {
   entries: BackupEntry[];
   busy: boolean;
@@ -14,26 +13,36 @@ export function BackupManager({
     action: "create" | "refresh" | "validate" | "restore" | "delete",
     id?: string,
   ) => void;
-  onClose: () => void;
 }) {
   return (
-    <section className="recovery-panel" aria-label="Backup management">
-      <h2>Backups</h2>
-      <p>
-        Managed archives from all your workspaces. Restoring opens a separate
-        workspace and preserves the original. These local copies share this
-        disk; use Back up workspace to save a copy elsewhere.
+    <section
+      className="settings-page recovery-panel backup-manager"
+      aria-label="Backup management"
+    >
+      <div className="recovery-intro">
+        <div>
+          <h3>Local backups</h3>
+          <p>Saved copies from all your workspaces, stored on this device.</p>
+        </div>
+        <button disabled={busy} onClick={() => onAction("refresh")}>
+          Refresh backups
+        </button>
+      </div>
+      <div className="settings-transfer-actions">
+        <button
+          disabled={busy || !available}
+          onClick={() => onAction("create")}
+        >
+          Create backup
+        </button>
+      </div>
+      <p className="recovery-notice">
+        Restoring opens a separate workspace and keeps the original. To protect
+        against disk loss, use Back up workspace to save a copy elsewhere.
       </p>
-      <button disabled={busy || !available} onClick={() => onAction("create")}>
-        Create backup
-      </button>{" "}
-      <button disabled={busy} onClick={() => onAction("refresh")}>
-        Refresh backups
-      </button>{" "}
-      <button disabled={busy} onClick={onClose}>
-        Close backups
-      </button>
-      {!entries.length && <p>No managed backups yet.</p>}
+      {!entries.length && (
+        <p className="recovery-empty">No managed backups yet.</p>
+      )}
       {entries.map((entry) => (
         <div className="trash-row backup-row" key={entry.id}>
           <span>

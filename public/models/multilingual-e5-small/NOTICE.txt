@@ -1,0 +1,4 @@
+multilingual-e5-small: intfloat, multilingual E5 research authors / Microsoft. MIT licensed. ONNX conversion: Xenova. Pinned model card and checksums are in README.md and manifest.json.
+Transformers.js 3.8.1: Hugging Face, Apache-2.0.
+ONNX Runtime Web: Microsoft, MIT.
+See the accompanying license files. This model is used only for local passage retrieval.

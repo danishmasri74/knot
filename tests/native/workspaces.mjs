@@ -1,3 +1,6 @@
+import { placeLegacyReference } from "./legacy-reference-fixture.mjs";
+import { createNotebook } from "./create-notebook.mjs";
+import { clickShellButton } from "./shell-navigation.mjs";
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, cp, writeFile } from "node:fs/promises";
@@ -40,7 +43,7 @@ async function ready() {
   );
 }
 async function click(name) {
-  await page.getByRole("button", { name, exact: true }).click();
+  await clickShellButton(page, name);
   await ready();
 }
 async function stop() {
@@ -53,7 +56,7 @@ async function stop() {
   child = null;
 }
 async function save() {
-  await page.getByTitle("Save now / retry").click();
+  await page.getByRole("button", { name: "Save now / retry", exact: true }).click();
   await ready();
   await page.waitForFunction(() =>
     document.querySelector(".save-status")?.textContent.includes("Saved"),
@@ -69,9 +72,7 @@ async function select(title) {
   await ready();
 }
 async function place(title, shared = true) {
-  await click("＋ Reference");
-  await page.getByLabel("Reference document").selectOption({ label: title });
-  await click(shared ? "Place shared note" : "Insert link");
+  await placeLegacyReference(page, title, shared);
 }
 async function body(id) {
   return page.evaluate((id) => {
@@ -103,7 +104,7 @@ try {
   await page.keyboard.type("Original workspace content.");
   await save();
   const original = await body();
-  await click("◇ New whiteboard");
+  await createNotebook(page, true);
   await rename("Original board");
   await place("Original source");
   await save();
@@ -157,7 +158,7 @@ try {
   assert.doesNotMatch((await body()).json, /Pending edit/);
   await click("Switch workspace");
   await page.screenshot({ path: path.join(root, "picker.png") });
-  await click("Close workspaces");
+  await click("Close Workspaces panel");
   await stop();
   await launch();
   assert.match((await body()).json, /Restored-only change/);
@@ -168,6 +169,7 @@ try {
   await writeFile(path.join(root, "active-workspace.txt"), "missing");
   await launch(true);
   await page.getByRole("alert").waitFor();
+  await page.screenshot({ path: path.join(root, "startup-recovery.png") });
   await switchTo("Personal workspace");
   await select("Original source");
   assert.match((await body()).json, /Pending edit/);

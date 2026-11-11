@@ -1,0 +1,58 @@
+import { readFileSync } from "node:fs";
+import { describe, it, expect } from "vitest";
+import {
+  AI_MODELS,
+  automaticAiModel,
+  aiModelName,
+  normalizeAiModels,
+  visibleAiModels,
+} from "../src/services/ai-preferences";
+describe("AI model preferences", () => {
+  it("keeps settings and the native model allowlist aligned", () => {
+    const source = readFileSync(
+      new URL("../src-tauri/src/ai.rs", import.meta.url),
+      "utf8",
+    );
+    const list = source.match(/const MODELS:[\s\S]*?= \[([\s\S]*?)\];/)![1];
+    expect([...list.matchAll(/"([^"]+)"/g)].map((match) => match[1])).toEqual(
+      AI_MODELS.map((model) => model.id),
+    );
+    expect(aiModelName("gpt-6.1-terra")).toBe("GPT-6.1 Terra");
+  });
+  it("preserves existing choices without silently enabling new models", () => {
+    expect(normalizeAiModels(["gpt-5.4-mini"])).toEqual(["gpt-5.4-mini"]);
+    expect(normalizeAiModels(["gpt-6.1-terra", "gpt-6-luna"])).toEqual([
+      "gpt-6-luna",
+      "gpt-6.1-terra",
+    ]);
+  });
+  it("recovers invalid or empty saved preferences and removes unknown models", () => {
+    expect(normalizeAiModels([])).toEqual(AI_MODELS.map((model) => model.id));
+    expect(normalizeAiModels(null)).toHaveLength(6);
+    expect(normalizeAiModels(["unknown", "gpt-5.4", "gpt-5.4"])).toEqual([
+      "gpt-5.4",
+    ]);
+  });
+  it("only shows enabled models the connected account can access", () => {
+    expect(visibleAiModels(["gpt-5.4-mini", "gpt-5.4"], ["gpt-5.4"])).toEqual([
+      "gpt-5.4",
+    ]);
+    expect(visibleAiModels(["gpt-5.4-mini"], ["gpt-5.4"])).toEqual([]);
+  });
+});
+
+it("routes automatic requests only among enabled and available models", () => {
+  const available = AI_MODELS.map((m) => m.id);
+  expect(automaticAiModel(available, "ask", "Summarize this", false, 100)).toBe(
+    "gpt-6-luna",
+  );
+  expect(automaticAiModel(available, "rewrite", "Rewrite", false, 100)).toBe(
+    "gpt-6.1-terra",
+  );
+  expect(automaticAiModel(available, "ask", "Describe this", true, 100)).toBe(
+    "gpt-6.1-sol",
+  );
+  expect(
+    automaticAiModel(["gpt-5.4-mini"], "ask", "Compare these", true, 100),
+  ).toBe("gpt-5.4-mini");
+});

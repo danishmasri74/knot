@@ -5,3 +5,10 @@ src-tauri/target/
 *.tsbuildinfo
 src-tauri/gen/
 test-results/
+
+tests/benchmarks/results/
+
+# Local scratch and per-user settings
+.tmp/
+.claude/settings.local.json
+tests/native/.card-*.mjs

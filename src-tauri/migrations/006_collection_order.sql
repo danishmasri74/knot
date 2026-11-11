@@ -1,0 +1,2 @@
+ALTER TABLE collections ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+INSERT INTO schema_migrations VALUES(6);

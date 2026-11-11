@@ -46,3 +46,49 @@ describe("document navigation", () => {
     expect(history.canForward).toBe(false);
   });
 });
+
+it("notifies arrow controls after asynchronous tab navigation commits", async () => {
+  const history = new NavigationHistory<{ id: string }>();
+  const controls: { back: boolean; forward: boolean }[] = [];
+  const stop = history.subscribe(() =>
+    controls.push({ back: history.canBack, forward: history.canForward }),
+  );
+  for (const id of [
+    "library:notebooks",
+    "library:collections",
+    "library:cardDeck",
+  ])
+    history.visit({ id });
+  expect(controls.at(-1)).toEqual({ back: true, forward: false });
+  let finish!: () => void;
+  const moving = history.move(
+    -1,
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  expect(controls.at(-1)).toEqual({ back: true, forward: false });
+  const revision = history.getSnapshot();
+  finish();
+  await moving;
+  expect(history.getSnapshot()).toBeGreaterThan(revision);
+  expect(controls.at(-1)).toEqual({ back: true, forward: true });
+  await history.move(-1, async () => {});
+  expect(controls.at(-1)).toEqual({ back: false, forward: true });
+  await history.move(1, async () => {});
+  expect(controls.at(-1)).toEqual({ back: true, forward: true });
+  const beforeFailure = history.getSnapshot();
+  await expect(
+    history.move(1, async () => {
+      throw Error("Save failed");
+    }),
+  ).rejects.toThrow();
+  expect(history.getSnapshot()).toBe(beforeFailure);
+  history.visit({ id: "library:notebooks" });
+  expect(controls.at(-1)).toEqual({ back: true, forward: false });
+  stop();
+  const count = controls.length;
+  history.clear();
+  expect(controls).toHaveLength(count);
+});
