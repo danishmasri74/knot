@@ -8,6 +8,10 @@ test-results/
 
 tests/benchmarks/results/
 
+# Updater signing keys live outside the repo (see docs/RELEASING.md); never commit one.
+*.key
+!*.key.pub
+
 # Local scratch and per-user settings
 .tmp/
 .claude/settings.local.json

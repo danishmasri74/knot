@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "update:running": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-running.ps1",
+    "version:set": "node scripts/set-version.mjs",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1",
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/verify-topic-model.mjs && tsc -b && vite build",
     "check": "tsc -b",
