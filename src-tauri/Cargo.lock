@@ -2191,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "knot"
-version = "0.2.0-rc.3"
+version = "0.2.0"
 dependencies = [
  "brotli 8.0.4",
  "encoding_rs",
