@@ -1,0 +1,504 @@
+/* Sidebar: every rule for the workspace navigation lives here.
+ *
+ * Order matters where selectors tie on specificity: icon sizes for the
+ * chevrons and the new-collection button come after `.sidebar .shell-icon`,
+ * hover comes after selected, and drop indicators come last. */
+
+/* Frame: resizable, collapsible container (SidebarFrame.tsx). */
+.sidebar-frame {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--sidebar-width);
+  overflow: clip;
+  transition:
+    var(--shell-width-transition, width) 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 240ms;
+}
+.sidebar-frame[data-collapsed="true"] {
+  width: 0;
+  visibility: hidden;
+}
+.sidebar-frame[data-dragging="true"] {
+  transition: none;
+  user-select: none;
+}
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 5px;
+  cursor: col-resize;
+  touch-action: none;
+  transition: background 140ms;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible,
+.sidebar-frame[data-dragging="true"] .sidebar-resizer {
+  background: light-dark(#a0a0a060, #68686860);
+}
+.sidebar-resizer:focus-visible {
+  outline: 2px solid light-dark(#838383, #7e7e7e);
+  outline-offset: -2px;
+}
+
+/* Panel. */
+.sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 12px 8px 8px;
+  overflow: hidden;
+  border-right: 1px solid var(--shell-border);
+  background: var(--shell-nav);
+  color: var(--shell-text);
+  font-size: var(--shell-font);
+}
+.sidebar-frame > .sidebar {
+  width: var(--sidebar-width);
+  height: 100%;
+}
+.sidebar[hidden] {
+  display: none;
+}
+.sidebar > :not(.library) {
+  flex-shrink: 0;
+}
+.sidebar button {
+  transition:
+    background-color 140ms,
+    color 140ms;
+}
+.sidebar .shell-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--shell-muted);
+}
+.sidebar .shell-menu-content {
+  width: 100%;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 8px 6px;
+  color: light-dark(#242423, #c8c8c8);
+  font-family: "Segoe UI", Inter, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+/* Top actions: Add note, New notebook, Search, Ask Knot, Library. */
+.sidebar > button,
+.sidebar .primary,
+.sidebar .secondary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-text);
+  font-size: 13px;
+  font-weight: 400;
+}
+.sidebar .primary,
+.sidebar .secondary {
+  justify-content: flex-start;
+}
+.sidebar > button:not(.primary):not(.secondary) {
+  text-align: left;
+  border-radius: var(--shell-radius);
+}
+.sidebar > button:hover:not(:disabled) {
+  background: var(--shell-selected);
+}
+.sidebar > button[aria-current="page"] {
+  background: var(--shell-selected);
+  font-weight: 600;
+}
+.sidebar > button.sidebar-ask[aria-pressed="true"] {
+  background: var(--shell-selected);
+  color: var(--shell-text);
+  font-weight: 550;
+}
+/* Unavailable actions are not pending network requests. */
+.sidebar-ask:disabled {
+  cursor: default;
+}
+.search-shortcut {
+  margin-left: auto;
+  padding: 1px 4px;
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+  color: var(--shell-muted);
+  font-size: 10px;
+  opacity: 1;
+}
+
+/* Section heading with its New collection button. */
+.section-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 24px;
+  margin: 18px 8px 4px;
+  color: var(--shell-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.section-label button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+}
+.section-label button:hover {
+  background: var(--shell-selected);
+}
+.section-label .new-collection-trigger {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 4px;
+  color: light-dark(#8b8780, #7c7c7c);
+}
+.section-label .new-collection-trigger:hover,
+.new-collection-trigger[aria-expanded="true"] {
+  background: light-dark(#eae8e3, #313131);
+  color: light-dark(#383630, #bbbbbb);
+}
+.new-collection-trigger .shell-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Scrolling list: Favorites, Recently visited, Pinned collections. */
+.library {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.uncollected-label {
+  padding: 12px 10px 6px;
+  color: light-dark(#77736c, #8c8c8c);
+  font-size: 11px;
+}
+.sidebar-empty-state {
+  margin: 0;
+  padding: 4px 10px 6px;
+  color: var(--shell-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Notebook rows. */
+.document-notebook {
+  min-width: 0;
+  margin-bottom: 2px;
+}
+.notebook-row {
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+}
+.notebook-row:has(.selected) {
+  background: var(--shell-selected);
+}
+.notebook-toggle {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 30px;
+  border-radius: 4px;
+}
+button.notebook-toggle:hover {
+  background: light-dark(#dedede, #383838);
+}
+.notebook-toggle .shell-icon {
+  width: 12px;
+  height: 12px;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.notebook-toggle[aria-expanded="true"] .shell-icon {
+  transform: rotate(90deg);
+}
+.document-row {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 8px;
+  width: 0;
+  min-width: 0;
+  min-height: 30px;
+  margin: 0;
+  padding: 5px 6px 5px 2px;
+  border: 0;
+  border-radius: var(--shell-radius);
+  background: transparent;
+  color: var(--shell-text);
+  font-size: 13px;
+  text-align: left;
+}
+.document-row > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-row.selected {
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-text);
+  font-weight: 600;
+}
+.document-row:hover {
+  background: var(--shell-selected);
+}
+.document-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: light-dark(#8d8d8d, #767676);
+  font-size: 17px;
+}
+/* The ⋯ menu shows on hover, focus, while open, and always on touch. */
+.notebook-row .collection-membership-trigger {
+  flex: 0 0 26px;
+  width: 26px;
+  padding: 4px;
+  border-radius: 5px;
+  opacity: 0;
+}
+.notebook-row:hover .collection-membership-trigger,
+.notebook-row:focus-within .collection-membership-trigger,
+.notebook-row .collection-membership-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+/* An open notebook's whiteboard and notes. */
+.animated-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  /* Height interpolation relayouts every sidebar row on every frame. */
+  transition: opacity 180ms;
+}
+.animated-disclosure[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.animated-disclosure > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.notebook-disclosure {
+  margin: 2px 0 4px 30px;
+  font-size: 13px;
+}
+.notebook-contents {
+  padding-left: 7px;
+  border-left: 1px solid var(--shell-border);
+}
+.notebook-contents button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  color: var(--shell-text);
+  text-align: left;
+}
+.notebook-contents button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notebook-contents button:hover {
+  background: var(--shell-selected);
+}
+.notebook-contents button[aria-pressed="true"] {
+  background: var(--shell-selected);
+  font-weight: 600;
+}
+.notebook-contents small {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--shell-muted);
+  font-size: 10px;
+}
+
+/* Favorites and pinned collection groups. */
+.collection-group {
+  margin: 0 0 14px;
+}
+.collection-group-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.collection-group-heading .collection-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 0;
+  color: light-dark(#57544e, #a3a3a3);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.collection-group button:focus-visible {
+  outline-offset: -2px;
+}
+.collection-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-chevron {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  color: light-dark(#87837c, #7f7f7f);
+  transition: transform 120ms ease;
+}
+.collection-chevron .shell-icon {
+  width: 12px;
+  height: 12px;
+}
+.collection-group-toggle[aria-expanded="true"] .collection-chevron {
+  transform: rotate(90deg);
+}
+.collection-group-heading .collection-options-trigger {
+  flex: 0 0 26px;
+  padding: 4px;
+  opacity: 0;
+}
+.collection-group-heading:hover .collection-options-trigger,
+.collection-group-heading:focus-within .collection-options-trigger,
+.collection-options-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+.collection-group-notebooks {
+  padding-left: 22px;
+}
+.collection-group-notebooks[hidden] {
+  display: none;
+}
+
+/* Footer: Settings and Trash. */
+.sidebar-footer {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--shell-border);
+}
+.sidebar-footer > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 5px;
+  color: light-dark(#7b7b7b, #848484);
+  font-size: 11px;
+  text-align: left;
+}
+.sidebar-footer > button:hover {
+  background: light-dark(#ebebeb, #2e2e2e);
+}
+
+/* Drag and drop (useSidebarDrag.ts). Indicators do not change target
+ * dimensions while aiming. */
+.favorites-group .notebook-row {
+  position: relative;
+}
+.sidebar [draggable="true"] {
+  cursor: grab;
+}
+.sidebar [data-drop="inside"] {
+  outline: 2px solid var(--control-accent);
+  outline-offset: -2px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--control-accent) 16%, transparent);
+}
+.collection-group-heading[data-drop="before"]::before,
+.collection-group-heading[data-drop="after"]::after,
+.favorites-group .notebook-row[data-drop="before"]::before,
+.favorites-group .notebook-row[data-drop="after"]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--control-accent);
+  pointer-events: none;
+}
+.collection-group-heading[data-drop="before"]::before,
+.favorites-group .notebook-row[data-drop="before"]::before {
+  top: -2px;
+}
+.collection-group-heading[data-drop="after"]::after,
+.favorites-group .notebook-row[data-drop="after"]::after {
+  bottom: -2px;
+}
+.sidebar-footer .sidebar-remove-drop {
+  overflow: hidden;
+  outline: 1px dashed var(--shell-muted);
+  outline-offset: -2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-drag-status {
+  position: absolute;
+  bottom: 80px;
+  left: 8px;
+  right: 8px;
+  z-index: 5;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--shell-nav);
+  box-shadow: 0 2px 12px #0002;
+  color: var(--shell-muted);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+@media (hover: none) {
+  .notebook-row .collection-membership-trigger,
+  .collection-group-heading .collection-options-trigger {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-frame,
+  .sidebar-resizer,
+  .sidebar button,
+  .animated-disclosure,
+  .notebook-toggle .shell-icon,
+  .collection-chevron {
+    transition: none;
+  }
+}

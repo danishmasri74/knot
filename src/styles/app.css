@@ -97,38 +97,11 @@ select:focus-visible {
   height: 100vh;
   overflow: hidden;
 }
-.sidebar {
-  width: 248px;
-  flex-shrink: 0;
-  background: light-dark(#f3f3f3, #282828);
-  border-right: 1px solid light-dark(#e6e6e6, #323232);
-  display: flex;
-  flex-direction: column;
-  padding: 28px 16px 12px;
-  overflow-y: auto;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 12px 30px;
-  font-size: 25px;
-  font-weight: 650;
-  letter-spacing: -1px;
-}
 .brand-mark {
   width: 40px;
   height: 40px;
   flex-shrink: 0;
   object-fit: contain;
-}
-.brand small {
-  display: block;
-  font-size: 8px;
-  letter-spacing: 1.6px;
-  font-weight: 500;
-  color: light-dark(#909090, #747474);
-  margin-top: 3px;
 }
 .workspace-label {
   display: flex;
@@ -202,72 +175,6 @@ kbd {
 .search span {
   font-size: 20px;
   color: light-dark(#939393, #727272);
-}
-.section-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  letter-spacing: 1.2px;
-  color: light-dark(#939393, #727272);
-  margin: 26px 10px 12px;
-}
-.library {
-  overflow: auto;
-  flex: 1;
-}
-.document-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: light-dark(#6c6c6c, #909090);
-  margin-bottom: 3px;
-}
-.document-row > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.document-row:hover {
-  background: light-dark(#ebebeb, #2e2e2e);
-}
-.document-row.selected {
-  background: light-dark(#e6e6e6, #323232);
-  color: light-dark(#515151, #a5a5a5);
-}
-.document-icon {
-  font-size: 17px;
-  color: light-dark(#8d8d8d, #767676);
-}
-.sidebar-footer {
-  border-top: 1px solid light-dark(#e3e3e3, #343434);
-  padding-top: 12px;
-}
-.sidebar-footer button {
-  display: block;
-  font-size: 11px;
-  color: light-dark(#7b7b7b, #848484);
-  padding: 7px 10px;
-  width: 100%;
-  text-align: left;
-  border-radius: 4px;
-}
-.sidebar-footer button:hover {
-  background: light-dark(#ebebeb, #2e2e2e);
-}
-.sidebar-footer p {
-  font-size: 9px;
-  color: light-dark(#a0a0a0, #686868);
-  margin: 15px 8px 0;
-}
-.sidebar-footer p span {
-  margin-right: 4px;
 }
 .empty {
   font-size: 12px;
@@ -428,9 +335,6 @@ main {
   .toolbar-hint {
     display: none;
   }
-  .sidebar {
-    width: 210px;
-  }
   .topbar,
   .toolbar {
     padding-left: 16px;
@@ -441,9 +345,6 @@ main {
   * {
     scroll-behavior: auto !important;
   }
-}
-.library {
-  min-height: 90px;
 }
 .muted {
   color: light-dark(#818181, #808080);
@@ -902,88 +803,12 @@ main {
   --shell-font: 13px;
   --shell-icon: 18px;
 }
-.sidebar {
-  width: 240px;
-  padding: 12px;
-  gap: var(--shell-space);
-  overflow: hidden;
-  background: var(--shell-nav);
-  border-color: var(--shell-border);
-  font-size: var(--shell-font);
-}
-.sidebar[hidden] {
-  display: none;
-}
-.sidebar > :not(.library) {
-  flex-shrink: 0;
-}
-.brand {
-  padding: 0 4px;
-  gap: 8px;
-  font-size: 17px;
-  letter-spacing: 0;
-}
 .brand-mark {
   width: 24px;
   height: 24px;
 }
-.workspace-name {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  color: var(--shell-text);
-}
 .workspace-switch-label {
   font-size: 11px;
-}
-.sidebar .primary,
-.sidebar .secondary {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  height: 34px;
-  margin: 0;
-}
-.sidebar > button:not(.primary):not(.secondary) {
-  text-align: left;
-  border-radius: var(--shell-radius);
-}
-.sidebar > button:not(.primary):hover:not(:disabled) {
-  background: var(--shell-selected);
-}
-.sidebar > button {
-  padding: 6px 8px;
-}
-.section-label {
-  margin: 8px 4px 0;
-  color: var(--shell-muted);
-}
-.library {
-  min-height: 0;
-  overscroll-behavior: contain;
-}
-.document-row {
-  min-height: 36px;
-  gap: 8px;
-  font-size: 13px;
-  border-radius: var(--shell-radius);
-}
-.document-row > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.document-row.selected {
-  background: var(--shell-selected);
-  color: var(--shell-accent);
-  font-weight: 600;
-}
-.document-icon {
-  display: flex;
-  flex-shrink: 0;
 }
 .shell-icon {
   width: var(--shell-icon);
@@ -1036,10 +861,6 @@ main {
     :is(.notebook-binding, .notebook-cover, .notebook-pages, .notebook-spine) {
     transition: none;
   }
-}
-.sidebar-footer {
-  padding-top: 8px;
-  border-color: var(--shell-border);
 }
 .topbar {
   height: 56px;
@@ -1135,9 +956,6 @@ main {
   bottom: calc(100% + 4px);
 }
 @media (max-width: 1050px) {
-  .sidebar {
-    width: 210px;
-  }
   .topbar {
     padding: 0 8px;
     gap: 4px;
@@ -1148,9 +966,6 @@ main {
   .mode-switch .shell-icon {
     display: none;
   }
-}
-.sidebar .shell-menu-content {
-  width: 100%;
 }
 /* Slice two: one context tool beside the stable editor, dedicated maintenance views. */
 main {
@@ -1303,9 +1118,6 @@ main > :is(.error-banner, .notice-banner) {
 .save-status.failed {
   color: light-dark(#a13625, #de7d6e);
 }
-.document-row.selected {
-  box-shadow: inset 3px 0 var(--shell-accent);
-}
 .mode-switch .current {
   font-weight: 650;
   text-decoration: underline;
@@ -1344,125 +1156,11 @@ main:has(.management-surface) > .editor-area {
   visibility: hidden;
 }
 
-/* Compact monochrome navigation: notebook, then its board and notes. */
-.sidebar {
-  width: 232px;
-  padding: 12px 8px 8px;
-  gap: 2px;
-  color: var(--shell-text);
-}
-.brand {
-  padding: 2px 8px 6px;
-  font-size: 16px;
-}
+/* Compact Knot mark (sidebar rules are in sidebar.css). */
 .brand-mark {
   width: 22px;
   height: 22px;
   filter: none;
-}
-.workspace-name {
-  font-size: 12px;
-  color: var(--shell-muted);
-}
-.sidebar > button,
-.sidebar .primary,
-.sidebar .secondary {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 32px;
-  min-height: 32px;
-  padding: 5px 8px;
-  margin: 0;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  box-shadow: none;
-  color: var(--shell-text);
-  font-size: 13px;
-  font-weight: 400;
-}
-.sidebar > button:hover:not(:disabled) {
-  background: var(--shell-selected);
-}
-.sidebar .shell-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--shell-muted);
-}
-.section-label {
-  align-items: center;
-  margin: 18px 8px 4px;
-  min-height: 24px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.library-count {
-  margin-left: 5px;
-  font-weight: 400;
-}
-.section-label button {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
-}
-.section-label button:hover {
-  background: var(--shell-selected);
-}
-.document-notebook {
-  min-width: 0;
-  margin-bottom: 2px;
-}
-.notebook-row {
-  display: flex;
-  align-items: center;
-  border-radius: 5px;
-}
-.notebook-row:has(.selected) {
-  background: var(--shell-selected);
-}
-.notebook-toggle {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: 4px;
-}
-button.notebook-toggle:hover {
-  background: light-dark(#dedede, #383838);
-}
-.notebook-toggle .shell-icon {
-  width: 12px;
-  height: 12px;
-}
-.notebook-toggle[aria-expanded="true"] .shell-icon {
-  transform: rotate(90deg);
-}
-.document-row {
-  flex: 1;
-  min-width: 0;
-  width: 0;
-  min-height: 30px;
-  padding: 5px 6px 5px 2px;
-  margin: 0;
-  gap: 8px;
-  color: var(--shell-text);
-}
-.document-row.selected {
-  background: transparent;
-  box-shadow: none;
-  color: var(--shell-text);
-}
-.document-row:hover {
-  background: var(--shell-selected);
-}
-.notebook-disclosure {
-  margin: 2px 0 4px 30px;
-  font-size: 13px;
 }
 .loading-rows {
   padding: 2px 7px;
@@ -1487,59 +1185,8 @@ button.notebook-toggle:hover {
 .loading-row-text {
   height: 10px;
 }
-.notebook-contents {
-  border-left: 1px solid var(--shell-border);
-  padding-left: 7px;
-}
-.notebook-contents button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 30px;
-  padding: 5px 7px;
-  border-radius: 5px;
-  text-align: left;
-  color: var(--shell-text);
-}
-.notebook-contents button > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.notebook-contents small {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 10px;
-  color: var(--shell-muted);
-}
-.notebook-contents button:hover,
-.notebook-contents button[aria-pressed="true"] {
-  background: var(--shell-selected);
-}
-.notebook-contents button[aria-pressed="true"] {
-  font-weight: 600;
-}
-.sidebar-footer {
-  padding-top: 6px;
-  margin-top: 6px;
-}
-.sidebar-footer summary {
-  font-size: 12px;
-  color: var(--shell-muted);
-}
 .mode-switch .current {
   text-decoration: none;
-}
-
-.search-shortcut {
-  margin-left: auto;
-  font-size: 10px;
-  opacity: 1;
-  color: var(--shell-muted);
-  border: 1px solid var(--shell-border);
-  border-radius: 4px;
-  padding: 1px 4px;
 }
 .global-search {
   position: fixed;
@@ -1861,15 +1508,6 @@ main:has(.workspace-surface) > .editor-area {
   border-bottom: 1px solid var(--shell-border);
   margin-bottom: 24px;
 }
-.sidebar-footer > button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 5px;
-}
 @media (max-width: 900px) {
   .settings-nav {
     width: 145px;
@@ -1931,13 +1569,6 @@ main:has(.workspace-surface) > .editor-area {
 }
 
 /* Linked K identity: neutral ink, clean wordmark, native vector rendering. */
-.brand {
-  color: light-dark(#242423, #c8c8c8);
-  font-family: "Segoe UI", Inter, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.4px;
-  gap: 9px;
-}
 .brand-mark {
   object-fit: contain;
   flex-shrink: 0;
@@ -2199,34 +1830,11 @@ affine-edgeless-attachment:not(.knot-attachment-embed)
 }
 
 /* Shell motion stays outside the editor and respects reduced-motion preferences. */
-.sidebar-frame,
 .workspace-panes {
   transition:
     var(--shell-width-transition, width) 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
     visibility 240ms;
 }
-.sidebar-frame {
-  position: relative;
-  flex: 0 0 auto;
-  width: var(--sidebar-width);
-  overflow: clip;
-}
-.sidebar-frame > .sidebar {
-  width: var(--sidebar-width);
-  height: 100%;
-}
-.sidebar-frame[data-collapsed="true"] {
-  width: 0;
-  visibility: hidden;
-}
-.sidebar-frame[data-dragging="true"] {
-  transition: none;
-  user-select: none;
-}
-.sidebar-resizer {
-  right: 0;
-}
-.sidebar-resizer,
 .panel-resizer {
   position: absolute;
   top: 0;
@@ -2237,38 +1845,15 @@ affine-edgeless-attachment:not(.knot-attachment-embed)
   z-index: 5;
   transition: background 140ms;
 }
-.sidebar-resizer:hover,
-.sidebar-resizer:focus-visible,
 .panel-resizer:hover,
 .panel-resizer:focus-visible,
-.panel-resizer:active,
-.sidebar-frame[data-dragging="true"] .sidebar-resizer {
+.panel-resizer:active {
   background: light-dark(#a0a0a060, #68686860);
 }
-.sidebar-resizer:focus-visible,
 .panel-resizer:focus-visible {
   outline: 2px solid light-dark(#838383, #7e7e7e);
   outline-offset: -2px;
 }
-.animated-disclosure {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  /* Height interpolation relayouts every sidebar row on every frame. */
-  transition: opacity 180ms;
-}
-.animated-disclosure[data-expanded="true"] {
-  grid-template-rows: 1fr;
-  opacity: 1;
-}
-.animated-disclosure > div {
-  min-height: 0;
-  overflow: hidden;
-}
-.notebook-toggle .shell-icon {
-  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.sidebar button,
 .topbar button,
 .shell-menu-content button,
 .settings-navigation button {
@@ -2304,12 +1889,7 @@ dialog[open] {
   animation: panel-reveal 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-frame,
   .workspace-panes,
-  .sidebar-resizer,
-  .animated-disclosure,
-  .notebook-toggle .shell-icon,
-  .sidebar button,
   .topbar button,
   .shell-menu-content button,
   .settings-navigation button {
@@ -2778,16 +2358,8 @@ dialog[open] {
   flex-wrap: wrap;
 }
 
-/* Collections stay in contextual popovers, outside the scrolling notebook list. */
-.notebook-row .collection-membership-trigger {
-  flex: 0 0 26px;
-  width: 26px;
-  padding: 4px;
-  opacity: 0;
-  border-radius: 5px;
-}
-.notebook-row:hover .collection-membership-trigger,
-.notebook-row:focus-within .collection-membership-trigger,
+/* Collections stay in contextual popovers, outside the scrolling notebook list.
+ * (The sidebar's own ⋯ visibility rules are in sidebar.css.) */
 .collection-membership-trigger[aria-expanded="true"] {
   opacity: 1;
 }
@@ -2859,104 +2431,6 @@ dialog[open] {
   padding: 0;
   accent-color: light-dark(#57534e, #a3a3a3);
 }
-@media (hover: none) {
-  .notebook-row .collection-membership-trigger {
-    opacity: 1;
-  }
-}
-
-.collection-group {
-  margin: 0 0 14px;
-}
-.collection-group-heading {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.collection-group-heading .collection-group-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-  min-height: 30px;
-  padding: 4px 0;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 500;
-  color: light-dark(#57544e, #a3a3a3);
-}
-.collection-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.collection-chevron {
-  display: grid;
-  place-items: center;
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
-  color: light-dark(#87837c, #7f7f7f);
-  transition: transform 120ms ease;
-}
-.collection-group-toggle[aria-expanded="true"] .collection-chevron {
-  transform: rotate(90deg);
-}
-.collection-group-heading .collection-options-trigger {
-  flex: 0 0 26px;
-  padding: 4px;
-  opacity: 0;
-}
-.collection-group-heading:hover .collection-options-trigger,
-.collection-group-heading:focus-within .collection-options-trigger,
-.collection-options-trigger[aria-expanded="true"] {
-  opacity: 1;
-}
-.collection-group-notebooks {
-  padding-left: 22px;
-}
-.collection-group-notebooks[hidden] {
-  display: none;
-}
-.collection-group button:focus-visible {
-  outline-offset: -2px;
-}
-.uncollected-label {
-  padding: 12px 10px 6px;
-  color: light-dark(#77736c, #8c8c8c);
-  font-size: 11px;
-}
-@media (hover: none) {
-  .collection-group-heading .collection-options-trigger {
-    opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .collection-chevron {
-    transition: none;
-  }
-}
-
-.section-label .new-collection-trigger {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 4px;
-  color: light-dark(#8b8780, #7c7c7c);
-  border-radius: 4px;
-}
-.section-label .new-collection-trigger:hover,
-.new-collection-trigger[aria-expanded="true"] {
-  background: light-dark(#eae8e3, #313131);
-  color: light-dark(#383630, #bbbbbb);
-}
-.new-collection-trigger .shell-icon {
-  width: 14px;
-  height: 14px;
-}
 
 /* Compact neutral collection menus. */
 .collection-popover {
@@ -3027,11 +2501,6 @@ dialog[open] {
   display: grid;
   gap: 7px;
   padding: 7px;
-}
-
-.collection-chevron .shell-icon {
-  width: 12px;
-  height: 12px;
 }
 
 /* The selected appearance also controls native form fields and scrollbars. */
@@ -3447,14 +2916,6 @@ main:has(.settings-modal) > .editor-area {
   }
 }
 
-/* One quiet line per empty section, aligned with the rows it stands in for. */
-.sidebar-empty-state {
-  margin: 0;
-  padding: 4px 10px 6px;
-  color: var(--shell-muted);
-  font-size: 12px;
-  line-height: 18px;
-}
 .favorite-toggle[aria-pressed="true"] .shell-icon {
   color: var(--control-accent);
   fill: currentColor;
@@ -3597,11 +3058,6 @@ main:has(.settings-modal) > .editor-area {
 }
 
 /* Ask Knot: a quiet writing surface, using the same shell palette. */
-.sidebar > button.sidebar-ask[aria-pressed="true"] {
-  background: var(--shell-selected);
-  color: var(--shell-text);
-  font-weight: 550;
-}
 .tool-surface:has(.ask-knot) .surface-body {
   padding: 0;
   overflow: hidden;
@@ -4524,66 +3980,6 @@ main:has(.pdf-reader) > .notice-banner {
   right: calc(var(--effective-panel-width) + 12px);
 }
 
-/* Indicators do not change target dimensions while aiming. */
-.collection-group-heading,
-.favorites-group .notebook-row {
-  position: relative;
-}
-.sidebar [draggable="true"] {
-  cursor: grab;
-}
-.sidebar [data-drop="inside"] {
-  background: color-mix(in srgb, var(--control-accent) 16%, transparent);
-  outline: 2px solid var(--control-accent);
-  outline-offset: -2px;
-  border-radius: 7px;
-}
-.collection-group-heading[data-drop="before"]::before,
-.collection-group-heading[data-drop="after"]::after,
-.favorites-group .notebook-row[data-drop="before"]::before,
-.favorites-group .notebook-row[data-drop="after"]::after {
-  content: "";
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--control-accent);
-  pointer-events: none;
-}
-.collection-group-heading[data-drop="before"]::before,
-.favorites-group .notebook-row[data-drop="before"]::before {
-  top: -2px;
-}
-.collection-group-heading[data-drop="after"]::after,
-.favorites-group .notebook-row[data-drop="after"]::after {
-  bottom: -2px;
-}
-.sidebar {
-  position: relative;
-}
-.sidebar-footer .sidebar-remove-drop {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  outline: 1px dashed var(--shell-muted);
-  outline-offset: -2px;
-}
-.sidebar-drag-status {
-  position: absolute;
-  bottom: 80px;
-  left: 8px;
-  right: 8px;
-  z-index: 5;
-  padding: 8px;
-  border-radius: 6px;
-  background: var(--shell-nav);
-  box-shadow: 0 2px 12px #0002;
-  font-size: 11px;
-  color: var(--shell-muted);
-  pointer-events: none;
-}
-
 /* Membership picking needs more space than the compact action menus. */
 .collection-popover:has(.collection-membership-editor) {
   width: 300px;
@@ -4896,15 +4292,6 @@ main:has(.pdf-reader) > .notice-banner {
 .card-page-breadcrumb button {
   padding: 4px 6px;
   border-radius: var(--shell-radius);
-}
-.sidebar > button[aria-current="page"] {
-  background: var(--shell-selected);
-  font-weight: 600;
-}
-
-/* Unavailable actions are not pending network requests. */
-.sidebar-ask:disabled {
-  cursor: default;
 }
 
 /* Cards share the list's actions and data, with full-width date headings. */

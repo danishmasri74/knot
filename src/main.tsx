@@ -1,6 +1,7 @@
 import { startUiPreferences } from "./services/ui-preferences";
 import "@toeverything/theme/style.css";
 import "./styles/app.css";
+import "./styles/sidebar.css";
 import "./styles/mcq.css";
 import "./styles/dropdowns.css";
 // Suppress WebView's browser menu without blocking editor context-menu handlers.
