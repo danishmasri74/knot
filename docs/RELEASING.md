@@ -30,7 +30,9 @@ Releases are published as files on a public, code-free GitHub repository. The Kn
    - Bump the patch version (0.2.0 → 0.2.1) otherwise.
    - Test releases use a suffix: `0.3.0-rc.1`.
 2. **Set it everywhere:** `pnpm version:set 0.3.0`. `pnpm version:set --check` prints all four places.
-3. **Write notes** in `docs/releases/0.3.0.md`: at most about 8 short lines written for users. Knot shows them in Settings → Updates.
+3. **Write notes** in `docs/releases/0.3.0.md`: at most about 8 short lines written for users. Knot shows them in Settings → Updates. Start from `docs/releases/UNRELEASED.md`, where each user-visible change is noted as it's made, then leave that file with only its heading.
+
+Between releases the version stays at the last release; bump it only when releasing.
 4. **Commit** the version bump, notes and any remaining work. The script refuses to publish from a working tree with uncommitted changes.
 5. **Release:**
 
