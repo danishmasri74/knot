@@ -6700,3 +6700,61 @@ knot-web-source { display: block; margin-block: 8px; }
 .share-dialog .share-summary {
   flex: 1;
 }
+/* Import dialog extras: bulk buttons, status tags (the AI-model tag style),
+   and the Keep both / Replace mine choice. */
+.share-dialog .share-section-row {
+  display: flex;
+  align-items: center;
+}
+.share-dialog .share-section-row > span:first-child {
+  flex: 1;
+}
+.share-dialog .share-bulk button {
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.share-dialog .share-bulk button:hover:not(:disabled) {
+  color: var(--shell-text);
+}
+.share-dialog .share-row label.share-row-title {
+  cursor: pointer;
+}
+.share-dialog .import-tag {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: light-dark(#f0efed, #333331);
+  color: var(--shell-muted);
+  font-size: 11px;
+}
+.share-dialog .import-choice {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.share-dialog .share-note {
+  margin: 10px 0 0;
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+.share-dialog .share-name select {
+  min-width: 170px;
+}
+/* Library → Import…, styled like the sort control beside it. */
+.library-view-controls .library-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+.library-view-controls .library-import:hover {
+  background: var(--shell-selected);
+}

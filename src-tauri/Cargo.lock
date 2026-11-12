@@ -2191,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "knot"
-version = "0.2.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "brotli 8.0.4",
  "encoding_rs",
@@ -2208,6 +2208,7 @@ dependencies = [
  "sha2",
  "tauri",
  "tauri-build",
+ "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
@@ -4292,6 +4293,22 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "726b6da0dd5bd1344f84f4108a622c07d01923baacb5c803a605189672c5352f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]

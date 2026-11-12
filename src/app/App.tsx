@@ -65,6 +65,7 @@ import { NewNotebook } from "./NewNotebook";
 import { AiSettings } from "./AiSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { ShareNotebookDialog } from "./ShareNotebookDialog";
+import { ImportNotebookDialog } from "./ImportNotebookDialog";
 import {
   checkForUpdate,
   getUpdateState,
@@ -212,6 +213,8 @@ export function App() {
   });
   const [quizReset, setQuizReset] = useState(false);
   const [sharing, setSharing] = useState<{ id: string; title: string } | null>(null);
+  // A .knotbook waiting to be imported, by opaque token (paths stay native).
+  const [importToken, setImportToken] = useState<string | null>(null);
   const [aiPlacement, setAiPlacement] = useState<"page" | "panel" | "hidden">(
     "hidden",
   );
@@ -1483,6 +1486,9 @@ export function App() {
       await openLibrary(defaultLibrary);
       if (savedAiPlacement === "page" || savedAiPlacement === "panel")
         showAi(savedAiPlacement);
+      // Opened by double-clicking a .knotbook while Knot was closed.
+      const launched = await knotbooks.pending().catch(() => null);
+      if (launched) setImportToken(launched);
     }).finally(dismissLaunchSplash);
     let off: (() => void) | undefined;
     let gone = false;
@@ -1509,6 +1515,23 @@ export function App() {
   }, []);
   // Notices and timers outlive a render; the ref always opens Updates with
   // this render's surface handling.
+  // Double-clicking a .knotbook while Knot is open: the second launch hands
+  // the file over (single-instance) and this opens the import dialog.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let off: (() => void) | undefined;
+    let gone = false;
+    void listen<string>("knotbook-open", (event) => setImportToken(event.payload)).then(
+      (fn) => {
+        if (gone) fn();
+        else off = fn;
+      },
+    );
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, []);
   const openUpdates = useRef(() => {});
   openUpdates.current = () => openSurface("updates");
   useEffect(() => {
@@ -2093,6 +2116,57 @@ export function App() {
             showNotice(`Saved ${filename}`, {
               label: "Show in folder",
               run: () => void knotbooks.showLast().catch(report),
+            });
+          }}
+        />
+      )}
+      {importToken && (
+        <ImportNotebookDialog
+          key={importToken}
+          inspect={() => knotbooks.inspect(importToken)}
+          collections={catalog.collections}
+          context={async () => {
+            await flushPendingWork();
+            const [deck, rows] = await Promise.all([
+              repository.loadCardDeck(),
+              repository.catalog(),
+            ]);
+            return {
+              deck: JSON.parse(deck) as Record<string, unknown>,
+              titles: new Set(rows.map((row) => row.title)),
+            };
+          }}
+          onImport={async (plan, collection) => {
+            const written = await knotbooks.import(importToken, { ...plan, collection });
+            setImportToken(null);
+            setCatalog(await collections.catalog());
+            await refresh();
+            // Reload the open notebook in case it was replaced.
+            if (active) await select(active, false);
+            const first = written[0];
+            showNotice(
+              `Imported ${written.length} ${written.length === 1 ? "notebook" : "notebooks"}`,
+              {
+                label: "Open",
+                run: () =>
+                  void repository
+                    .catalog()
+                    .then((rows) => rows.find((row) => row.id === first))
+                    .then((row) => row && select(row))
+                    .catch(report),
+              },
+            );
+          }}
+          onClose={() => setImportToken(null)}
+          onOpenUpdates={() => {
+            setImportToken(null);
+            openSurface("updates");
+          }}
+          onOpenBackups={() => {
+            setImportToken(null);
+            void run(async () => {
+              openSurface("backups");
+              setBackupEntries(await backups.list());
             });
           }}
         />
@@ -3471,6 +3545,12 @@ export function App() {
         )}
         {library && (
           <LibraryPage
+            onImport={() =>
+              void knotbooks
+                .choose()
+                .then((token) => token && setImportToken(token))
+                .catch(report)
+            }
             preferenceKey={`${workspaceCatalog.active}:${library.library === "cardDeck" ? "library:cardDeck" : library.id}`}
             key={`${workspaceCatalog.active}:${library.library === "cardDeck" ? "library:cardDeck" : library.id}`}
             location={library}

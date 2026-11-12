@@ -1,6 +1,6 @@
 # Notebook sharing plan
 
-Status: planned on 12 November 2026, not implemented. Designs: the "Knot notebook sharing" design canvas (artboards 1–9). Ships as **0.3.0**: it adds a schema migration, which requires a minor version bump.
+Status (12 November 2026): slice 1 (Share as file) is committed. Slices 2 (import) and 3 (double-click opening, `.knotbook` icon) are implemented and checked, but not yet committed. Codex fixed the Windows association; see [HANDOFF-KNOTBOOK-OPEN-WITH.md](HANDOFF-KNOTBOOK-OPEN-WITH.md), "Resolution". Slice 4 ("Not shared" placeholders) and slice 5 (two-PC test, 0.3.0 release) remain. Designs: the "Knot notebook sharing" design canvas (artboards 1–9). Ships as **0.3.0**: it adds a schema migration, which requires a minor version bump.
 
 ## Goal
 

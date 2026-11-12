@@ -57,6 +57,7 @@ export function LibraryPage({
   onOpen,
   onNavigate,
   onCreate,
+  onImport,
   onFavorite,
   revision,
   sidebarDrag,
@@ -76,6 +77,8 @@ export function LibraryPage({
   onOpen: (item: KnowledgeObject) => void;
   onNavigate: (location: LibraryLocation) => void;
   onCreate: (name: string) => Promise<void>;
+  /** Import a .knotbook someone shared (NOTEBOOK-SHARING-PLAN.md). */
+  onImport?: () => void;
   onFavorite: (id: string) => void;
   revision: number;
   sidebarDrag: ReturnType<typeof useSidebarDrag>;
@@ -249,6 +252,17 @@ export function LibraryPage({
               />
             </label>
             <div className="library-view-controls">
+              {onImport && !directory && (
+                <button
+                  className="library-import"
+                  aria-label="Import notebook"
+                  data-tooltip="Import a shared notebook"
+                  onClick={onImport}
+                >
+                  <ShellIcon name="import" />
+                  <span>Import…</span>
+                </button>
+              )}
               <div
                 className="library-sort-group"
                 role="group"

@@ -30,6 +30,86 @@ type Reply<T> = Result<T, String>;
 /// The last .knotbook this session saved, so "Show in folder" never needs a
 /// path from the interface.
 struct LastShare(Mutex<Option<std::path::PathBuf>>);
+/// .knotbook files waiting to be imported. The interface only ever sees an
+/// opaque token, never a path (docs/NOTEBOOK-SHARING-PLAN.md, "Import").
+#[derive(Default)]
+struct KnotbookFiles {
+    files: Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
+    /// A file Knot was launched with, waiting for the interface to be ready.
+    pending: Mutex<Option<String>>,
+}
+fn knotbook_arg<I: IntoIterator<Item = S>, S: AsRef<std::ffi::OsStr>>(args: I) -> Option<std::path::PathBuf> {
+    args.into_iter().skip(1).find_map(|arg| {
+        let path = std::path::PathBuf::from(arg.as_ref());
+        let is_knotbook = path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("knotbook"));
+        (is_knotbook && path.is_file()).then_some(path)
+    })
+}
+fn register_knotbook(files: &KnotbookFiles, path: std::path::PathBuf) -> String {
+    let token = uuid::Uuid::new_v4().to_string();
+    if let Ok(mut map) = files.files.lock() {
+        map.insert(token.clone(), path);
+    }
+    token
+}
+fn knotbook_path(files: &KnotbookFiles, token: &str) -> Reply<std::path::PathBuf> {
+    files
+        .files
+        .lock()
+        .map_err(|_| "Import state unavailable")?
+        .get(token)
+        .cloned()
+        .ok_or_else(|| "This file is no longer available. Open it again.".into())
+}
+#[tauri::command]
+async fn choose_knotbook(files: State<'_, KnotbookFiles>) -> Reply<Option<String>> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Import notebook")
+        .add_filter("Knot notebook", &["knotbook"])
+        .pick_file()
+        .await;
+    Ok(file.map(|f| register_knotbook(&files, f.path().to_path_buf())))
+}
+#[tauri::command]
+async fn pending_knotbook(files: State<'_, KnotbookFiles>) -> Reply<Option<String>> {
+    Ok(files.pending.lock().map_err(|_| "Import state unavailable")?.take())
+}
+#[derive(serde::Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+enum InspectReply {
+    Ready { package: knotbook::Inspected },
+    Blocked { reason: knotbook::Blocked },
+}
+#[tauri::command]
+async fn inspect_knotbook(
+    state: State<'_, AppState>,
+    files: State<'_, KnotbookFiles>,
+    token: String,
+) -> Reply<InspectReply> {
+    let path = knotbook_path(&files, &token)?;
+    with(&state, |w| {
+        Ok(match knotbook::inspect(w, &path) {
+            Ok(package) => InspectReply::Ready { package },
+            Err(reason) => InspectReply::Blocked { reason },
+        })
+    })
+}
+#[tauri::command]
+async fn import_knotbook(
+    state: State<'_, AppState>,
+    files: State<'_, KnotbookFiles>,
+    token: String,
+    plan: knotbook::ImportPlan,
+) -> Reply<Vec<String>> {
+    let path = knotbook_path(&files, &token)?;
+    let written = with(&state, |w| knotbook::import(w, &state.base, &path, &plan))?;
+    if let Ok(mut map) = files.files.lock() {
+        map.remove(&token);
+    }
+    Ok(written)
+}
 #[tauri::command]
 async fn knotbook_size(
     state: State<'_, AppState>,
@@ -570,9 +650,31 @@ pub fn run() {
         context.config_mut().app.windows[0].create = false;
     }
     tauri::Builder::default()
+        // Must be first: a second launch (double-clicking a .knotbook while Knot
+        // is open) hands its file to this instance instead of failing on the
+        // workspace lock, and brings the window forward.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if let Some(path) = knotbook_arg(&args) {
+                let token = register_knotbook(&app.state::<KnotbookFiles>(), path);
+                let _ = tauri::Emitter::emit(app, "knotbook-open", token);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         // Signed updates from the releases repository; see docs/UPDATER-INSTALLER-PLAN.md.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // Launched by double-clicking a .knotbook: keep it for the interface.
+            if let Some(path) = knotbook_arg(std::env::args_os()) {
+                let files = app.state::<KnotbookFiles>();
+                let token = register_knotbook(&files, path);
+                if let Ok(mut pending) = files.pending.lock() {
+                    *pending = Some(token);
+                };
+            }
             #[cfg(debug_assertions)]
             if let Some(root) = std::env::var_os("KNOT_TEST_DATA_DIR") {
                 let mut builder = tauri::WebviewWindowBuilder::from_config(
@@ -608,8 +710,22 @@ pub fn run() {
         })
         .manage(ai::Requests::default())
         .manage(LastShare(Mutex::new(None)))
+        .manage(KnotbookFiles::default())
         .manage(web_sources::Requests::default())
         .manage(browser::Browser::default())
+        .on_window_event(|window, event| {
+            // WebView2 can defer the JS close listener while minimized. Wake
+            // the main window from the native close event so App.tsx can run
+            // its usual save/cleanup flow (and show any error). Do not destroy
+            // the window here or bypass the frontend's pending-operation guard.
+            #[cfg(windows)]
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+                && window.is_minimized().unwrap_or(false)
+            {
+                let _ = window.unminimize();
+            }
+        })
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Started
@@ -657,6 +773,10 @@ pub fn run() {
                 knotbook_size,
                 export_knotbook,
                 show_last_share,
+                choose_knotbook,
+                pending_knotbook,
+                inspect_knotbook,
+                import_knotbook,
                 list_backups,
                 create_backup,
                 validate_backup,

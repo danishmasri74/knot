@@ -618,12 +618,32 @@ Section Install
     File /a "/oname={{this}}" "{{no-escape @key}}"
   {{/each}}
 
+  ; KNOT: remove the redundant registrations from the open-with investigation.
+  ; The ProgID and its OpenWithProgids entry below are the shell integration.
+  Call KnotCleanLegacyAssociations
+
   ; Create file associations
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
-       !insertmacro APP_ASSOCIATE "{{ext}}" "{{or association.name ext}}" "{{association-description association.description ext}}" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\",0" "Open with ${PRODUCTNAME}" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+       ; KNOT: APP_ASSOCIATE overwrites its backup on every reinstall. Preserve
+       ; the original default instead of backing up our own ProgID on updates.
+       ReadRegStr $R1 SHCTX "Software\Classes\.{{ext}}" ""
+       ${If} $R1 == "{{or association.name ext}}"
+         ReadRegStr $R1 SHCTX "Software\Classes\.{{ext}}" "{{or association.name ext}}_backup"
+       ${EndIf}
+       ${If} $R1 == "{{or association.name ext}}"
+         StrCpy $R1 ""
+       ${EndIf}
+       ; KNOT: use the shipped document icon, with an explicit icon index.
+       !insertmacro APP_ASSOCIATE "{{ext}}" "{{or association.name ext}}" "{{association-description association.description ext}}" "$\"$INSTDIR\\{{ext}}.ico$\",0" "Open with ${PRODUCTNAME}" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+       WriteRegStr SHCTX "Software\Classes\.{{ext}}" "{{or association.name ext}}_backup" "$R1"
+       ; KNOT: advertise the handler to Windows' Open with picker as well as
+       ; registering the default verb. Empty REG_SZ is supported by the shell.
+       WriteRegStr SHCTX "Software\Classes\.{{ext}}\OpenWithProgids" "{{or association.name ext}}" ""
     {{/each}}
   {{/each}}
+  ; KNOT: tell Explorer to refresh file icons now, not after a restart.
+  !insertmacro UPDATEFILEASSOC
 
   ; Register deep links
   {{#each deep_link_protocols as |protocol| ~}}
@@ -756,9 +776,30 @@ Section Uninstall
   ; Delete app associations
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
-      !insertmacro APP_UNASSOCIATE "{{ext}}" "{{or association.name ext}}"
+      ; KNOT: only remove this installation's handler. Do not overwrite a
+      ; different default selected since installation, or touch UserChoice.
+      ReadRegStr $R7 SHCTX "Software\Classes\\{{or association.name ext}}\shell\open\command" ""
+      ${If} $R7 == "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+        ReadRegStr $R7 SHCTX "Software\Classes\.{{ext}}" ""
+        ${If} $R7 == "{{or association.name ext}}"
+          ReadRegStr $R7 SHCTX "Software\Classes\.{{ext}}" "{{or association.name ext}}_backup"
+          ${If} $R7 == "{{or association.name ext}}"
+          ${OrIf} $R7 == ""
+            DeleteRegValue SHCTX "Software\Classes\.{{ext}}" ""
+          ${Else}
+            WriteRegStr SHCTX "Software\Classes\.{{ext}}" "" "$R7"
+          ${EndIf}
+        ${EndIf}
+        DeleteRegKey SHCTX "Software\Classes\\{{or association.name ext}}"
+        DeleteRegValue SHCTX "Software\Classes\.{{ext}}" "{{or association.name ext}}_backup"
+        DeleteRegValue SHCTX "Software\Classes\.{{ext}}\OpenWithProgids" "{{or association.name ext}}"
+        DeleteRegKey /ifempty SHCTX "Software\Classes\.{{ext}}\OpenWithProgids"
+        DeleteRegKey /ifempty SHCTX "Software\Classes\.{{ext}}"
+      ${EndIf}
     {{/each}}
   {{/each}}
+  Call un.KnotCleanLegacyAssociations ; KNOT
+  !insertmacro UPDATEFILEASSOC ; KNOT
 
   ; Delete deep links
   {{#each deep_link_protocols as |protocol| ~}}
@@ -918,6 +959,33 @@ Function CreateOrUpdateDesktopShortcut
   CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 FunctionEnd
+
+; KNOT: migrate away from hand-added debugging entries. None is needed when
+; OpenWithProgids references the complete ProgID. Check ownership before
+; deleting executable registrations; keep unrelated settings under Software\Knot.
+!macro KNOT_CLEAN_LEGACY_ASSOCIATIONS prefix
+Function ${prefix}KnotCleanLegacyAssociations
+  ReadRegStr $R7 SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\shell\open\command" ""
+  ${If} $R7 == "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+    DeleteRegKey SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe"
+  ${EndIf}
+  DeleteRegValue SHCTX "Software\Classes\Knot.Notebook" "AppUserModelID"
+  ReadRegStr $R7 SHCTX "Software\Knot\Capabilities\FileAssociations" ".knotbook"
+  ${If} $R7 == "Knot.Notebook"
+    DeleteRegKey SHCTX "Software\Knot\Capabilities"
+  ${EndIf}
+  ReadRegStr $R7 SHCTX "Software\RegisteredApplications" "Knot"
+  ${If} $R7 == "Software\Knot\Capabilities"
+    DeleteRegValue SHCTX "Software\RegisteredApplications" "Knot"
+  ${EndIf}
+  ReadRegStr $R7 SHCTX "Software\Microsoft\Windows\CurrentVersion\App Paths\${MAINBINARYNAME}.exe" ""
+  ${If} $R7 == "$INSTDIR\${MAINBINARYNAME}.exe"
+    DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\App Paths\${MAINBINARYNAME}.exe"
+  ${EndIf}
+FunctionEnd
+!macroend
+!insertmacro KNOT_CLEAN_LEGACY_ASSOCIATIONS ""
+!insertmacro KNOT_CLEAN_LEGACY_ASSOCIATIONS "un."
 
 ; KNOT: wait for Knot to close normally instead of force-closing it, which
 ; would skip its save-on-close. Interactive: ask the person to close it and

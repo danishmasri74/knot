@@ -153,6 +153,20 @@ export const knotbooks = {
     sharedBy: string;
   }) => invoke<string | null>("export_knotbook", share),
   showLast: () => invoke<void>("show_last_share"),
+  /** Opens Windows' file picker; returns a token, never a path. */
+  choose: () => invoke<string | null>("choose_knotbook"),
+  /** A file Knot was launched with (double-click while closed). */
+  pending: () => invoke<string | null>("pending_knotbook"),
+  inspect: (token: string) =>
+    invoke<import("../app/ImportNotebookDialog").InspectReply>("inspect_knotbook", { token }),
+  import: (
+    token: string,
+    plan: {
+      items: import("./knotbook-import").ImportItem[];
+      cards: Record<string, unknown>;
+      collection: string | null;
+    },
+  ) => changedTopicSources(invoke<string[]>("import_knotbook", { token, plan })),
 };
 export const attachments = {
   recoverMissing: (hash: string) =>
