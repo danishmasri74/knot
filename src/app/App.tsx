@@ -4063,12 +4063,12 @@ export function App() {
             }}
             label={(tab: PaneTab) =>
               tab.kind === "note"
-                ? session.current?.doc.id === tab.documentId
-                  ? session.current?.doc
-                      .getBlock(tab.noteId!)
-                      ?.model.children.map((c) => c.text?.toString().trim())
-                      .find(Boolean) || "Untitled note"
-                  : "Untitled note"
+                ? // Same name as the sidebar and the top bar ("Note 3" when empty).
+                  (session.current?.doc.id === tab.documentId &&
+                    session.current
+                      ?.notebookNotes()
+                      .find((note) => note.id === tab.noteId)?.title) ||
+                  "Note"
                 : surfaceTitles[tab.kind]
             }
             contentKey={(tab) => tab.id}
