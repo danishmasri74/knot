@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  carrySidebarPreferences,
   orderedFavorites,
   readSidebarPreferences,
   startupNotebook,
@@ -81,4 +82,20 @@ it("restores favorite order independently from recent visits", () => {
     pinned: [],
     favoriteOrder: ["b", "a"],
   });
+});
+it("carries sidebar preferences into a restored workspace without overwriting its own", () => {
+  const storage = new Map([
+    ["knot.sidebar.Workspace", JSON.stringify({ recent: ["a"], pinned: ["c"] })],
+    ["knot.sidebar.restored-2", JSON.stringify({ recent: ["own"] })],
+  ]);
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+  });
+  carrySidebarPreferences("Workspace", "restored-1");
+  expect(readSidebarPreferences("restored-1").pinned).toEqual(["c"]);
+  carrySidebarPreferences("Workspace", "restored-2");
+  expect(readSidebarPreferences("restored-2").recent).toEqual(["own"]);
+  carrySidebarPreferences(null, "restored-3");
+  expect(storage.has("knot.sidebar.restored-3")).toBe(false);
 });

@@ -16,6 +16,8 @@ export interface DeckCard {
   createdAt?: number;
   updatedAt?: number;
   deleted?: boolean;
+  /** Emptied from Trash: content is gone, the ID stays so old placements expire. */
+  purged?: boolean;
   generation?: number;
 }
 export type DeckData = Record<string, DeckCard>;
@@ -408,10 +410,38 @@ export class CardDeck {
     );
   }
   restore(id: string) {
-    if (!this.data[id]?.deleted) return;
+    if (!this.data[id]?.deleted || this.data[id].purged) return;
     this.contentVersion++;
     delete this.data[id].deleted;
     this.notify();
+  }
+  /** Cards waiting in Trash (deleted, not yet emptied). */
+  trashed() {
+    return Object.values(this.data).filter((card) => card.deleted && !card.purged);
+  }
+  /** Empty these cards from Trash. A content-free tombstone keeps the ID, so
+   * notebooks that still link to the card drop it instead of failing to open. */
+  purge(ids: string[]) {
+    let count = 0;
+    for (const id of ids) {
+      const card = this.data[id];
+      if (!card?.deleted || card.purged) continue;
+      this.data[id] = {
+        id,
+        nodes: [],
+        deleted: true,
+        purged: true,
+        generation: card.generation,
+        createdAt: card.createdAt,
+        updatedAt: Date.now(),
+      };
+      count++;
+    }
+    if (count) {
+      this.contentVersion++;
+      this.notify();
+    }
+    return count;
   }
   delete(id: string) {
     const card = this.data[id];

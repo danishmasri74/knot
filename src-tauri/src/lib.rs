@@ -17,6 +17,7 @@ mod quarantine;
 mod storage;
 #[cfg(test)]
 mod tests;
+mod ui_preferences;
 mod workspaces;
 mod web_sources;
 use std::sync::Mutex;
@@ -212,6 +213,14 @@ async fn export_document(
     };
     exports::write(file.path(), &format, &files).map_err(|e| e.to_string())?;
     Ok(Some(file.path().display().to_string()))
+}
+#[tauri::command]
+async fn read_ui_preferences(state: State<'_, AppState>) -> Reply<Option<String>> {
+    ui_preferences::read(&state.base).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn write_ui_preferences(state: State<'_, AppState>, json: String) -> Reply<()> {
+    ui_preferences::write(&state.base, &json).map_err(|e| e.to_string())
 }
 #[tauri::command]
 async fn list_backups(state: State<'_, AppState>) -> Reply<Vec<managed_backups::Entry>> {
@@ -809,6 +818,8 @@ pub fn run() {
                 delete_object,
                 list_trash,
                 purge_trash,
+                read_ui_preferences,
+                write_ui_preferences,
                 clear_expired_trash,
                 restore_object,
                 load_card_deck,

@@ -54,6 +54,12 @@ Schema 9 adds a workspace-owned `card_deck` JSON record. Note-card content is in
 
 Deleting a placement retains its card. Explicit deck deletion removes live placements and retains a tombstone so restored or undone placements cannot resurrect it. Backups include the deck through the database. Trash purging retains attachment records referenced by deck content, including cards with no remaining placements.
 
+Empty Trash also empties deleted cards: each becomes a content-free tombstone (`deleted` and `purged`, `nodes: []`) that keeps its ID and generation, so notebooks that still link to it drop the placement on open instead of failing. Its attachments are released by the same purge.
+
+## UI preferences
+
+Preferences live in the WebView's localStorage under `knot.*` keys (theme, editor settings, sidebar recents/pins/favorites order per workspace, layouts). WebView2 can reset that storage as a whole, so Knot mirrors those keys (except Ask Knot drafts) to `ui-preferences.json` in the data folder, beside the workspaces and outside every backup. It is written atomically after each change and while closing. At startup, a storage without the `knot.ui-mirror.v1` marker is treated as reset and refilled from the file before the app loads; keys already present win. Restoring a backup copies the sidebar preferences to the restored workspace's ID.
+
 
 ## Retained website evidence
 

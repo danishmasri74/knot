@@ -22,6 +22,18 @@ export function orderedFavorites(favorites: string[], order: string[]) {
     favorites.includes(id),
   );
 }
+/** A restored backup opens as a new workspace with the same notebooks and
+ * collections, so it keeps the sidebar's recents, pins and favorites order. */
+export function carrySidebarPreferences(
+  from: string | null | undefined,
+  to: string | null | undefined,
+) {
+  if (!from || !to || from === to) return;
+  const target = `knot.sidebar.${to}`;
+  const source = localStorage.getItem(`knot.sidebar.${from}`);
+  if (source !== null && localStorage.getItem(target) === null)
+    localStorage.setItem(target, source);
+}
 export function readSidebarPreferences(workspace: string): Preferences {
   try {
     const value = JSON.parse(
@@ -57,23 +69,25 @@ export function useSidebarPreferences(
     localStorage.setItem(`knot.sidebar.${workspace}`, JSON.stringify(next));
     refresh((value) => value + 1);
   };
-  useEffect(() => {
-    if (!workspace || !active) return;
+  const markRecent = (ids: string[]) => {
+    if (!workspace || !ids.length) return;
     const current = readSidebarPreferences(workspace);
     localStorage.setItem(
       `knot.sidebar.${workspace}`,
       JSON.stringify({
         ...current,
-        recent: [active, ...current.recent.filter((id) => id !== active)].slice(
-          0,
-          100,
-        ),
+        recent: [...new Set([...ids, ...current.recent])].slice(0, 100),
       }),
     );
     refresh((value) => value + 1);
+  };
+  useEffect(() => {
+    if (active) markRecent([active]);
+    // markRecent reads current storage, so it needs no dependency.
   }, [workspace, active]);
   return {
     ...preferences,
+    markRecent,
     reorderFavorites: (favoriteOrder: string[]) =>
       save({ ...preferences, favoriteOrder }),
     togglePin: (id: string) =>

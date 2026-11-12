@@ -37,9 +37,9 @@ export function TrashPage({
 }) {
   const [, refresh] = useState(0);
   useEffect(() => deck?.subscribe(() => refresh((n) => n + 1)), [deck]);
-  const cards = Object.values(deck?.data ?? {}).filter(
+  const trashedCards = deck?.trashed() ?? [];
+  const cards = trashedCards.filter(
     (card) =>
-      card.deleted &&
       cardPreview(card, undefined, deck?.data).toLowerCase().includes(query.toLowerCase()),
   );
   return (
@@ -71,7 +71,7 @@ export function TrashPage({
         </label>
         <button
           className="trash-empty-button"
-          disabled={busy || (!items.length && !searched)}
+          disabled={busy || (!items.length && !trashedCards.length && !searched)}
           onClick={onEmpty}
         >
           Empty Trash

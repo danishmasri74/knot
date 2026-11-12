@@ -181,6 +181,31 @@ describe("Card Deck", () => {
     expect(deck.data[id].deleted).toBeUndefined();
     deck.dispose();
   });
+  it("empties trashed cards to content-free tombstones that stale documents still drop", () => {
+    const doc = fixture("Secret answer"),
+      changed = vi.fn(),
+      deck = new CardDeck({}, changed);
+    deck.attach(doc);
+    const stale = Y.encodeStateAsUpdate(doc),
+      id = Object.keys(deck.data)[0];
+    expect(deck.purge([id])).toBe(0); // only cards in Trash can be emptied
+    deck.delete(id);
+    expect(deck.trashed().map((card) => card.id)).toEqual([id]);
+    expect(deck.purge([id])).toBe(1);
+    expect(deck.trashed()).toEqual([]);
+    expect(deck.data[id]).toMatchObject({ deleted: true, purged: true, nodes: [] });
+    expect(JSON.stringify(deck.data)).not.toContain("Secret answer");
+    deck.restore(id);
+    expect(deck.data[id].purged).toBe(true);
+    expect(changed).toHaveBeenCalled();
+    const old = new Y.Doc();
+    Y.applyUpdate(old, stale);
+    const reload = new CardDeck(JSON.parse(JSON.stringify(deck.data)), () => {});
+    expect(() => reload.attach(old)).not.toThrow();
+    expect(old.getMap("blocks").has("note")).toBe(false);
+    reload.dispose();
+    deck.dispose();
+  });
   it("keeps global deletion tombstones so stale documents cannot resurrect a deleted card", () => {
     const doc = fixture("Delete me"),
       deck = new CardDeck({}, () => {});

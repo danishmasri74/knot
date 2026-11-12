@@ -84,6 +84,7 @@ import {
   type AiContext,
 } from "../features/editor/blocksuite/ai";
 import {
+  carrySidebarPreferences,
   orderedFavorites,
   useSidebarPreferences,
 } from "./useSidebarPreferences";
@@ -146,6 +147,7 @@ import {
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
+import { flushUiPreferences } from "../services/ui-preferences";
 import { listen } from "@tauri-apps/api/event";
 import {
   repository,
@@ -206,6 +208,7 @@ export function App() {
   };
   const prepareToClose = useRef(async () => {
     await flushPendingWork();
+    await flushUiPreferences();
     // Best effort: destroying the window tears the browser pane down anyway,
     // and a broken pane must not keep Knot from closing once edits are saved.
     await browserApi.dispose().catch((e) =>
@@ -660,6 +663,7 @@ export function App() {
   const [trash, setTrash] = useState<TrashedObject[] | null>(null);
   const [purgeSelection, setPurgeSelection] = useState<{
     ids: string[];
+    cards?: string[];
     title: string;
   } | null>(null);
   async function prepareEmptyTrash() {
@@ -669,8 +673,10 @@ export function App() {
       ids.push(...rows.map((item) => item.id));
       if (rows.length < 100) break;
     }
-    if (ids.length)
-      setPurgeSelection({ ids, title: `Empty Trash? (${ids.length})` });
+    const cards = (session.current?.cardDeck.trashed() ?? []).map((card) => card.id);
+    const total = ids.length + cards.length;
+    if (total)
+      setPurgeSelection({ ids, cards, title: `Empty Trash? (${total})` });
     else {
       await loadTrash();
       setNotice("Trash is already empty.");
@@ -2151,6 +2157,8 @@ export function App() {
             // Reload the open notebook in case it was replaced.
             if (active) await select(active, false);
             const first = written[0];
+            // The shared notebook (listed first) shows under Recently visited.
+            if (first) sidebarPreferences.markRecent([first]);
             showNotice(
               `Imported ${written.length} ${written.length === 1 ? "notebook" : "notebooks"}`,
               {
@@ -3175,8 +3183,13 @@ export function App() {
                       )
                         return;
                       await session.current?.flush();
+                      const previous = workspaceIdentity.current;
                       const path = await backups.restore();
                       if (path) {
+                        carrySidebarPreferences(
+                          previous,
+                          (await workspaces.catalog()).active,
+                        );
                         await reloadWorkspace();
                         setNotice(`Opened restored workspace: ${path}`);
                       }
@@ -3410,7 +3423,12 @@ export function App() {
                     )
                       return;
                     await session.current?.flush();
+                    const previous = workspaceIdentity.current;
                     const path = await backups.open(id);
+                    carrySidebarPreferences(
+                      previous,
+                      (await workspaces.catalog()).active,
+                    );
                     await reloadWorkspace();
                     setNotice(`Opened restored workspace: ${path}`);
                     return;
@@ -3477,18 +3495,27 @@ export function App() {
               {purgeSelection && (
                 <TrashConfirmation
                   title={purgeSelection.title}
-                  count={purgeSelection.ids.length}
+                  count={
+                    purgeSelection.ids.length +
+                    (purgeSelection.cards?.length ?? 0)
+                  }
                   description="These items will be permanently deleted. Deleting collections keeps their notebooks. This cannot be undone."
                   onClose={() => setPurgeSelection(null)}
                   onConfirm={async () => {
                     await session.current?.flush();
-                    const count = await repository.purgeTrash(
-                      purgeSelection.ids,
-                    );
+                    let count = 0;
+                    if (purgeSelection.cards?.length) {
+                      // Save the emptied cards first so their attachments are
+                      // released by the purge below.
+                      count += session.current?.cardDeck.purge(purgeSelection.cards) ?? 0;
+                      await session.current?.flush();
+                    }
+                    if (purgeSelection.ids.length)
+                      count += await repository.purgeTrash(purgeSelection.ids);
                     setPurgeSelection(null);
                     setIntegrity(null);
                     setNotice(
-                      `Permanently deleted ${count} ${count === 1 ? "document" : "documents"}.`,
+                      `Permanently deleted ${count} ${count === 1 ? "item" : "items"}.`,
                     );
                     await run(async () => {
                       await loadTrash();
