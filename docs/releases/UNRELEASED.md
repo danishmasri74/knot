@@ -13,3 +13,5 @@
 - Page view names the note you're in (Notebook / note) in the top bar, and an empty note shows where to type, with the cursor already in it.
 - Side panel tabs share the space evenly and shrink before they overflow; extra tabs scroll with the mouse wheel, with faded edges instead of a scrollbar.
 - An empty note has the same name everywhere (for example "Note 3"), including its side panel tab.
+- The sidebar opens your notebook in one place only, remembers whether it's collapsed and which sections are open, and pinned collections start open.
+- Add to Favorites is now in a notebook's ⋯ menu in the sidebar, and empty sidebar sections show a short hint instead of large placeholders.

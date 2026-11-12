@@ -1,4 +1,4 @@
-import { useId, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useId, type HTMLAttributes, type ReactNode } from "react";
 import { ShellIcon } from "./ShellIcon";
 import type { KnowledgeObject } from "../services/workspace";
 
@@ -7,13 +7,16 @@ export function Favorites({
   renderNotebook,
   dropProps,
   dropIndicator,
+  open,
+  onOpenChange,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   items: KnowledgeObject[];
   dropProps?: HTMLAttributes<HTMLElement>;
   dropIndicator?: string;
   renderNotebook: (item: KnowledgeObject) => ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
   const id = useId();
   return (
     <section
@@ -26,7 +29,7 @@ export function Favorites({
           className="collection-group-toggle"
           aria-expanded={open}
           aria-controls={id}
-          onClick={() => setOpen(!open)}
+          onClick={() => onOpenChange(!open)}
         >
           <span className="collection-chevron" aria-hidden="true">
             <ShellIcon name="chevron" />
@@ -36,10 +39,7 @@ export function Favorites({
       </div>
       <div id={id} className="collection-group-notebooks" hidden={!open}>
         {!items.length && (
-          <div className="sidebar-empty-state">
-            <ShellIcon name="star" />
-            <span>No favorites</span>
-          </div>
+          <p className="sidebar-empty-state">Star a notebook to keep it here</p>
         )}
         {items.map(renderNotebook)}
       </div>

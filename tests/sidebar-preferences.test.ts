@@ -3,6 +3,7 @@ import {
   carrySidebarPreferences,
   orderedFavorites,
   readSidebarPreferences,
+  expandedPlace,
   startupNotebook,
 } from "../src/app/useSidebarPreferences";
 
@@ -35,16 +36,22 @@ it("restores sidebar preferences independently for each workspace", () => {
     recent: ["new", "old"],
     pinned: ["research"],
     favoriteOrder: [],
+    openCollections: [],
+    favoritesClosed: false,
   });
   expect(readSidebarPreferences("home")).toEqual({
     recent: ["personal"],
     pinned: [],
     favoriteOrder: [],
+    openCollections: [],
+    favoritesClosed: false,
   });
   expect(readSidebarPreferences("new")).toEqual({
     recent: [],
     pinned: [],
     favoriteOrder: [],
+    openCollections: [],
+    favoritesClosed: false,
   });
 });
 it("recovers from invalid stored preferences and removes duplicate IDs", () => {
@@ -54,6 +61,8 @@ it("recovers from invalid stored preferences and removes duplicate IDs", () => {
     recent: [],
     pinned: [],
     favoriteOrder: [],
+    openCollections: [],
+    favoritesClosed: false,
   });
   getItem.mockReturnValue(
     JSON.stringify({ recent: ["a", 4, "a", "b"], pinned: null }),
@@ -62,6 +71,8 @@ it("recovers from invalid stored preferences and removes duplicate IDs", () => {
     recent: ["a", "b"],
     pinned: [],
     favoriteOrder: [],
+    openCollections: [],
+    favoritesClosed: false,
   });
 });
 
@@ -81,11 +92,16 @@ it("restores favorite order independently from recent visits", () => {
     recent: ["a", "b"],
     pinned: [],
     favoriteOrder: ["b", "a"],
+    openCollections: [],
+    favoritesClosed: false,
   });
 });
 it("carries sidebar preferences into a restored workspace without overwriting its own", () => {
   const storage = new Map([
-    ["knot.sidebar.Workspace", JSON.stringify({ recent: ["a"], pinned: ["c"] })],
+    [
+      "knot.sidebar.Workspace",
+      JSON.stringify({ recent: ["a"], pinned: ["c"] }),
+    ],
     ["knot.sidebar.restored-2", JSON.stringify({ recent: ["own"] })],
   ]);
   vi.stubGlobal("localStorage", {
@@ -98,4 +114,20 @@ it("carries sidebar preferences into a restored workspace without overwriting it
   expect(readSidebarPreferences("restored-2").recent).toEqual(["own"]);
   carrySidebarPreferences(null, "restored-3");
   expect(storage.has("knot.sidebar.restored-3")).toBe(false);
+});
+it("restores which sidebar sections are open", () => {
+  vi.stubGlobal("localStorage", {
+    getItem: () =>
+      JSON.stringify({ openCollections: ["c", "c", 3], favoritesClosed: true }),
+  });
+  const preferences = readSidebarPreferences("work");
+  expect(preferences.openCollections).toEqual(["c"]);
+  expect(preferences.favoritesClosed).toBe(true);
+});
+it("expands the open notebook in one sidebar place only", () => {
+  const places = ["@favorites", "@recent", "research"];
+  expect(expandedPlace(places, "research")).toBe("research");
+  expect(expandedPlace(places, null)).toBe("@favorites");
+  expect(expandedPlace(["@recent"], "@favorites")).toBe("@recent");
+  expect(expandedPlace([], "@recent")).toBeNull();
 });

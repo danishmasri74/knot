@@ -231,14 +231,17 @@ export function CollectionGroup({
   children,
   dragProps,
   dropIndicator,
+  open,
+  onToggle,
   ...shared
 }: Shared & {
+  open: boolean;
+  onToggle: () => void;
   collection: Collection;
   dragProps?: HTMLAttributes<HTMLElement>;
   dropIndicator?: string;
   children: () => ReactNode[];
 }) {
-  const [open, setOpen] = useState(false);
   const [limit, setLimit] = useState(100);
   const id = useId();
   const rows = open ? children() : [];
@@ -256,7 +259,7 @@ export function CollectionGroup({
           className="collection-group-toggle"
           aria-expanded={open}
           aria-controls={id}
-          onClick={() => setOpen(!open)}
+          onClick={onToggle}
           data-tooltip={collection.name}
         >
           <span className="collection-chevron" aria-hidden="true">
@@ -413,12 +416,17 @@ export function CollectionMembership({
   title,
   onRename,
   onTrash,
+  favorite,
+  onFavorite,
   ...shared
 }: Shared & {
   object: string;
   title: string;
   onRename?: (name: string) => Promise<void>;
   onTrash?: () => void;
+  /** Shown as a Favorites toggle when given. */
+  favorite?: boolean;
+  onFavorite?: () => void;
 }) {
   return (
     <Popover
@@ -437,6 +445,8 @@ export function CollectionMembership({
             title={title}
             onRename={onRename}
             onTrash={onTrash}
+            favorite={favorite}
+            onFavorite={onFavorite}
             close={close}
             {...shared}
           />
@@ -452,6 +462,8 @@ function NotebookActions({
   title,
   onRename,
   onTrash,
+  favorite,
+  onFavorite,
   close,
   ...shared
 }: Shared & {
@@ -459,6 +471,8 @@ function NotebookActions({
   title: string;
   onRename: (name: string) => Promise<void>;
   onTrash: () => void;
+  favorite?: boolean;
+  onFavorite?: () => void;
   close: () => void;
 }) {
   const [view, setView] = useState<"menu" | "rename" | "collections">("menu");
@@ -523,6 +537,18 @@ function NotebookActions({
     );
   return (
     <div className="collection-action-list">
+      {onFavorite && (
+        <button
+          disabled={shared.busy}
+          onClick={() => {
+            close();
+            onFavorite();
+          }}
+        >
+          <ShellIcon name="star" />
+          {favorite ? "Remove from Favorites" : "Add to Favorites"}
+        </button>
+      )}
       <button disabled={shared.busy} onClick={() => setView("rename")}>
         <ShellIcon name="rename" />
         Rename

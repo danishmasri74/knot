@@ -85,6 +85,7 @@ import {
 } from "../features/editor/blocksuite/ai";
 import {
   carrySidebarPreferences,
+  expandedPlace,
   orderedFavorites,
   useSidebarPreferences,
 } from "./useSidebarPreferences";
@@ -309,7 +310,20 @@ export function App() {
     }));
     closeConfirmation();
   }
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("knot.sidebar.collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("knot.sidebar.collapsed", String(collapsed));
+    } catch {
+      /* Optional UI preference. */
+    }
+  }, [collapsed]);
   const [navigating, setNavigating] = useState(false);
   const navigationRunning = useRef(false);
   const pendingNavigation = useRef<{
@@ -329,6 +343,9 @@ export function App() {
   const [collapsedNotebook, setCollapsedNotebook] = useState<string | null>(
     null,
   );
+  // The sidebar place (Favorites, Recently visited or a pinned collection)
+  // the open notebook was last opened from; only that copy expands.
+  const [notebookPlace, setNotebookPlace] = useState<string | null>(null);
   const focusedEditor = useRef<EditorSession["editor"] | null>(null);
   const [documentUndo, setDocumentUndo] = useState(true);
   useEffect(() => {
@@ -1860,143 +1877,173 @@ export function App() {
         ),
       ),
   );
+  const favoriteItems = orderedFavorites(
+    catalog.favorites,
+    sidebarPreferences.favoriteOrder,
+  )
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is KnowledgeObject => !!item);
+  const recentItems = sidebarPreferences.recent
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is KnowledgeObject => !!item)
+    .slice(0, 5);
+  const pinnedCollections = catalog.collections.filter((collection) =>
+    sidebarPreferences.pinned.includes(collection.id),
+  );
+  const activePlace = active
+    ? expandedPlace(
+        [
+          ...(!sidebarPreferences.favoritesClosed &&
+          favoriteItems.some((item) => item.id === active.id)
+            ? ["@favorites"]
+            : []),
+          ...(recentItems.some((item) => item.id === active.id)
+            ? ["@recent"]
+            : []),
+          ...pinnedCollections
+            .filter(
+              (collection) =>
+                sidebarPreferences.openCollections.includes(collection.id) &&
+                collection.notebooks.includes(active.id),
+            )
+            .map((collection) => collection.id),
+        ],
+        notebookPlace,
+      )
+    : null;
   const renderNotebook = (
     item: KnowledgeObject,
     source: string | null = null,
     fromFavorites = false,
-  ) => (
-    <div key={item.id} className="document-notebook">
-      <div
-        className="notebook-row"
-        {...(fromFavorites
-          ? sidebarDrag.drop({ kind: "favorites", id: item.id })
-          : {})}
-        data-drop={
-          fromFavorites ? sidebarDrag.favoriteIndicator(item.id) : undefined
-        }
-        {...sidebarDrag.start({
-          kind: "notebook",
-          item,
-          source,
-          fromFavorites,
-        })}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.currentTarget
-            .querySelector<HTMLButtonElement>(".collection-membership-trigger")
-            ?.click();
-        }}
-      >
-        <button
-          className="notebook-toggle"
-          aria-label={`${active?.id === item.id && collapsedNotebook !== item.id ? "Collapse" : "Expand"} ${item.title}`}
-          aria-expanded={
-            active?.id === item.id && collapsedNotebook !== item.id
+  ) => {
+    const place = fromFavorites ? "@favorites" : (source ?? "@recent");
+    const isActive = active?.id === item.id;
+    const expanded =
+      isActive && activePlace === place && collapsedNotebook !== item.id;
+    return (
+      <div key={item.id} className="document-notebook">
+        <div
+          className="notebook-row"
+          {...(fromFavorites
+            ? sidebarDrag.drop({ kind: "favorites", id: item.id })
+            : {})}
+          data-drop={
+            fromFavorites ? sidebarDrag.favoriteIndicator(item.id) : undefined
           }
-          disabled={busy}
-          onClick={() => {
-            if (active?.id === item.id)
-              setCollapsedNotebook(
-                collapsedNotebook === item.id ? null : item.id,
-              );
-            else
-              void run(async () => {
-                setCollapsedNotebook(null);
-                await select(item);
-              }, true);
+          {...sidebarDrag.start({
+            kind: "notebook",
+            item,
+            source,
+            fromFavorites,
+          })}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.currentTarget
+              .querySelector<HTMLButtonElement>(".collection-membership-trigger")
+              ?.click();
           }}
         >
-          <ShellIcon name="chevron" />
-        </button>
-        <button
-          key={item.id}
-          data-tooltip={item.title}
-          aria-current={!library && active?.id === item.id ? "page" : undefined}
-          className={`document-row ${!library && active?.id === item.id ? "selected" : ""}`}
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              setCollapsedNotebook(null);
-              await select(item);
-            }, true)
-          }
-        >
-          <span className="document-icon">
-            <ShellIcon
-              name="notebook"
-              expanded={active?.id === item.id && collapsedNotebook !== item.id}
-            />
-          </span>
-          <span>{item.title}</span>
-        </button>
-        <CollectionMembership
-          object={item.id}
-          title={item.title}
-          onRename={(name) => renameNotebook(item, name)}
-          onTrash={() => requestTrash(item)}
-          catalog={catalog}
-          busy={busy}
-          run={run}
-          onChanged={reloadCollections}
-        />
-      </div>
-      <Disclosure
-        open={
-          active?.id === item.id &&
-          !!session.current &&
-          collapsedNotebook !== item.id
-        }
-      >
-        <div className="notebook-disclosure">
-          <NotebookContents
+          {isActive ? (
+            // Only the open notebook has notes to show; other rows open on click.
+            <button
+              className="notebook-toggle"
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${item.title}`}
+              aria-expanded={expanded}
+              disabled={busy}
+              onClick={() => {
+                setNotebookPlace(place);
+                setCollapsedNotebook(expanded ? item.id : null);
+              }}
+            >
+              <ShellIcon name="chevron" />
+            </button>
+          ) : (
+            <span className="notebook-toggle" aria-hidden="true" />
+          )}
+          <button
             key={item.id}
-            session={active?.id === item.id ? session.current : null}
-            frozenNotes={
-              active?.id !== item.id ? foldingNotes[item.id] : undefined
+            data-tooltip={item.title}
+            aria-current={!library && active?.id === item.id ? "page" : undefined}
+            className={`document-row ${!library && active?.id === item.id ? "selected" : ""}`}
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                setNotebookPlace(place);
+                setCollapsedNotebook(null);
+                await select(item);
+              }, true)
             }
+          >
+            <span className="document-icon">
+              <ShellIcon name="notebook" expanded={expanded} />
+            </span>
+            <span>{item.title}</span>
+          </button>
+          <CollectionMembership
+            object={item.id}
+            title={item.title}
+            onRename={(name) => renameNotebook(item, name)}
+            onTrash={() => requestTrash(item)}
+            favorite={catalog.favorites.includes(item.id)}
+            onFavorite={() => toggleFavorite(item.id)}
+            catalog={catalog}
             busy={busy}
-            mode={mode}
-            focusedNote={focusedNote}
-            onView={(view) =>
-              void run(async () => {
-                clearInactiveSurface(null);
-                setSurface((current) =>
-                  current === "browser" ? current : null,
-                );
-                await withDocumentLoader(view, async () => {
-                  if (library) await openDocument(item);
-                  await session.current?.setMode(view);
-                  setMode(view);
-                  setFocusedNote(session.current?.revealedNoteId ?? null);
-                });
-              }, true)
-            }
-            onNote={(id) =>
-              void run(async () => {
-                clearInactiveSurface(null);
-                setSurface((current) =>
-                  current === "browser" ? current : null,
-                );
-                await openNote(item, id);
-              }, true)
-            }
-            onShared={(id) =>
-              void run(async () => {
-                const target = (await repository.catalog()).find(
-                  (row) => row.id === id,
-                );
-                if (!target)
-                  throw new Error(
-                    "This shared note was deleted or is unavailable.",
-                  );
-                await select(target);
-              }, true)
-            }
+            run={run}
+            onChanged={reloadCollections}
           />
         </div>
-      </Disclosure>
-    </div>
-  );
+        <Disclosure open={expanded && !!session.current}>
+          <div className="notebook-disclosure">
+            <NotebookContents
+              key={item.id}
+              session={active?.id === item.id ? session.current : null}
+              frozenNotes={
+                active?.id !== item.id ? foldingNotes[item.id] : undefined
+              }
+              busy={busy}
+              mode={mode}
+              focusedNote={focusedNote}
+              onView={(view) =>
+                void run(async () => {
+                  clearInactiveSurface(null);
+                  setSurface((current) =>
+                    current === "browser" ? current : null,
+                  );
+                  await withDocumentLoader(view, async () => {
+                    if (library) await openDocument(item);
+                    await session.current?.setMode(view);
+                    setMode(view);
+                    setFocusedNote(session.current?.revealedNoteId ?? null);
+                  });
+                }, true)
+              }
+              onNote={(id) =>
+                void run(async () => {
+                  clearInactiveSurface(null);
+                  setSurface((current) =>
+                    current === "browser" ? current : null,
+                  );
+                  await openNote(item, id);
+                }, true)
+              }
+              onShared={(id) =>
+                void run(async () => {
+                  const target = (await repository.catalog()).find(
+                    (row) => row.id === id,
+                  );
+                  if (!target)
+                    throw new Error(
+                      "This shared note was deleted or is unavailable.",
+                    );
+                  await select(target);
+                }, true)
+              }
+            />
+          </div>
+        </Disclosure>
+      </div>
+    );
+  };
   const stableAiContext = useMemo(() => {
     const current = session.current;
     if (!current || !workspaceCatalog.active) return null;
@@ -2355,12 +2402,9 @@ export function App() {
             {...sidebarDrag.drop({ kind: "pin" })}
           >
             <Favorites
-              items={orderedFavorites(
-                catalog.favorites,
-                sidebarPreferences.favoriteOrder,
-              )
-                .map((id) => items.find((item) => item.id === id))
-                .filter((item): item is KnowledgeObject => !!item)}
+              items={favoriteItems}
+              open={!sidebarPreferences.favoritesClosed}
+              onOpenChange={sidebarPreferences.setFavoritesOpen}
               dropProps={sidebarDrag.drop({ kind: "favorites" })}
               dropIndicator={
                 sidebarDrag.target?.kind === "favorites" &&
@@ -2371,18 +2415,11 @@ export function App() {
               renderNotebook={(item) => renderNotebook(item, null, true)}
             />
             <div className="uncollected-label">Recently visited</div>
-            {sidebarPreferences.recent
-              .map((id) => items.find((item) => item.id === id))
-              .filter((item): item is KnowledgeObject => !!item)
-              .slice(0, 5)
-              .map((item) => renderNotebook(item))}
-            {!sidebarPreferences.recent.some((id) =>
-              items.some((item) => item.id === id),
-            ) && (
-              <div className="sidebar-empty-state">
-                <ShellIcon name="notebook" />
-                <span>No recent notebooks</span>
-              </div>
+            {recentItems.map((item) => renderNotebook(item))}
+            {!recentItems.length && (
+              <p className="sidebar-empty-state">
+                Notebooks you open appear here
+              </p>
             )}
             <div
               className="sidebar-pin-target"
@@ -2392,23 +2429,22 @@ export function App() {
               }
             >
               <div className="uncollected-label">Pinned collections</div>
-              {!catalog.collections.some((collection) =>
-                sidebarPreferences.pinned.includes(collection.id),
-              ) && (
-                <div className="sidebar-empty-state">
-                  <ShellIcon name="folder" />
-                  <span>No pinned collections</span>
-                </div>
+              {!pinnedCollections.length && (
+                <p className="sidebar-empty-state">
+                  Pin a collection from Library to keep it here
+                </p>
               )}
             </div>
-            {catalog.collections
-              .filter((collection) =>
-                sidebarPreferences.pinned.includes(collection.id),
-              )
-              .map((collection) => (
+            {pinnedCollections.map((collection) => (
                 <CollectionGroup
                   key={collection.id}
                   collection={collection}
+                  open={sidebarPreferences.openCollections.includes(
+                    collection.id,
+                  )}
+                  onToggle={() =>
+                    sidebarPreferences.toggleCollectionOpen(collection.id)
+                  }
                   pinned={sidebarPreferences.pinned}
                   onTogglePin={sidebarPreferences.togglePin}
                   dragProps={{

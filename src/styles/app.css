@@ -1432,7 +1432,7 @@ main:has(.management-surface) > .editor-area {
   flex-shrink: 0;
   border-radius: 4px;
 }
-.notebook-toggle:hover {
+button.notebook-toggle:hover {
   background: light-dark(#dedede, #383838);
 }
 .notebook-toggle .shell-icon {
@@ -3447,14 +3447,13 @@ main:has(.settings-modal) > .editor-area {
   }
 }
 
+/* One quiet line per empty section, aligned with the rows it stands in for. */
 .sidebar-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 8px;
+  margin: 0;
+  padding: 4px 10px 6px;
   color: var(--shell-muted);
   font-size: 12px;
+  line-height: 18px;
 }
 .favorite-toggle[aria-pressed="true"] .shell-icon {
   color: var(--control-accent);
