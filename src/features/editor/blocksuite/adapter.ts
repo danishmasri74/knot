@@ -23,7 +23,11 @@ import { type PdfCitation } from "./pdf-highlights";
 import { observeEditorPreferences } from "../../../services/editor-preferences";
 import { observeCanvasImages } from "./canvas-images";
 import { observeCanvasNotePreviews } from "./canvas-note-preview";
-import { rememberCanvasViewport } from "./canvas-viewport";
+import {
+  placeInView,
+  rememberCanvasViewport,
+  revealInViewport,
+} from "./canvas-viewport";
 import { observeCanvasAttachments } from "./canvas-attachments";
 import { observePdfToolbars } from "./pdf-toolbar";
 import { normalizeMediaFile, mediaImageSize } from "./media";
@@ -42,6 +46,7 @@ import {
   RefNodeSlotsExtension,
   MarkdownAdapter,
   ExportManager,
+  focusTextModel,
   type AttachmentBlockModel,
   type ImageBlockModel,
   type NoteBlockModel,
@@ -922,7 +927,7 @@ export async function openEditor(
       async addNotebookNote() {
         if (!doc.root) throw new Error("Document is unavailable");
         await persistence.flush();
-        let x = 0;
+        const notes: { x: number; y: number; w: number; h: number }[] = [];
         for (const { model } of doc.getBlocksByFlavour("affine:note")) {
           const bounds: unknown = JSON.parse((model as NoteBlockModel).xywh);
           if (
@@ -930,20 +935,37 @@ export async function openEditor(
             bounds.length === 4 &&
             bounds.every(Number.isFinite)
           )
-            x = Math.max(x, bounds[0] + bounds[2] + 40);
+            notes.push({ x: bounds[0], y: bounds[1], w: bounds[2], h: bounds[3] });
         }
+        const size = { w: 448, h: 200 };
+        // On the canvas, the note goes where you're looking and you stay
+        // there. From Page view it goes after the last note, as before.
+        const canvas =
+          editor.mode === "edgeless"
+            ? editor.querySelector("affine-edgeless-root")
+            : null;
+        const { x, y } = canvas
+          ? placeInView(canvas.gfx.viewport, size, notes)
+          : { x: Math.max(0, ...notes.map((n) => n.x + n.w + 40)), y: 0 };
         let id = "";
+        let paragraph = "";
         doc.captureSync();
         doc.transact(() => {
           id = doc.addBlock(
             "affine:note",
-            { xywh: `[${x},0,448,200]` },
+            { xywh: `[${x},${y},${size.w},${size.h}]` },
             doc.root,
           );
-          doc.addBlock("affine:paragraph", { text: new Text() }, id);
+          paragraph = doc.addBlock("affine:paragraph", { text: new Text() }, id);
         });
         doc.captureSync();
-        await showView("page", id);
+        if (canvas?.isConnected) {
+          canvas.gfx.selection.set({ elements: [id], editing: true });
+          await canvas.updateComplete;
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          revealInViewport(canvas.gfx.viewport, { x, y, ...size });
+          focusTextModel(canvas.std, paragraph);
+        } else await showView("page", id);
         await persistence.flush();
       },
       async focusCanvasCard(id: string) {

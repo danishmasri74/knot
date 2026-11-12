@@ -8,3 +8,5 @@
 - Empty Trash now also permanently deletes the cards waiting in Trash.
 - You can move notebooks and cards to Trash from the Library, and rename notebooks there.
 - Open in notebook on a Library card now opens the notebook at that card instead of returning to the Card Deck.
+- On the canvas, Add note puts the new note where you're looking and keeps you on the canvas, ready to type.
+- A new notebook's canvas opens centered on its notes, and the selected note stays visible when a side panel opens.
