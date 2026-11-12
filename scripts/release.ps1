@@ -72,7 +72,7 @@ try {
     if (-not (Test-Path -LiteralPath $NotesFile)) {
         Fail "release notes are missing. Write $NotesFile (a few short lines)."
     }
-    $notes = (Get-Content -LiteralPath $NotesFile -Raw).Trim()
+    $notes = (Get-Content -LiteralPath $NotesFile -Raw -Encoding UTF8).Trim()
     if (-not $notes) { Fail "$NotesFile is empty." }
 
     if (-not $DryRun) {
@@ -103,7 +103,7 @@ try {
     $publicKey = (Get-Content -LiteralPath $PublicKeyPath -Raw).Trim()
     # Installed copies trust only the key in tauri.conf.json; a release signed
     # with any other key would be rejected by every updater.
-    $tauriConf = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
+    $tauriConf = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($tauriConf.plugins.updater.pubkey -ne $publicKey) {
         Fail "the updater public key in src-tauri/tauri.conf.json does not match $PublicKeyPath."
     }
