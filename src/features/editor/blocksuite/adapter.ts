@@ -596,6 +596,31 @@ export async function openEditor(
     let navigationSubscription = navigation();
     let revealedNoteId: string | null = null;
     const patchedRoots = new WeakSet<Element>();
+    /** The paragraph of the note Page view shows, when that note has no text
+     * yet: the revealed note, or a page whose only note is still empty. */
+    const emptyRevealedParagraph = () => {
+      if (editor.mode !== "page") return null;
+      const notes = revealedNoteId
+        ? [doc.getBlock(revealedNoteId)?.model as NoteBlockModel | undefined]
+        : doc
+            .getBlocksByFlavour("affine:note")
+            .map(({ model }) => model as NoteBlockModel)
+            .filter((note) => note.displayMode !== "edgeless");
+      const note = notes.length === 1 ? notes[0] : undefined;
+      const only = note?.children.length === 1 ? note.children[0] : null;
+      const text = (only as { text?: Text } | null)?.text;
+      return only?.flavour === "affine:paragraph" && text && text.length === 0 ? only.id : null;
+    };
+    // Page view shows one note. While it's empty, keep BlockSuite's own
+    // "Type '/' for commands" hint visible so the page doesn't look blank.
+    const syncEmptyNote = () =>
+      editor.toggleAttribute("data-knot-empty-note", emptyRevealedParagraph() !== null);
+    doc.spaceDoc.on("update", syncEmptyNote);
+    /** Put the cursor in the revealed note if it's empty. */
+    const focusEmptyNote = () => {
+      const paragraph = emptyRevealedParagraph();
+      if (paragraph) focusTextModel(editor.std, paragraph);
+    };
     async function showView(
       mode: "page" | "edgeless",
       noteId: string | null = null,
@@ -639,6 +664,7 @@ export async function openEditor(
         );
         editor.querySelector("doc-title")?.scrollIntoView({ block: "start" });
       }
+      syncEmptyNote();
     }
     // BlockSuite deletes selected Canvas objects through the document model.
     // WebView can then send a second, native deletion to the contenteditable
@@ -886,6 +912,8 @@ export async function openEditor(
       doc,
       collection,
       catalog,
+      /** Cursor into the note Page view shows, if it's still empty. */
+      focusEmptyNote,
       get revealedNoteId() {
         return revealedNoteId;
       },
@@ -965,7 +993,10 @@ export async function openEditor(
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
           revealInViewport(canvas.gfx.viewport, { x, y, ...size });
           focusTextModel(canvas.std, paragraph);
-        } else await showView("page", id);
+        } else {
+          await showView("page", id);
+          focusEmptyNote();
+        }
         await persistence.flush();
       },
       async focusCanvasCard(id: string) {
@@ -997,6 +1028,7 @@ export async function openEditor(
         const note = doc.getBlock(id)?.model as NoteBlockModel | undefined;
         if (!note) throw new Error("This note is no longer available.");
         await showView("page", id);
+        focusEmptyNote();
       },
       watchPdfCitations(listener: (locations: PdfCitation[]) => void) {
         const refresh = () => {
@@ -1629,6 +1661,7 @@ export async function openEditor(
         editor.removeEventListener("beforeinput", preventCanvasDomDelete, true);
         stopCanvasImages();
         stopCanvasNotePreviews();
+        doc.spaceDoc.off("update", syncEmptyNote);
         stopCanvasAttachments();
         stopPdfToolbars();
         disposed = true;

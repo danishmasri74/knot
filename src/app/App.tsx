@@ -111,6 +111,7 @@ import {
 } from "./ToolSurface";
 import { ShellMenu } from "./ShellMenu";
 import { ShellIcon } from "./ShellIcon";
+import { NoteCrumb } from "./NoteCrumb";
 import { AnimatedTrash } from "./AnimatedTrash";
 import { AnimatedFavorite } from "./AnimatedFavorite";
 import { NotebookContents } from "./NotebookContents";
@@ -1714,6 +1715,12 @@ export function App() {
       },
     );
   };
+  // From New notebook: open it with the cursor in its first, empty note.
+  // Waits a frame so the naming popover returns focus to its button first.
+  const createNotebookAndWrite = async (name: string) => {
+    await createNotebook(name);
+    requestAnimationFrame(() => session.current?.focusEmptyNote());
+  };
   const addNote = () =>
     run(async () => {
       setAiPlacement((value) => (value === "page" ? "hidden" : value));
@@ -2295,7 +2302,7 @@ export function App() {
           <NewNotebook
             busy={busy || navigating}
             run={run}
-            onCreate={createNotebook}
+            onCreate={createNotebookAndWrite}
           />
           <button
             disabled={busy}
@@ -2594,6 +2601,9 @@ export function App() {
                       });
                   }}
                 />
+                {mode === "page" && focusedNote && session.current && (
+                  <NoteCrumb session={session.current} noteId={focusedNote} />
+                )}
                 <button
                   className="favorite-toggle icon-button"
                   aria-label={
@@ -3647,7 +3657,7 @@ export function App() {
             onNavigate={(location) =>
               void run(() => openLibrary(location), true)
             }
-            onCreate={createNotebook}
+            onCreate={createNotebookAndWrite}
             onFavorite={toggleFavorite}
             revision={libraryRevision}
             sidebarDrag={sidebarDrag}
@@ -4014,7 +4024,7 @@ export function App() {
                   <NewNotebook
                     busy={navigating}
                     run={run}
-                    onCreate={createNotebook}
+                    onCreate={createNotebookAndWrite}
                   />
                   <button
                     type="button"

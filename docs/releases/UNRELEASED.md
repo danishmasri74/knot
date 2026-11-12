@@ -10,3 +10,4 @@
 - Open in notebook on a Library card now opens the notebook at that card instead of returning to the Card Deck.
 - On the canvas, Add note puts the new note where you're looking and keeps you on the canvas, ready to type.
 - A new notebook's canvas opens centered on its notes, and the selected note stays visible when a side panel opens.
+- Page view names the note you're in (Notebook / note) in the top bar, and an empty note shows where to type, with the cursor already in it.
