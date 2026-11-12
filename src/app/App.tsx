@@ -66,6 +66,7 @@ import { AiSettings } from "./AiSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { ShareNotebookDialog } from "./ShareNotebookDialog";
 import { ImportNotebookDialog } from "./ImportNotebookDialog";
+import { setUnsharedTitles } from "../features/editor/blocksuite/unshared";
 import {
   checkForUpdate,
   getUpdateState,
@@ -1307,6 +1308,12 @@ export function App() {
     }
   }
   async function openDocument(item: KnowledgeObject, record = true) {
+    // "Not shared" titles change only on import; refreshing here keeps every
+    // newly opened notebook current. A failure just leaves the old titles.
+    await knotbooks
+      .unshared()
+      .then(setUnsharedTitles)
+      .catch(() => {});
     if (record && session.current?.doc.id === item.id) {
       setAiPlacement((value) => (value === "page" ? "hidden" : value));
       if (library) history.current.visit(item);

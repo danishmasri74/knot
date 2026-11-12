@@ -155,6 +155,8 @@ export const knotbooks = {
   showLast: () => invoke<void>("show_last_share"),
   /** Opens Windows' file picker; returns a token, never a path. */
   choose: () => invoke<string | null>("choose_knotbook"),
+  /** Titles of notebooks shares referred to but didn't include. */
+  unshared: () => invoke<{ id: string; title: string }[]>("unshared_references"),
   /** A file Knot was launched with (double-click while closed). */
   pending: () => invoke<string | null>("pending_knotbook"),
   inspect: (token: string) =>

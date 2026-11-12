@@ -6758,3 +6758,70 @@ knot-web-source { display: block; margin-block: 8px; }
 .library-view-controls .library-import:hover {
   background: var(--shell-selected);
 }
+
+/* "Not shared" references (NOTEBOOK-SHARING-PLAN.md, slice 4): a notebook a
+   share pointed at but didn't include. Same tile language as notebook links,
+   with a dashed border so it reads as a placeholder, not content. */
+.knot-unshared-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 60px;
+  padding: 12px 14px;
+  border: 1px dashed light-dark(#c9c9c5, #4a4a4a);
+  border-radius: 6px;
+  background: var(--shell-surface);
+  color: var(--shell-text);
+  font: var(--shell-font) / 1.35 var(--affine-font-family, sans-serif);
+}
+.knot-unshared-card .shell-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--shell-muted);
+}
+.knot-unshared-card .knot-unshared-text {
+  flex: 1;
+  min-width: 0;
+}
+.knot-unshared-card strong,
+.knot-unshared-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.knot-unshared-card strong {
+  font-weight: 600;
+}
+.knot-unshared-card small {
+  color: var(--shell-muted);
+}
+.knot-unshared-card button {
+  display: flex;
+  flex-shrink: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--shell-muted);
+  cursor: pointer;
+}
+.knot-unshared-card button:hover {
+  background: var(--shell-selected);
+  color: var(--shell-text);
+}
+.knot-unshared-card button .shell-icon {
+  width: 16px;
+  height: 16px;
+}
+.knot-unshared-inline-icon {
+  width: 1.15em;
+  height: 1.15em;
+  margin-bottom: 0.1em;
+  vertical-align: middle;
+  flex-shrink: 0;
+}

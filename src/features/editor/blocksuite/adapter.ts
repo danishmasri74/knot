@@ -67,6 +67,7 @@ import {
   notebookLinkWidth,
   registerNotebookLinks,
 } from "./notebook-link";
+import { UnsharedSpec, registerUnsharedPlacements, unsharedTitle } from "./unshared";
 import {
   parsePdfSourceUrl,
   pdfSourceUrl,
@@ -79,6 +80,7 @@ import {
 registerBlocks();
 registerEditors();
 registerNotebookLinks();
+registerUnsharedPlacements();
 
 export type NotebookLinkPlacement =
   | { kind: "edgeless"; x: number; y: number }
@@ -562,6 +564,7 @@ export async function openEditor(
     editor.pageSpecs = [
       ...editor.pageSpecs,
       NotebookLinkSpec,
+      UnsharedSpec,
       ...CitedExcerptSpec,
       ...WebSourceSpec,
       ...McqSpec,
@@ -570,6 +573,7 @@ export async function openEditor(
     editor.edgelessSpecs = [
       ...editor.edgelessSpecs,
       NotebookLinkSpec,
+      UnsharedSpec,
       ...CitedExcerptSpec,
       ...WebSourceSpec,
       ...McqSpec,
@@ -906,7 +910,9 @@ export async function openEditor(
           const target = "pageId" in model ? String(model.pageId) : "";
           notes.push({
             id: model.id,
-            title: known.get(target)?.title || "Unavailable shared note",
+            title:
+              known.get(target)?.title ||
+              (unsharedTitle(target) ? `${unsharedTitle(target)} (not shared)` : "Unavailable shared note"),
             canvasOnly: false,
             target,
           });

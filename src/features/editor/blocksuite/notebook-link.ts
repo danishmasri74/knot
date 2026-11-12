@@ -3,6 +3,7 @@ import type { BlockModel } from "@blocksuite/store";
 import { html, type TemplateResult } from "lit";
 import { literal } from "lit/static-html.js";
 import { shellIconPaths } from "../../../app/ShellIcon";
+import { unsharedTitle } from "./unshared";
 
 export const notebookLinkWidth = 252;
 export const notebookLinkHeight = 60;
@@ -38,6 +39,7 @@ type LinkedDocView = HTMLElement & {
   };
   disposables: { add(disposable: { dispose(): void }): void };
   connectedCallback(): void;
+  updated(changed: Map<PropertyKey, unknown>): void;
   open(): void;
   requestUpdate(): void;
   renderBlock(): TemplateResult;
@@ -50,8 +52,26 @@ export function registerNotebookLinks() {
     ["knot-canvas-notebook-link", "affine-embed-edgeless-linked-doc-block"],
   ]) {
     if (customElements.get(tag)) continue;
+    const canvas = tag === "knot-canvas-notebook-link";
     const NativeLink = customElements.get(base) as new () => LinkedDocView;
+    // BlockSuite's linked-doc card treats "horizontalThin" as its deleted-doc
+    // style: once the notebook exists, its updated() converts the card to the
+    // large "horizontal" style (752×116). Knot uses horizontalThin for its
+    // notebook tile, so that conversion left a tile-shaped element over a large
+    // card that couldn't be selected until the notebook was reopened. Skip only
+    // that hook and run whatever sits above it.
+    let owner: object | null = NativeLink.prototype;
+    while (owner && !Object.prototype.hasOwnProperty.call(owner, "updated"))
+      owner = Object.getPrototypeOf(owner) as object | null;
+    const aboveConversion = owner
+      ? (Object.getPrototypeOf(owner) as Partial<LinkedDocView> | null)
+      : null;
     class NotebookLink extends NativeLink {
+      updated(changed: Map<PropertyKey, unknown>) {
+        if (this.model.style === "horizontalThin")
+          aboveConversion?.updated?.call(this, changed);
+        else super.updated(changed);
+      }
       connectedCallback() {
         super.connectedCallback();
         const metadata = this.linkedDoc?.collection.meta;
@@ -60,17 +80,31 @@ export function registerNotebookLinks() {
             metadata.docMetaUpdated.on(() => this.requestUpdate()),
           );
       }
+      // On the canvas, BlockSuite's renderBlock() positions and sizes the block
+      // (left/top/width/height) and then asks renderPageContent() for the card.
+      // Replacing renderBlock() there skipped the positioning, so the tile was
+      // drawn away from its selection box. Pages have no such step.
       renderBlock() {
+        return canvas ? super.renderBlock() : this.renderTile();
+      }
+      renderPageContent() {
+        return this.renderTile();
+      }
+      renderTile() {
+        // A notebook someone's share pointed at but didn't include.
+        const missing = this.linkedDoc
+          ? undefined
+          : unsharedTitle((this as unknown as { model: { pageId: string } }).model.pageId);
         const title =
           this.linkedDoc?.meta?.title?.trim() ||
-          (this.linkedDoc ? "Untitled notebook" : "Unavailable notebook");
+          (this.linkedDoc ? "Untitled notebook" : missing || "Unavailable notebook");
         return this.renderEmbed(
           () => html`
             <div class="notebook-link-tile">
               ${icon("notebook")}
               <span class="notebook-link-title">
                 <strong title=${title}>${title}</strong>
-                <small>Notebook link</small>
+                <small>${missing ? "Not shared" : "Notebook link"}</small>
               </span>
               <button
                 type="button"

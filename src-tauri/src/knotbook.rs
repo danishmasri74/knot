@@ -825,6 +825,16 @@ pub fn import(
     Ok(plan.items.iter().map(|i| i.target_id.clone()).collect())
 }
 
+/// Titles of notebooks other people's shares referred to but didn't include,
+/// so references can show "Not shared" with a title (schema 11).
+pub fn unshared(ws: &Workspace) -> Result<Vec<Unshared>> {
+    let mut q = ws.db.prepare(
+        "SELECT u.object_id, u.title FROM unshared_references u WHERE NOT EXISTS(SELECT 1 FROM objects o WHERE o.id=u.object_id) ORDER BY u.object_id",
+    )?;
+    let rows = q.query_map([], |r| Ok(Unshared { id: r.get(0)?, title: r.get(1)? }))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -998,6 +1008,9 @@ mod tests {
         let placeholder: String = b.db.query_row(
             "SELECT title FROM unshared_references WHERE object_id='gone'", [], |r| r.get(0)).unwrap();
         assert_eq!(placeholder, "Exam timetable");
+        let missing = unshared(&b).unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!((missing[0].id.as_str(), missing[0].title.as_str()), ("gone", "Exam timetable"));
 
         // The same file again: identical notebooks are "current".
         assert_eq!(inspect(&b, &file).unwrap().notebooks[0].status, "current");

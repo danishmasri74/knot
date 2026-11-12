@@ -24,6 +24,7 @@
     "@blocksuite/store": "0.19.5",
     "@huggingface/transformers": "3.8.1",
     "@mozilla/readability": "^0.6.0",
+    "@preact/signals-core": "1.14.4",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-updater": "^2.14.1",
     "@toeverything/theme": "1.1.23",

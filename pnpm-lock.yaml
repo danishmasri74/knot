@@ -43,6 +43,9 @@ importers:
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
+      '@preact/signals-core':
+        specifier: 1.14.4
+        version: 1.14.4
       '@tauri-apps/api':
         specifier: ^2.12.4
         version: 2.12.4

@@ -64,6 +64,10 @@ fn knotbook_path(files: &KnotbookFiles, token: &str) -> Reply<std::path::PathBuf
         .ok_or_else(|| "This file is no longer available. Open it again.".into())
 }
 #[tauri::command]
+async fn unshared_references(state: State<'_, AppState>) -> Reply<Vec<knotbook::Unshared>> {
+    with(&state, |w| knotbook::unshared(w))
+}
+#[tauri::command]
 async fn choose_knotbook(files: State<'_, KnotbookFiles>) -> Reply<Option<String>> {
     let file = rfd::AsyncFileDialog::new()
         .set_title("Import notebook")
@@ -774,6 +778,7 @@ pub fn run() {
                 export_knotbook,
                 show_last_share,
                 choose_knotbook,
+                unshared_references,
                 pending_knotbook,
                 inspect_knotbook,
                 import_knotbook,
