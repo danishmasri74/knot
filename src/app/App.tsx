@@ -269,6 +269,21 @@ export function App() {
     toolbar: 0,
     dropped: false,
   });
+  // Shared by the sidebar's and the Library's notebook menus.
+  async function renameNotebook(item: KnowledgeObject, name: string) {
+    await session.current?.flush();
+    if (session.current?.doc.id === item.id) {
+      await session.current.rename(name);
+      setTitle(name);
+      setActive((current) =>
+        current?.id === item.id ? { ...current, title: name } : current,
+      );
+    } else await repository.rename(item.id, name);
+    history.current.update(item.id, { title: name });
+    await refresh();
+    await reloadCollections();
+    setLibraryRevision((value) => value + 1);
+  }
   function requestTrash(
     item: KnowledgeObject,
     origin: "sidebar" | "toolbar" | "drop" = "sidebar",
@@ -1068,6 +1083,15 @@ export function App() {
       setLibraryRevision((value) => value + 1);
     }
     return session.current;
+  }
+  async function trashLibraryCard(id: string) {
+    const owner = await ensureLibraryCardSession();
+    const card = owner.cardDeck.data[id];
+    if (!card || card.deleted) throw new Error("This card is unavailable.");
+    owner.cardDeck.delete(id);
+    await owner.flush();
+    setLibraryRevision((value) => value + 1);
+    setNotice("Moved card to Trash.");
   }
   async function createLibraryCardEditor(id: string, host: HTMLElement) {
     return (await ensureLibraryCardSession()).createCardPageView(id, host);
@@ -1901,20 +1925,7 @@ export function App() {
         <CollectionMembership
           object={item.id}
           title={item.title}
-          onRename={async (name) => {
-            await session.current?.flush();
-            if (session.current?.doc.id === item.id) {
-              await session.current.rename(name);
-              setTitle(name);
-              setActive((current) =>
-                current?.id === item.id ? { ...current, title: name } : current,
-              );
-            } else await repository.rename(item.id, name);
-            history.current.update(item.id, { title: name });
-            await refresh();
-            await reloadCollections();
-            setLibraryRevision((value) => value + 1);
-          }}
+          onRename={(name) => renameNotebook(item, name)}
           onTrash={() => requestTrash(item)}
           catalog={catalog}
           busy={busy}
@@ -3620,11 +3631,14 @@ export function App() {
                 onFlush={() => session.current?.flush() ?? Promise.resolve()}
                 onOpen={openLibraryCard}
                 onPlace={placeLibraryCard}
+                onTrash={trashLibraryCard}
               />
             }
             catalog={catalog}
             busy={busy}
             run={run}
+            onRenameNotebook={renameNotebook}
+            onTrashNotebook={(item) => requestTrash(item)}
             onChanged={async () => {
               await reloadCollections();
               setLibraryRevision((v) => v + 1);

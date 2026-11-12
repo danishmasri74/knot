@@ -52,8 +52,11 @@ export function LibraryCardDeck({
   onComposeMcq,
   cardId,
   onSelect,
+  onTrash,
 }: {
   cardId?: string;
+  /** Moves a card to Trash (restorable from Trash, like the sidebar's Card Deck). */
+  onTrash: (id: string) => Promise<void>;
   onSelect?: (id?: string) => Promise<void>;
   onComposeMcq?: (cardId?: string) => void;
   deck?: CardDeck;
@@ -156,6 +159,10 @@ export function LibraryCardDeck({
         }}
         onOpen={() => onOpen(card.id)}
         onPlace={(notebook, name) => onPlace(card.id, notebook, name)}
+        onTrash={async () => {
+          await onTrash(card.id);
+          await selectCard(undefined);
+        }}
       />
     );
   return (
@@ -306,8 +313,11 @@ function CardPage({
   onCreateEditor,
   onEditMcq,
   onFlush,
+  onTrash,
 }: {
   card: DeckCard;
+  /** Moves the card to Trash and leaves its page. */
+  onTrash: () => Promise<void>;
   deckData?: DeckData;
   onEditMcq: () => void;
   onCreateEditor: CreateCardEditor;
@@ -406,6 +416,24 @@ function CardPage({
           }}
         >
           <ShellIcon name="notebook" /> Open in notebook
+        </button>
+        <button
+          className="collection-danger"
+          disabled={pending}
+          onClick={async (event) => {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+            setPending(true);
+            setError("");
+            try {
+              await onFlush();
+              await onTrash();
+            } catch (cause) {
+              setError(String(cause));
+              setPending(false);
+            }
+          }}
+        >
+          <ShellIcon name="trash" /> Move to Trash
         </button>
       </ShellMenu>
     </header>

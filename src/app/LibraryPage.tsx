@@ -59,6 +59,8 @@ export function LibraryPage({
   onCreate,
   onImport,
   onFavorite,
+  onRenameNotebook,
+  onTrashNotebook,
   revision,
   sidebarDrag,
   pinned,
@@ -80,6 +82,9 @@ export function LibraryPage({
   /** Import a .knotbook someone shared (NOTEBOOK-SHARING-PLAN.md). */
   onImport?: () => void;
   onFavorite: (id: string) => void;
+  /** The notebook menu (Rename, Collections, Move to Trash), as in the sidebar. */
+  onRenameNotebook: (item: KnowledgeObject, name: string) => Promise<void>;
+  onTrashNotebook: (item: KnowledgeObject) => void;
   revision: number;
   sidebarDrag: ReturnType<typeof useSidebarDrag>;
 }) {
@@ -557,6 +562,8 @@ export function LibraryPage({
                             {...shared}
                             object={row.id}
                             title={row.title}
+                            onRename={(name) => onRenameNotebook(row, name)}
+                            onTrash={() => onTrashNotebook(row)}
                           />
                         </div>
                       </Fragment>

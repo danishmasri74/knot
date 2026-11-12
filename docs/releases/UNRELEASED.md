@@ -6,3 +6,4 @@
 - Restoring a backup keeps your recently visited notebooks, pinned collections and favorites order.
 - A notebook you import now shows under Recently visited.
 - Empty Trash now also permanently deletes the cards waiting in Trash.
+- You can move notebooks and cards to Trash from the Library, and rename notebooks there.

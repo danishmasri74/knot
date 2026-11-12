@@ -2992,10 +2992,6 @@ dialog[open] {
 .collection-popover button:hover {
   background: light-dark(#f1f1ef, #2a2a2a);
 }
-.collection-popover .collection-danger,
-.collection-danger .shell-icon {
-  color: light-dark(#b5433b, #d37e78);
-}
 .collection-name-form {
   padding: 7px;
   gap: 8px !important;
