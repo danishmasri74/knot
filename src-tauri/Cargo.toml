@@ -36,3 +36,9 @@ tauri-plugin-single-instance = "2"
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39.1"
 windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+
+# Build-time code only (not the shipped app). Tauri Brotli-compresses the
+# ~200 MB frontend inside its macro; unoptimized, that took ~6 extra minutes
+# whenever the cache was cold (every version change gets a new build folder).
+[profile.release.build-override]
+opt-level = 3
