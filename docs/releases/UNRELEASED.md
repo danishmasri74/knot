@@ -7,3 +7,4 @@
 - A notebook you import now shows under Recently visited.
 - Empty Trash now also permanently deletes the cards waiting in Trash.
 - You can move notebooks and cards to Trash from the Library, and rename notebooks there.
+- Open in notebook on a Library card now opens the notebook at that card instead of returning to the Card Deck.

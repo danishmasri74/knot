@@ -185,7 +185,6 @@ export function LibraryCardDeck({
           />
         </label>
         <div className="library-view-controls">
-          {onComposeMcq && <button type="button" onClick={() => onComposeMcq()}>New multiple-choice card</button>}
           <ChoicePopover label="Card type" value={type} options={["All cards", "Notes", "Multiple choice"]}
             onChange={(value) => { setType(value); setPage(0); }} />
           <ChoicePopover
@@ -403,8 +402,9 @@ function CardPage({
             setPending(true);
             setError("");
             try {
-              if (await onOpen()) await onClose();
-              else {
+              // Opening the notebook already leaves the Library; closing the
+              // card page here would navigate straight back to the deck.
+              if (!(await onOpen())) {
                 setMessage("Choose a notebook to add this linked card.");
                 setChoosing(true);
               }

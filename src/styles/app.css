@@ -4882,7 +4882,7 @@ main:has(.pdf-reader) > .notice-banner {
 }
 .library-breadcrumb {
   display: flex;
-  gap: 12px;
+  gap: 6px;
   align-items: center;
   font-size: 13px;
   min-width: 0;
@@ -4891,6 +4891,12 @@ main:has(.pdf-reader) > .notice-banner {
   border: 0;
   background: transparent;
   color: inherit;
+}
+/* Breadcrumb links highlight like the other top bar buttons. */
+.library-breadcrumb button,
+.card-page-breadcrumb button {
+  padding: 4px 6px;
+  border-radius: var(--shell-radius);
 }
 .sidebar > button[aria-current="page"] {
   background: var(--shell-selected);
@@ -6556,7 +6562,7 @@ knot-web-source { display: block; margin-block: 8px; }
 }
 #library-card-chrome .card-page-toolbar { padding: 0; }
 .card-page-breadcrumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-.card-page-breadcrumb button { padding: 4px 6px; white-space: nowrap; color: var(--shell-muted); border: 0; background: transparent; }
+.card-page-breadcrumb button { white-space: nowrap; color: var(--shell-muted); border: 0; background: transparent; }
 .card-page-separator { color: var(--shell-muted); opacity: .5; }
 .card-page-current { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .card-page-current > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
