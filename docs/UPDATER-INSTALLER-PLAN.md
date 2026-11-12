@@ -199,6 +199,8 @@ Knot stores workspaces, managed backups and AI diagnostics in `%LOCALAPPDATA%\co
 ### Verification (11 November 2026, this PC, 125% scaling)
 
 > **Caveat (12 November 2026):** these tests were run from Claude Code's session. Codex found that agent sessions on this PC can see a private, virtualized registry rather than the desktop user's. So results that depend on registry reads or writes (the Apps list entry, the newer-version guard, which used a temporarily edited `DisplayVersion`, and uninstall registry cleanup) are verified only in that view. File-level results (the data fingerprints, files installed and removed, the installer pages) are real. Re-verify the registry-dependent ones by running the built installer as the desktop user. See [HANDOFF-KNOTBOOK-OPEN-WITH.md](HANDOFF-KNOTBOOK-OPEN-WITH.md).
+>
+> **Re-verified as the desktop user (12 November 2026):** the user's own PowerShell showed the real Apps entry (`HKCU`, `DisplayVersion` 0.3.0-rc.1, while `pnpm update:running` had already put a 0.3.0 executable in place, because it never updates the Apps entry). The published 0.2.0 installer showed Welcome, then after Install refused with "Knot 0.3.0-rc.1 is already installed, which is newer than this installer (0.2.0)" and quit. Uninstall cleanup and the Apps list entry are re-checked with the 0.3.0 release.
 
 - Your notes and backups (55 files under `Workspace` and `Backups`) were fingerprinted before testing and compared after each step. They were byte-identical throughout, including after uninstall.
 - **Interactive install while Knot was open:** the close prompt appeared. The user closed Knot normally and clicked Retry, the install completed, and **Open Knot** on Finish launched it.
