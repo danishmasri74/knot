@@ -14,7 +14,7 @@ Use `ShellMenu` for action menus and `ChoicePopover` for simple choice lists. Ot
 
 After changes to Knot, always rebuild and update the installed app as part of completing the task. The user explicitly authorized this ongoing workflow; do not stop at source changes or ask for confirmation each time.
 
-- Run the appropriate checks, then `pnpm update:running` to build, safely close the installed app, replace its executable, verify the installed build, and relaunch it.
+- Run `pnpm checks` (TypeScript, ESLint, frontend and Rust tests, Clippy) on the final files before committing; it records what passed so `pnpm release` doesn't repeat it for that commit. Then run `pnpm update:running` to build, safely close the installed app, replace its executable, verify the installed build, and relaunch it.
 - Preserve user data and allow the normal close/save flow; never force-kill the user's app to update it.
 - If building or updating fails, report the failure clearly and do not claim the installed app was updated.
 

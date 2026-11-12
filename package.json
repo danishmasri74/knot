@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "checks": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/checks.ps1",
     "update:running": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-running.ps1",
     "version:set": "node scripts/set-version.mjs",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1",

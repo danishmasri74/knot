@@ -24,6 +24,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $projectRoot
+. (Join-Path $PSScriptRoot 'tree-hash.ps1')
 
 function Step([string]$Text) { Write-Output ''; Write-Output "== $Text" }
 function Fail([string]$Text) { throw "Release stopped: $Text" }
@@ -124,13 +125,12 @@ try {
     # ------------------------------------------------------------------- checks
     if ($SkipChecks) {
         Step 'Checks skipped (-SkipChecks)'
+    } elseif (Test-ChecksPassed (Get-WorkingTreeHash)) {
+        # pnpm checks passed on exactly these files (see scripts/checks.ps1).
+        Step 'Checks already passed for these exact files (pnpm checks)'
     } else {
         Step 'Checks'
-        Invoke-Checked 'TypeScript' { pnpm check }
-        Invoke-Checked 'ESLint' { pnpm lint }
-        Invoke-Checked 'Frontend tests' { pnpm test }
-        Invoke-Checked 'Rust tests' { cargo test --manifest-path src-tauri/Cargo.toml }
-        Invoke-Checked 'Clippy' { cargo clippy --manifest-path src-tauri/Cargo.toml }
+        Invoke-Checked 'Checks' { & (Join-Path $PSScriptRoot 'checks.ps1') }
     }
 
     # -------------------------------------------------------------------- build

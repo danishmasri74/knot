@@ -15,8 +15,15 @@ if ($DesktopInstall -and $LogPath) {
 }
 try {
     if (-not $SkipBuild) {
-        & pnpm tauri build
+        # Only knot.exe is copied, so the NSIS installer isn't built (saves its
+        # compression time). The exe then lacks the "nsis" bundle-type mark;
+        # tauri-plugin-updater 2.14 doesn't need it on Windows (it falls back to
+        # the "windows-x86_64" entry and detects the installer from the file).
+        # Recheck when upgrading Tauri. Releases still build the full installer.
+        $buildStart = Get-Date
+        & pnpm tauri build --no-bundle
         if ($LASTEXITCODE -ne 0) { throw 'Knot build failed; installed app was not changed.' }
+        Write-Output ('Build took {0:m\:ss}.' -f ((Get-Date) - $buildStart))
     }
     # A process launched by packaged Codex can see redirected LocalAppData.
     # Perform both replacement and launch under the interactive desktop token.

@@ -33,7 +33,7 @@ Releases are published as files on a public, code-free GitHub repository. The Kn
 3. **Write notes** in `docs/releases/0.3.0.md`: at most about 8 short lines written for users. Knot shows them in Settings → Updates. Start from `docs/releases/UNRELEASED.md`, where each user-visible change is noted as it's made, then leave that file with only its heading.
 
 Between releases the version stays at the last release; bump it only when releasing.
-4. **Commit** the version bump, notes and any remaining work. The script refuses to publish from a working tree with uncommitted changes.
+4. **Run `pnpm checks`, then commit** the version bump, notes and any remaining work. The script refuses to publish from a working tree with uncommitted changes. If `pnpm checks` passed on exactly the committed files, the release skips the checks instead of running them again (any later edit makes it run them).
 5. **Release:**
 
    ```
@@ -47,7 +47,7 @@ Between releases the version stays at the last release; bump it only when releas
    ```
 
    The script:
-   - runs the checks;
+   - runs the checks, unless `pnpm checks` already passed on exactly these files;
    - builds and signs the installer;
    - writes `latest.json`;
    - uploads the installer, its `.sig` and `latest.json` with `gh release create`;
