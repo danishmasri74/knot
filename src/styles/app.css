@@ -6104,26 +6104,46 @@ details[open] > .diagnostics-disclosure > .shell-icon {
 .pane-header {
   height: var(--pane-header-height);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 2px;
-  padding: 3px 4px 0;
+  padding: 0 4px;
   border-bottom: 1px solid var(--shell-border);
   pointer-events: auto;
 }
+/* Tabs shrink before the strip overflows. Past that it scrolls without a
+   scrollbar (wheel scrolls sideways, edges fade): WorkspacePanes.tsx. */
 .pane-tabs {
   position: relative;
   display: flex;
-  /* Keep the 28px tab row fixed above the 8px horizontal scrollbar lane. */
-  align-items: flex-start;
+  align-items: center;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   height: 100%;
+  scrollbar-width: none;
+}
+.pane-tabs::-webkit-scrollbar {
+  display: none;
+}
+.pane-tabs[data-overflow="start"] {
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+.pane-tabs[data-overflow="end"] {
+  mask-image: linear-gradient(to left, transparent, #000 28px);
+}
+.pane-tabs[data-overflow="both"] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 28px,
+    #000 calc(100% - 28px),
+    transparent
+  );
 }
 .pane-tab-drop-indicator {
   position: absolute;
-  top: 0;
+  top: calc(50% - 14px);
   width: 3px;
   height: 28px;
   border-radius: 2px;
@@ -6131,10 +6151,13 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   pointer-events: none;
   z-index: 2;
 }
+/* Equal shares, like browser tabs: short labels stay whole while long ones
+   truncate, down to a usable minimum before the strip scrolls. */
 .pane-tab {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   align-items: center;
+  min-width: 92px;
   max-width: 210px;
   border-radius: 4px;
   height: 28px;
@@ -6144,6 +6167,7 @@ details[open] > .diagnostics-disclosure > .shell-icon {
 }
 .pane-tab > [role="tab"] {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   min-width: 0;
   gap: 6px;
@@ -6156,7 +6180,6 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 145px;
 }
 .pane-tab .shell-icon {
   width: 15px;
@@ -6164,6 +6187,7 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   flex: none;
 }
 .pane-tab-close {
+  flex: none;
   padding: 5px;
   width: 26px;
   height: 28px;

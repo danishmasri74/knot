@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
+  type HTMLAttributes,
   type ReactNode,
 } from "react";
 import { browserApi, browserBounds } from "../services/browser";
@@ -465,7 +466,8 @@ export function WorkspacePanes({
                 <ShellIcon name="back" />
               </button>
             )}
-            <div
+            <TabStrip
+              activeTab={group.activeTabId}
               role="tablist"
               aria-label="Supporting content"
               className="pane-tabs"
@@ -595,7 +597,7 @@ export function WorkspacePanes({
                   style={{ left: tabDrop.left }}
                 />
               )}
-            </div>
+            </TabStrip>
             <ShellMenu
               label="Pane actions"
               icon={<ShellIcon name="more" />}
@@ -795,4 +797,51 @@ export function WorkspacePanes({
       })}
     </div>
   );
+}
+
+/** The tab row: tabs shrink first (CSS); when they still don't fit, the row
+ * scrolls without a scrollbar. The wheel scrolls it sideways, faded edges
+ * show there's more, and the active tab is kept in view. */
+function TabStrip({
+  activeTab,
+  ...props
+}: { activeTab: string | null } & HTMLAttributes<HTMLDivElement>) {
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      const start = el.scrollLeft > 1;
+      const end = el.scrollLeft < max - 1;
+      if (start || end) el.dataset.overflow = start && end ? "both" : start ? "start" : "end";
+      else delete el.dataset.overflow;
+    };
+    const wheel = (event: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+      el.scrollLeft += event.deltaY;
+      event.preventDefault();
+    };
+    const resize = new ResizeObserver(update);
+    resize.observe(el);
+    const tabs = new MutationObserver(update);
+    tabs.observe(el, { childList: true, subtree: true, characterData: true });
+    el.addEventListener("scroll", update, { passive: true });
+    el.addEventListener("wheel", wheel, { passive: false });
+    update();
+    return () => {
+      resize.disconnect();
+      tabs.disconnect();
+      el.removeEventListener("scroll", update);
+      el.removeEventListener("wheel", wheel);
+    };
+  }, []);
+  useEffect(() => {
+    if (!activeTab) return;
+    strip.current
+      ?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeTab)}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeTab]);
+  return <div ref={strip} {...props} />;
 }
