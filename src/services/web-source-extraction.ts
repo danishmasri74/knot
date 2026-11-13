@@ -3,6 +3,40 @@ import { Readability } from "@mozilla/readability";
 import { DOMParser } from "linkedom/worker";
 import { WEB_LIMITS, type WebSection } from "./web-source-types";
 
+const BLOCK = new Set(
+  "address article aside blockquote center dd details dialog div dl dt fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr li main menu nav ol p pre section summary table tbody td tfoot th thead tr ul".split(
+    " ",
+  ),
+);
+const BLOCK_SELECTOR = [...BLOCK].join(",");
+
+const isBlock = (n: Node) =>
+  n.nodeType === 1 && BLOCK.has((n as Element).tagName.toLowerCase());
+const hasBlock = (n: Element) => !!n.querySelector(BLOCK_SELECTOR);
+/**
+ * Rendered text: source line breaks and indentation collapse to spaces and
+ * only <br> breaks a line. Code keeps its non-breaking-space indentation.
+ */
+function flow(nodes: Node[], code = false): string {
+  const raw = (n: Node): string =>
+    n.nodeType === 3
+      ? (n.textContent ?? "").replace(code ? /[ \t\r\n\f]+/g : /\s+/g, " ")
+      : n.nodeType === 1 && (n as Element).tagName.toLowerCase() === "br"
+        ? "\n"
+        : Array.from(n.childNodes).map(raw).join("");
+  const lines = nodes.map(raw).join("").split("\n");
+  return (
+    code
+      ? lines.map((line) => line.replace(/\u00a0/g, " ").trimEnd())
+      : lines.map((line) => line.replace(/ +/g, " ").trim())
+  )
+    .join("\n")
+    .replace(/\n{2,}/g, code ? "\n\n" : "\n")
+    .replace(/^\n+|\n+$/g, "");
+}
+/** Code laid out with <br> inside a <div> (no <pre>), as on w3schools. */
+const CODE_DIV = /\b(?:w3-code|code|highlight|syntax)\b/i;
+
 export function extractWebSource(body: string, contentType: string) {
   const warnings: string[] = [];
   let title = "",
@@ -74,8 +108,16 @@ export function extractWebSource(body: string, contentType: string) {
       );
     title = doc.querySelector("title")?.textContent?.trim() ?? "";
     const visible = (doc.body?.textContent ?? "").slice(0, 20_000);
+    // A password field marks a sign-in page only when the page has little
+    // else to read; tutorials about forms include demo password inputs.
+    const pageText =
+      (doc.body?.textContent ?? "").length -
+      Array.from(doc.querySelectorAll("script,style")).reduce<number>(
+        (n, e) => n + ((e as Element).textContent?.length ?? 0),
+        0,
+      );
     if (
-      doc.querySelector('input[type="password"]') ||
+      (doc.querySelector('input[type="password"]') && pageText < 3000) ||
       /^(just a moment|access denied|verify (you are|that you)|attention required|sign in|log in|login|404\b|403\b|page not found|not found|server error)/i.test(
         title,
       ) ||
@@ -95,9 +137,18 @@ export function extractWebSource(body: string, contentType: string) {
     if (doc.querySelector("iframe,canvas,video,svg,img"))
       warnings.push("Images, embedded and visual content were not captured.");
     for (const node of doc.querySelectorAll(
-      "script,style,noscript,form,nav,header,footer,aside,[hidden],[aria-hidden=true]",
+      // Page furniture: navigation, dialogs, buttons, and wiki edit links,
+      // navigation boxes and category footers.
+      "script,style,noscript,form,nav,header,footer,aside,[hidden],[aria-hidden=true],button,dialog,[role=dialog],[aria-modal=true],[role=navigation],.mw-editsection,.navbox,.navbar,.catlinks,.printfooter,.mw-jump-link",
     ))
       node.remove();
+    // Readability would turn their <br> lines into paragraphs.
+    for (const div of Array.from(doc.querySelectorAll("div")) as Element[])
+      if (CODE_DIV.test(div.getAttribute("class") ?? "") && !hasBlock(div)) {
+        const pre = (doc as unknown as Document).createElement("pre");
+        pre.textContent = flow([div], true);
+        div.replaceWith(pre);
+      }
     let root = doc.querySelector("main,article,[role=main]");
     // Readability supplies article metadata; docs retain native heading/code/table structure.
     const article = new Readability(
@@ -125,11 +176,13 @@ export function extractWebSource(body: string, contentType: string) {
     const headings: string[] = [];
     const walk = (node: Element) => {
       const tag = node.tagName.toLowerCase();
+      const kind = tag === "li" ? "list" : "text";
       if (/^h[1-6]$/.test(tag)) {
         const level = Number(tag[1]);
+        const text = flow([node]);
         headings.length = level - 1;
-        headings[level - 1] = node.textContent?.trim() ?? "";
-        add(node.textContent ?? "", "text", headings.filter(Boolean));
+        headings[level - 1] = text;
+        add(text, "text", headings.filter(Boolean));
       } else if (tag === "pre")
         add(node.textContent ?? "", "code", headings.filter(Boolean));
       else if (tag === "table") {
@@ -153,21 +206,29 @@ export function extractWebSource(body: string, contentType: string) {
             "table",
             headings.filter(Boolean),
           );
-      } else if (
-        ["p", "li", "blockquote"].includes(tag) &&
-        !node.querySelector("p,pre,table")
-      ) {
-        add(
-          node.textContent ?? "",
-          tag === "li" ? "list" : "text",
-          headings.filter(Boolean),
-        );
+      } else if (!hasBlock(node)) {
+        // Paragraphs, list items, captions and other inline-only content
+        // read as one passage, links included.
+        add(flow([node]), kind, headings.filter(Boolean));
       } else {
+        // Mixed content: each run of inline text between blocks is one
+        // passage, so "see [link]." is not split at the link.
+        let run: Node[] = [];
+        const flush = () => {
+          if (run.length) add(flow(run), kind, headings.filter(Boolean));
+          run = [];
+        };
         for (const child of Array.from(node.childNodes)) {
-          if (child.nodeType === 1) walk(child as Element);
-          else if (child.nodeType === 3)
-            add(child.textContent ?? "", "text", headings.filter(Boolean));
+          if (isBlock(child)) {
+            flush();
+            walk(child as Element);
+          } else if (child.nodeType === 1 && hasBlock(child as Element)) {
+            // An inline wrapper (such as a link) around blocks.
+            flush();
+            walk(child as Element);
+          } else if (child.nodeType === 1 || child.nodeType === 3) run.push(child);
         }
+        flush();
       }
     };
     if (root) walk(root as unknown as Element);

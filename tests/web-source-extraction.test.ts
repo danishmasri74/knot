@@ -75,3 +75,33 @@ test("layout tables become text and cell whitespace collapses", () => {
     "Name | Note\nTea | \nRice bowl | Hot",
   );
 });
+
+test("inline content reads as whole passages with rendered whitespace", () => {
+  const { sections } = extractWebSource(
+    `<html><body><main><div class="hatnote">For the game, see <a href="/g">Gungnir (game)</a>. For the missile, see <a>RBS 15</a>.</div>
+    <h2>History<span class="mw-editsection">[<a>edit</a>]</span></h2>
+    <figure><img src="x"><figcaption>A plate depicting <a>Odin</a> with <a>Gungnir</a>.<sup>[1]</sup></figcaption></figure>
+    <p>The element is used
+        to collect input<br>across lines.</p>
+    <ul><li>Parent item<ul><li>Child item</li></ul></li></ul>
+    <div class="w3-code notranslate">&lt;form&gt;<br>&nbsp;&nbsp;&lt;input&gt;<br>&lt;/form&gt;</div>
+    <div class="navbox">Navigation box</div><div class="catlinks">Categories: Spears</div></main></body></html>`,
+    "text/html",
+  );
+  const texts = sections.map((s) => s.text);
+  expect(texts).toContain("For the game, see Gungnir (game). For the missile, see RBS 15.");
+  expect(texts).toContain("History");
+  expect(texts).toContain("A plate depicting Odin with Gungnir.[1]");
+  expect(texts).toContain("The element is used to collect input\nacross lines.");
+  expect(sections.find((s) => s.text === "Parent item")?.kind).toBe("list");
+  expect(sections.find((s) => s.text === "Child item")?.kind).toBe("list");
+  expect(sections.find((s) => s.kind === "code")?.text).toBe("<form>\n  <input>\n</form>");
+  expect(texts.join(" ")).not.toMatch(/edit|Navigation box|Categories/);
+});
+
+test("demo password fields don't make a tutorial look like a sign-in page", () => {
+  const tutorial = `<html><head><title>HTML Input Types</title></head><body><main><h1>Input types</h1>${"<p>The password input masks characters typed by the user in a form field.</p>".repeat(60)}<form><input type="password"></form></main></body></html>`;
+  expect(extractWebSource(tutorial, "text/html").sections.length).toBeGreaterThan(10);
+  const login = `<html><head><title>Welcome</title></head><body><form><label>Email<input></label><label>Password<input type="password"></label></form></body></html>`;
+  expect(() => extractWebSource(login, "text/html")).toThrow(/login/);
+});
