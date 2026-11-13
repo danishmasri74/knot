@@ -136,3 +136,51 @@ export function claimsFor(answer: string, marker: string): string {
   });
   return claims.join(" ").replace(MARKER, " ");
 }
+
+export type PassageMatch<T extends { text: string }> = {
+  section: T;
+  /** The narrowed sentence(s), or null when the section is already short. */
+  sentence: CitedSentence | null;
+};
+
+/**
+ * The page section that best supports a claim, then the sentence(s) within
+ * it: used to give web-search links a passage from the cited page. Requires
+ * a clear share of the claim's distinctive words; otherwise returns null and
+ * the citation stays a plain link.
+ */
+export function matchPassage<T extends { text: string }>(
+  claim: string,
+  sections: T[],
+): PassageMatch<T> | null {
+  const want = new Set(claimTokens(claim));
+  if (!want.size || !sections.length) return null;
+  const sets = sections.map((s) => new Set(claimTokens(s.text)));
+  const df = new Map<string, number>();
+  for (const set of sets)
+    for (const token of set) if (want.has(token)) df.set(token, (df.get(token) ?? 0) + 1);
+  const weight = (token: string) =>
+    Math.log(1 + sections.length / (df.get(token) ?? sections.length));
+  let best = -1,
+    bestScore = 0,
+    bestShared = 0;
+  sets.forEach((set, i) => {
+    let score = 0,
+      shared = 0;
+    for (const token of want)
+      if (set.has(token)) {
+        score += weight(token);
+        shared++;
+      }
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+      bestShared = shared;
+    }
+  });
+  // At least two shared words, and about a third of a longer claim.
+  const needed = Math.min(want.size, Math.max(2, Math.ceil(want.size * 0.3)));
+  if (best < 0 || bestShared < needed) return null;
+  const section = sections[best];
+  return { section, sentence: citedSentence(claim, section.text) };
+}

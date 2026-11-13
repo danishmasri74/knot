@@ -42,6 +42,11 @@ import {
 } from "../services/web-sources";
 import { WEB_LIMITS, type WebAttempt } from "../services/web-source-types";
 import { passageUrl } from "../services/text-fragment";
+import {
+  linksNeedingExcerpts,
+  readExcerpt,
+  withExcerpts,
+} from "../services/web-search-excerpts";
 import { citedSentence, claimsFor } from "../services/cited-sentence";
 import {
   composeAiContext,
@@ -129,6 +134,8 @@ type Turn = {
   createdNote?: { block: string; text: string };
   /** While streaming: the model is preparing a proposal (not persisted). */
   preparing?: boolean;
+  /** After a web-search answer: capturing cited pages for passages (not persisted). */
+  findingExcerpts?: boolean;
   /** While streaming: what Knot is doing, e.g. "Searching the web" (not persisted). */
   activity?: string;
   status?: "applied" | "dismissed";
@@ -174,11 +181,12 @@ function hydrateChat(record: ChatRecord): Chat {
 function serializeChat(chat: Chat): string {
   const evidence: NonNullable<Chat["evidence"]> = {};
   const storedTurns = chat.turns.map(
-    ({ context, undo, preparing, activity, ...turn }) => {
+    ({ context, undo, preparing, activity, findingExcerpts, ...turn }) => {
       void context;
       void undo;
       void preparing;
       void activity;
+      void findingExcerpts;
       if (turn.request?.sourceMode === "workspace" && turn.attemptId) {
         evidence[turn.attemptId] = turn.request;
         return { ...turn, evidenceId: turn.attemptId, request: undefined };
@@ -369,6 +377,54 @@ function AskKnotPanel({
   const webSourcesRef = useRef(webSources);
   const excludedUrls = useRef(new Set<string>());
   const sourceCoordinator = useRef(new WebSourceCoordinator());
+  // Captures the pages a web-search answer cited, to find their passages.
+  const excerptCoordinator = useRef(new WebSourceCoordinator());
+  const excerptRun = useRef<Promise<void>>();
+  function findExcerpts(turn: Turn) {
+    const urls = linksNeedingExcerpts(turn.request?.links ?? []).slice(
+      0,
+      WEB_LIMITS.urls,
+    );
+    if (!urls.length || !mounted.current) return;
+    const chat = chatIdRef.current;
+    const attempts = new Map<string, WebAttempt>();
+    turn.findingExcerpts = true;
+    update([...turnsRef.current]);
+    const current = () =>
+      mounted.current &&
+      chatIdRef.current === chat &&
+      turnsRef.current.includes(turn);
+    excerptRun.current = excerptCoordinator.current
+      .capture(
+        `${workspace}/${chat}/excerpts`,
+        urls.map((url) => ({
+          id: crypto.randomUUID(),
+          url,
+          state: "queued" as const,
+        })),
+        (attempt) => attempts.set(attempt.id, attempt),
+      )
+      .catch(() => {})
+      .then(() => {
+        turn.findingExcerpts = false;
+        if (!current() || !turn.request) return;
+        // Stopped captures (a new answer, pasted sources) stay plain links.
+        const done = [...attempts.values()].filter(
+          (a) => a.state !== "cancelled",
+        );
+        const finished = new Set(done.map((a) => a.url));
+        const links = turn.request.links ?? [];
+        const enriched = new Map(
+          withExcerpts(
+            turn.content,
+            links.filter((l) => finished.has(l.url)),
+            done,
+          ).map((l) => [l.url, l]),
+        );
+        turn.request.links = links.map((l) => enriched.get(l.url) ?? l);
+        update([...turnsRef.current]);
+      });
+  }
 
   function updateWebSources(value: WebAttempt[]) {
     webSourcesRef.current = value;
@@ -414,6 +470,10 @@ function AskKnotPanel({
     addWebUrls(urls);
   }, [prompt]);
   async function captureWebSources(attempts: WebAttempt[]) {
+    // Pasted sources go first: stop finding excerpts (one native batch at a
+    // time) and wait for it to release the fetcher.
+    excerptCoordinator.current.cancel();
+    await excerptRun.current;
     await sourceCoordinator.current.capture(
       `${workspace}/${chatIdRef.current}`,
       attempts,
@@ -723,6 +783,7 @@ function AskKnotPanel({
     if (active) void invoke("ai_cancel", { id: inflight.current ?? active });
     setBusy(false);
     sourceCoordinator.current.cancel();
+    excerptCoordinator.current.cancel();
     excludedUrls.current.clear();
     updateWebSources(retainedWebAttempts(chat?.turns.at(-1)?.request?.context));
     followLatest.current = true;
@@ -847,6 +908,7 @@ function AskKnotPanel({
       mounted.current = false;
       uploadId.current++;
       sourceCoordinator.current.cancel();
+      excerptCoordinator.current.cancel();
       clearStreamTimer();
       if (request.current) {
         const id = request.current;
@@ -1323,6 +1385,10 @@ function AskKnotPanel({
           r.request.links = [...(r.request.links ?? []), ...converted.links];
           if (r.mode === "ask" || r.mode === "auto") r.draft.content = output;
           update([...turnsRef.current]);
+          // Passages from the cited pages, captured on this device once the
+          // answer is in place.
+          const answered = r.draft;
+          setTimeout(() => findExcerpts(answered), 0);
         }
         return { output, toolCall, toolArguments };
       }
@@ -2279,6 +2345,7 @@ function AskKnotPanel({
                           <CitationSources
                             text={turn.content}
                             context={shownContext(turn.request)}
+                            finding={turn.findingExcerpts}
                             onSource={onSource}
                           />
                         </>
@@ -3173,10 +3240,13 @@ const ChatText = memo(function ChatText({
 const CitationSources = memo(function CitationSources({
   text,
   context,
+  finding,
   onSource,
 }: {
   text: string;
   context?: string;
+  /** Cited pages are being captured for passages. */
+  finding?: boolean;
   onSource: (
     document: string,
     block: string,
@@ -3208,6 +3278,7 @@ const CitationSources = memo(function CitationSources({
           source?.kind === "web"
             ? citedSentence(claimsFor(text, `[S${id}]`), source.text)
             : null;
+        const excerpt = source?.kind === "link" ? readExcerpt(source) : null;
         return source ? (
           <div key={id}>
             <div className="ask-source-title">
@@ -3227,17 +3298,52 @@ const CitationSources = memo(function CitationSources({
                   <blockquote>{source.text}</blockquote>
                 </details>
               </>
+            ) : excerpt ? (
+              <>
+                <small className="ask-source-note">
+                  Matching passage from the page
+                </small>
+                <blockquote>
+                  {excerpt.excerpt !== excerpt.passage && "… "}
+                  {excerpt.excerpt}
+                  {excerpt.excerpt !== excerpt.passage && " …"}
+                </blockquote>
+                {excerpt.excerpt !== excerpt.passage && (
+                  <details className="ask-source-passage">
+                    <summary>Full passage</summary>
+                    <blockquote>{excerpt.passage}</blockquote>
+                  </details>
+                )}
+              </>
             ) : (
-              <blockquote>
-                {source.kind === "link" ? linkLabel(source.url) : source.text}
-              </blockquote>
+              <>
+                <blockquote>
+                  {source.kind === "link" ? linkLabel(source.url) : source.text}
+                </blockquote>
+                {source.kind === "link" &&
+                  (finding && !source.excerptState ? (
+                    <small className="ask-source-note">Finding excerpt…</small>
+                  ) : source.excerptState === "none" ? (
+                    <small className="ask-source-note">
+                      No matching passage found on the page.
+                    </small>
+                  ) : source.excerptState === "unavailable" ? (
+                    <small className="ask-source-note">
+                      The page couldn’t be read for an excerpt.
+                    </small>
+                  ) : null)}
+              </>
             )}
             <button
               onClick={() => {
                 setError("");
                 void (
                   source.kind === "link"
-                    ? browserApi.external(source.url)
+                    ? browserApi.external(
+                        excerpt
+                          ? passageUrl(excerpt.url, excerpt.excerpt, excerpt.page)
+                          : source.url,
+                      )
                     : source.kind === "web"
                       ? browserApi.external(
                           passageUrl(

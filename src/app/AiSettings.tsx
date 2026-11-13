@@ -168,7 +168,9 @@ export function AiSettings({
           <p>
             Let Knot search the web when a question needs current or outside
             information. Searches go through OpenAI and cost about $0.01 each,
-            shown in the answer&apos;s cost.
+            shown in the answer&apos;s cost. To show the matching passage for
+            each cited link, Knot then opens the cited pages from this
+            computer, at no extra cost.
           </p>
         </div>
         <button

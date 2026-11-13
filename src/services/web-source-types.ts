@@ -96,6 +96,13 @@ export type LinkCitation = {
   title: string;
   url: string;
   citation?: string;
+  /** Passage from the cited page that matches the claim (found on this
+   * device after the answer), or why there is none. */
+  excerptState?: "found" | "none" | "unavailable";
+  excerpt?: string;
+  passage?: string;
+  excerptPage?: number;
+  excerptUrl?: string;
 };
 export type CitationSource = NoteCitation | WebCitation | LinkCitation;
 export type NativeWebResult = {
