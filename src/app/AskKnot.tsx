@@ -3365,7 +3365,11 @@ const CitationSources = memo(function CitationSources({
                 ).catch((e) => setError(String(e)));
               }}
             >
-              {source.kind === "link" ? "Open link" : "Open source"}
+              {excerpt
+                ? "Open passage"
+                : source.kind === "link"
+                  ? "Open link"
+                  : "Open source"}
             </button>
           </div>
         ) : (
