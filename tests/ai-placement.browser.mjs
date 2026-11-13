@@ -104,6 +104,8 @@ for (const theme of ["light", "dark"]) {
   await page.screenshot({ path: `test-results/ai-page-${theme}.png` });
 }
 await page.getByRole("button", { name: "Move to panel", exact: true }).click();
+// The panes fade in from visibility: hidden, so wait for the tab before counting.
+await page.getByRole("tab", { name: /Ask Knot/ }).waitFor();
 assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 1);
 assert.equal(await page.locator(".pane-ask .ask-knot").count(), 1);
 await page.getByRole("button", { name: "Open as page", exact: true }).click();
@@ -111,6 +113,7 @@ assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 0);
 assert.equal(await page.locator(".ask-knot").count(), 1);
 await page.getByRole("button", { name: "Move to panel", exact: true }).click();
 await page.setViewportSize({ width: 800, height: 700 });
+await page.getByRole("tab", { name: /Ask Knot/ }).waitFor();
 assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 1);
 await page.screenshot({ path: "test-results/ai-tab-dark.png" });
 await page

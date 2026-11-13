@@ -56,7 +56,10 @@ export function WebSourceList({
                 </div>
               )}
             </Popover>
-            {source.state !== "ready" && <small>{source.state}</small>}
+            {/* Partial captures are still used; their state lives in the details popover. */}
+            {source.state !== "ready" && source.state !== "partial" && (
+              <small>{source.state}</small>
+            )}
             <button
               type="button"
               aria-label={`Remove website: ${label}`}
