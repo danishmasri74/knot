@@ -194,7 +194,7 @@ mod tests {
             .db
             .execute_batch(
                 "DROP TABLE mcq_progress; DROP TABLE mcq_attempts; DROP TABLE mcq_drafts;
-             DROP TABLE notebook_origins; DROP TABLE unshared_references; DELETE FROM schema_migrations WHERE version>=10; PRAGMA user_version=9;",
+             DROP TABLE notebook_origins; DROP TABLE unshared_references; DROP TABLE ai_chats; DELETE FROM schema_migrations WHERE version>=10; PRAGMA user_version=9;",
             )
             .unwrap();
         drop(workspace);

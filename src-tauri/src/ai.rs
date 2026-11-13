@@ -131,6 +131,9 @@ pub struct Message {
 #[derive(Clone, Serialize)]
 pub struct StreamEvent {
     delta: String,
+    /// Sent once, with an empty delta, when the provider reports usage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cost: Option<crate::diagnostics::Cost>,
 }
 #[tauri::command]
 pub fn ai_cancel(state: State<'_, Requests>, id: String) {
@@ -520,6 +523,12 @@ async fn consume_response(
                 break;
             };
             measurement.frame(&buffer[..end]);
+            if let Some(cost) =
+                crate::diagnostics::cost_from_frame(&measurement.attempt.model, &buffer[..end])
+            {
+                // Cost is informational; a closed channel is reported by the next delta.
+                let _ = channel.send(StreamEvent { delta: String::new(), cost: Some(cost) });
+            }
             if let Some(delta) = event(&buffer[..end])? {
                 if delta.is_empty() {
                     completed = true;
@@ -529,7 +538,7 @@ async fn consume_response(
                         return Err("Response exceeded the limit".into());
                     }
                     channel
-                        .send(StreamEvent { delta })
+                        .send(StreamEvent { delta, cost: None })
                         .map_err(|_| "Conversation closed")?;
                 }
             }
@@ -608,6 +617,7 @@ mod tests {
             let address = listener.local_addr().unwrap();
             let ending = ending.to_string();
             let expected_success = ending == "response.completed";
+            let has_usage = ending != "missing";
             let server = std::thread::spawn(move || {
                 let (mut socket, _) = listener.accept().unwrap();
                 let mut request = [0u8; 4096];
@@ -656,8 +666,18 @@ mod tests {
                     .unwrap();
                 let result = consume_response(response, channel, &mut measurement).await;
                 assert_eq!(result.is_ok(), expected_success);
-                assert_eq!(delivered.lock().unwrap().len(), 1);
-                assert!(delivered.lock().unwrap()[0].contains("héllo"));
+                // Text deltas are unchanged; usage on a final event adds one cost event.
+                let delivered = delivered.lock().unwrap();
+                assert_eq!(delivered.len(), if has_usage { 2 } else { 1 });
+                assert!(delivered[0].contains("héllo") && !delivered[0].contains("cost"));
+                if has_usage {
+                    let cost: Value = serde_json::from_str(&delivered[1]).unwrap();
+                    assert_eq!(cost["delta"], "");
+                    assert_eq!(cost["cost"]["input"], 12);
+                    assert_eq!(cost["cost"]["output"], 3);
+                    // No service tier or cached count: priced as unknown, never guessed.
+                    assert!(cost["cost"]["usd"].is_null());
+                }
                 assert_eq!(measurement.attempt.response_bytes, 6);
                 assert!(measurement.attempt.first_delta_ms.is_some());
             });

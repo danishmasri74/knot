@@ -85,6 +85,26 @@ A partial or contradictory breakdown stays unknown. Raw lifetime fields remain
 null in diagnostics. Attempts estimated under v1 keep their stored version and
 unknown cost; they are not repriced.
 
+Version `openai-standard-2026-11-13-v3` (13 November 2026): every short-context
+price above was re-verified against the official pricing page and is unchanged.
+Requests above 272,000 input tokens now use the published long-context rates
+(USD per million: input / cached read / output; cache writes stay 1.25× and 2.5×
+of the long-context input price):
+
+| Model | Input | Cached read | Output |
+| --- | ---: | ---: | ---: |
+| gpt-6-luna | 0.20 | 0.02 | 0.75 |
+| gpt-6.1-terra | 2.00 | 0.10 | 7.50 |
+| gpt-6.1-sol | 4.00 | 0.20 | 15.00 |
+| gpt-6-astra | 20.00 | 2.00 | 75.00 |
+| gpt-5.4 | 5.00 | 0.50 | 22.50 |
+
+GPT-5.4 mini publishes no long-context rate, so those requests stay unknown.
+Regional-processing and FedRAMP uplifts are not applied; Knot uses the global
+endpoint. The same estimate is shown per answer in Ask Knot (docs/AI.md), computed
+from the stream even when diagnostics are off; diagnostics still store nothing
+unless enabled.
+
 ## Verification and quality
 
 Rust tests compare serialized outgoing bodies against the frozen pre-measurement

@@ -3367,6 +3367,23 @@ main:has(.settings-modal) > .editor-area {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.ask-response-cost {
+  margin-inline-start: auto;
+  color: var(--ask-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ask-response-timer + .ask-response-cost {
+  margin-inline-start: 0;
+}
+.ask-chat-cost {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--ask-muted);
+  font-variant-numeric: tabular-nums;
+}
 .ask-message-text {
   white-space: pre-wrap;
   line-height: 1.7;

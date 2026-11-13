@@ -400,11 +400,13 @@ try {
     .last()
     .getByText("Copied", { exact: true })
     .waitFor();
-  const oldRequest = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((k) =>
-      k.startsWith("knot.ai.chats.v1:"),
-    );
-    return JSON.parse(localStorage.getItem(key)).turns.at(-1).request;
+  // Chats are stored in the workspace; let queued saves land first.
+  await page.waitForTimeout(300);
+  const oldRequest = await page.evaluate(async () => {
+    const tauri = window.__TAURI_INTERNALS__;
+    const { active } = await tauri.invoke("workspace_catalog");
+    const [latest] = await tauri.invoke("ai_chats_list", { workspace: active });
+    return JSON.parse(latest).turns.at(-1).request;
   });
   await page
     .getByRole("button", { name: "Regenerate response", exact: true })

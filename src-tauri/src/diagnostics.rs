@@ -217,32 +217,9 @@ impl Measurement {
                 self.attempt.response_bytes += s.len();
             }
         }
-        if matches!(
-            v["type"].as_str(),
-            Some("response.completed" | "response.failed" | "response.incomplete")
-        ) {
-            let u = &v["response"]["usage"];
-            self.attempt.usage = Usage {
-                input: u["input_tokens"].as_u64(),
-                cached: u["input_tokens_details"]["cached_tokens"].as_u64(),
-                cache_write: u["input_tokens_details"]["cache_write_tokens"].as_u64(),
-                cache_write_30m: u["input_tokens_details"]["cache_write_tokens_details"]
-                    ["ttl_30m_tokens"]
-                    .as_u64(),
-                cache_write_12h: u["input_tokens_details"]["cache_write_tokens_details"]
-                    ["ttl_12h_tokens"]
-                    .as_u64(),
-                output: u["output_tokens"].as_u64(),
-                reasoning: u["output_tokens_details"]["reasoning_tokens"].as_u64(),
-                total: u["total_tokens"].as_u64(),
-            };
-            self.attempt.service_tier = v["response"]["service_tier"].as_str().map(|s| {
-                if ["default", "standard", "auto", "flex", "priority", "fast"].contains(&s) {
-                    s.to_owned()
-                } else {
-                    "unknown".into()
-                }
-            });
+        if let Some((usage, tier)) = usage_from(&v) {
+            self.attempt.usage = usage;
+            self.attempt.service_tier = tier;
         }
     }
     pub fn save(&self, store: &Diagnostics) {
@@ -283,9 +260,79 @@ impl Measurement {
         self.save(store);
     }
 }
+/// Usage and service tier from a final response event (completed, failed or
+/// incomplete), keeping only allowlisted numeric fields and known tier names.
+pub fn usage_from(v: &Value) -> Option<(Usage, Option<String>)> {
+    if !matches!(
+        v["type"].as_str(),
+        Some("response.completed" | "response.failed" | "response.incomplete")
+    ) {
+        return None;
+    }
+    let u = &v["response"]["usage"];
+    let usage = Usage {
+        input: u["input_tokens"].as_u64(),
+        cached: u["input_tokens_details"]["cached_tokens"].as_u64(),
+        cache_write: u["input_tokens_details"]["cache_write_tokens"].as_u64(),
+        cache_write_30m: u["input_tokens_details"]["cache_write_tokens_details"]["ttl_30m_tokens"]
+            .as_u64(),
+        cache_write_12h: u["input_tokens_details"]["cache_write_tokens_details"]["ttl_12h_tokens"]
+            .as_u64(),
+        output: u["output_tokens"].as_u64(),
+        reasoning: u["output_tokens_details"]["reasoning_tokens"].as_u64(),
+        total: u["total_tokens"].as_u64(),
+    };
+    let tier = v["response"]["service_tier"].as_str().map(|s| {
+        if ["default", "standard", "auto", "flex", "priority", "fast"].contains(&s) {
+            s.to_owned()
+        } else {
+            "unknown".into()
+        }
+    });
+    Some((usage, tier))
+}
+/// What one request cost, shown beside the answer in Ask Knot. `usd` is None
+/// when the provider's usage or tier cannot be priced exactly.
+#[derive(Clone, Debug, Serialize)]
+pub struct Cost {
+    pub usd: Option<f64>,
+    pub input: Option<u64>,
+    pub cached: Option<u64>,
+    pub output: Option<u64>,
+    pub reasoning: Option<u64>,
+    pub tier: Option<String>,
+    pub pricing: &'static str,
+}
+/// The cost carried by a final SSE frame, independent of diagnostics settings.
+pub fn cost_from_frame(model: &str, frame: &[u8]) -> Option<Cost> {
+    // Only final events carry usage; skip parsing every text delta.
+    if !frame.windows(7).any(|w| w == b"\"usage\"") {
+        return None;
+    }
+    let data = std::str::from_utf8(frame)
+        .ok()?
+        .lines()
+        .filter_map(|l| l.strip_prefix("data:").map(str::trim_start))
+        .collect::<Vec<_>>()
+        .join("
+");
+    let (usage, tier) = usage_from(&serde_json::from_str::<Value>(&data).ok()?)?;
+    Some(Cost {
+        usd: estimate(model, &usage, tier.as_deref()),
+        input: usage.input,
+        cached: usage.cached,
+        output: usage.output,
+        reasoning: usage.reasoning,
+        tier,
+        pricing: PRICING_VERSION,
+    })
+}
+/// v3 (13 November 2026): prices re-verified against the OpenAI pricing page;
+/// requests above 272K input tokens use the published long-context rates
+/// (none are published for GPT-5.4 mini, so those stay unknown).
 /// v2 (11 November 2026): same prices as v1; positive GPT-6 cache writes without a
 /// lifetime breakdown are priced as 30-minute writes (Knot never requests 12h).
-pub const PRICING_VERSION: &str = "openai-standard-2026-11-11-v2";
+pub const PRICING_VERSION: &str = "openai-standard-2026-11-13-v3";
 // Standard short-context USD per million tokens. Reasoning is included in output;
 // cached tokens are a subset of input. Unknown cache breakdown/tier remains unknown.
 pub fn estimate(model: &str, u: &Usage, tier: Option<&str>) -> Option<f64> {
@@ -293,16 +340,22 @@ pub fn estimate(model: &str, u: &Usage, tier: Option<&str>) -> Option<f64> {
         return None;
     }
     let (i, c, o) = (u.input?, u.cached?, u.output?);
-    if c > i || i > 272_000 {
+    if c > i {
         return None;
     }
-    let (input, cached, output) = match model {
-        "gpt-6-luna" => (0.10, 0.01, 0.50),
-        "gpt-6.1-terra" => (1.0, 0.05, 5.0),
-        "gpt-6.1-sol" => (2.0, 0.10, 10.0),
-        "gpt-6-astra" => (10.0, 1.0, 50.0),
-        "gpt-5.4-mini" => (0.75, 0.075, 4.50),
-        "gpt-5.4" => (2.50, 0.25, 15.0),
+    let long = i > 272_000;
+    let (input, cached, output) = match (model, long) {
+        ("gpt-6-luna", false) => (0.10, 0.01, 0.50),
+        ("gpt-6-luna", true) => (0.20, 0.02, 0.75),
+        ("gpt-6.1-terra", false) => (1.0, 0.05, 5.0),
+        ("gpt-6.1-terra", true) => (2.0, 0.10, 7.50),
+        ("gpt-6.1-sol", false) => (2.0, 0.10, 10.0),
+        ("gpt-6.1-sol", true) => (4.0, 0.20, 15.0),
+        ("gpt-6-astra", false) => (10.0, 1.0, 50.0),
+        ("gpt-6-astra", true) => (20.0, 2.0, 75.0),
+        ("gpt-5.4-mini", false) => (0.75, 0.075, 4.50),
+        ("gpt-5.4", false) => (2.50, 0.25, 15.0),
+        ("gpt-5.4", true) => (5.0, 0.50, 22.50),
         _ => return None,
     };
     let (write, w30, w12) = if model.starts_with("gpt-6") {
@@ -793,4 +846,21 @@ mod tests {
             LIMIT
         );
     }
+    #[test]
+    fn cost_frames_price_short_and_long_context_from_published_rates() {
+        let frame = |input: u64| format!("data: {{\"type\":\"response.completed\",\"response\":{{\"service_tier\":\"default\",\"usage\":{{\"input_tokens\":{input},\"input_tokens_details\":{{\"cached_tokens\":1000,\"cache_write_tokens\":0}},\"output_tokens\":2000,\"output_tokens_details\":{{\"reasoning_tokens\":500}},\"total_tokens\":0}}}}}}");
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-12;
+        // Sol, short context: 9,000 input at $2, 1,000 cached at $0.10, 2,000 output at $10.
+        let short = cost_from_frame("gpt-6.1-sol", frame(10_000).as_bytes()).unwrap();
+        assert!(close(short.usd.unwrap(), (9_000.0 * 2.0 + 1_000.0 * 0.10 + 2_000.0 * 10.0) / 1e6));
+        assert_eq!((short.reasoning, short.cached), (Some(500), Some(1000)));
+        assert_eq!(short.pricing, PRICING_VERSION);
+        // Above 272K input tokens the long-context rates apply.
+        let long = cost_from_frame("gpt-6.1-sol", frame(300_000).as_bytes()).unwrap();
+        assert!(close(long.usd.unwrap(), (299_000.0 * 4.0 + 1_000.0 * 0.20 + 2_000.0 * 15.0) / 1e6));
+        // GPT-5.4 mini publishes no long-context rate: unknown, not guessed.
+        assert!(cost_from_frame("gpt-5.4-mini", frame(300_000).as_bytes()).unwrap().usd.is_none());
+        assert!(cost_from_frame("gpt-6.1-sol", b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"x\"}").is_none());
+    }
+
 }

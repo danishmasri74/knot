@@ -160,7 +160,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("old");
         let ws = Workspace::open(root.clone()).unwrap();
-        ws.db.execute_batch("ALTER TABLE collections DROP COLUMN deleted_at; DROP TRIGGER objects_creation_date; DROP INDEX objects_library_created; DROP INDEX objects_library_updated; ALTER TABLE objects DROP COLUMN created_at; DROP TABLE getting_started; DROP TABLE mcq_progress; DROP TABLE mcq_attempts; DROP TABLE mcq_drafts; DROP TABLE card_deck; DROP TABLE notebook_origins; DROP TABLE unshared_references; ALTER TABLE collections DROP COLUMN position; DELETE FROM schema_migrations WHERE version>=5; PRAGMA user_version=4;").unwrap();
+        ws.db.execute_batch("ALTER TABLE collections DROP COLUMN deleted_at; DROP TRIGGER objects_creation_date; DROP INDEX objects_library_created; DROP INDEX objects_library_updated; ALTER TABLE objects DROP COLUMN created_at; DROP TABLE getting_started; DROP TABLE mcq_progress; DROP TABLE mcq_attempts; DROP TABLE mcq_drafts; DROP TABLE card_deck; DROP TABLE notebook_origins; DROP TABLE unshared_references; DROP TABLE ai_chats; ALTER TABLE collections DROP COLUMN position; DELETE FROM schema_migrations WHERE version>=5; PRAGMA user_version=4;").unwrap();
         drop(ws);
         let ws = Workspace::open(root).unwrap();
         assert!(!ws.getting_started_status().unwrap().pending);

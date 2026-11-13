@@ -80,14 +80,20 @@ try {
         ],
       }),
     );
+    window.chatStore = new Map();
     window.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
-      invoke: async (cmd) =>
-        cmd === "ai_connected"
+      invoke: async (cmd, args) => {
+        // Chats live in the workspace; the browser-stored seed is moved there.
+        if (cmd === "ai_chats_list") return [...window.chatStore.values()];
+        if (cmd === "ai_chat_save") return void window.chatStore.set(args.id, args.data);
+        if (cmd === "ai_chat_delete") return void window.chatStore.delete(args.id);
+        return cmd === "ai_connected"
           ? true
           : cmd === "ai_models"
             ? ["gpt-5.4-mini"]
-            : undefined,
+            : undefined;
+      },
     };
     const React = (await import("/node_modules/.vite/deps/react.js")).default;
     const { createRoot } = (

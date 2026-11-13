@@ -78,6 +78,7 @@ import {
 } from "../services/updater";
 import { getAiEnabled } from "../services/ai-preferences";
 import { AskKnot } from "./AskKnot";
+import { flushChatSaves } from "../services/ai-chats";
 import {
   captureAiContext,
   captureCardContext,
@@ -207,6 +208,7 @@ export function App() {
   const flushPendingWork = async () => {
     await flushMcqDraft.current?.();
     await session.current?.flush();
+    await flushChatSaves();
   };
   const prepareToClose = useRef(async () => {
     await flushPendingWork();
@@ -1447,6 +1449,7 @@ export function App() {
     )
       return;
     await session.current?.flush();
+    await flushChatSaves();
     const path = await workspaces.relocate();
     if (path) {
       await reloadWorkspace();
@@ -3503,6 +3506,7 @@ export function App() {
               onOpenExternal={() =>
                 void run(async () => {
                   await session.current?.flush();
+                  await flushChatSaves();
                   if (await workspaces.openExternal()) {
                     await reloadWorkspace();
                     setNotice("Opened workspace folder.");
@@ -3513,6 +3517,7 @@ export function App() {
               onSwitch={(id) =>
                 void run(async () => {
                   await session.current?.flush();
+                  await flushChatSaves();
                   await workspaces.switch(id);
                   await reloadWorkspace();
                   setNotice(`Opened ${workspaceName(id)}.`);

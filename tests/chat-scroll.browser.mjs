@@ -41,9 +41,17 @@ try {
       window.writes++;
       return save.apply(this, args);
     };
+    window.chatStore = new Map();
     window.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
       invoke: async (cmd, args) => {
+        // Chats live in the workspace; the browser-stored seed is moved there.
+        if (cmd === "ai_chats_list") return [...window.chatStore.values()];
+        if (cmd === "ai_chat_save") {
+          window.writes++; // Chat saves count toward the batching budget.
+          return void window.chatStore.set(args.id, args.data);
+        }
+        if (cmd === "ai_chat_delete") return void window.chatStore.delete(args.id);
         if (cmd === "ai_connected") return true;
         if (cmd === "ai_models") return ["gpt-5.4-mini"];
         if (cmd === "ai_respond") {
@@ -130,6 +138,11 @@ try {
   );
   await page.evaluate(() => {
     window.stream.onmessage({ delta: " final token" });
+    // Rust sends the priced usage once, with an empty delta, at completion.
+    window.stream.onmessage({
+      delta: "",
+      cost: { usd: 0.00423, input: 1200, cached: 200, output: 600, reasoning: 100, tier: "default", pricing: "test" },
+    });
     window.finish();
   });
   await page.waitForSelector(".ask-send");
@@ -142,7 +155,7 @@ try {
     await page.evaluate(
       () =>
         JSON.parse(
-          localStorage.getItem("knot.ai.chats.v1:scroll:fixture"),
+          window.chatStore.get("fixture"),
         ).turns.at(-1).elapsedSeconds,
     ),
     Number(finalTime.split(":")[0]) * 60 + Number(finalTime.split(":")[1]),
@@ -156,13 +169,41 @@ try {
     await page.evaluate(
       () =>
         JSON.parse(
-          localStorage.getItem("knot.ai.chats.v1:scroll:fixture"),
+          window.chatStore.get("fixture"),
         ).turns.at(-1).content,
     ),
     /final token$/,
   );
+  assert.equal(
+    await page.locator(".ask-turn").last().locator(".ask-response-cost").textContent(),
+    "≈ $0.0042",
+    "answer shows its estimated cost",
+  );
+  assert.equal(
+    await page.locator(".ask-chat-cost").textContent(),
+    "This chat ≈ $0.0042",
+  );
+  const saved = await page.evaluate(() => JSON.parse(window.chatStore.get("fixture")));
+  assert.equal(saved.turns.at(-1).cost.usd, 0.00423, "cost is saved with the reply");
+  assert.deepEqual(saved.spent, { usd: 0.00423, priced: 1, unpriced: 0 });
+  // An unpriced request is counted separately, never as $0.
+  await page.evaluate(() =>
+    window.stream.onmessage({
+      delta: "",
+      cost: { usd: null, input: 10, cached: null, output: 2, reasoning: null, tier: "flex", pricing: "test" },
+    }),
+  );
+  await page.waitForTimeout(100);
+  assert.equal(
+    await page.locator(".ask-chat-cost").textContent(),
+    "This chat ≈ $0.0042 + 1 unpriced",
+  );
+  assert.equal(
+    await page.locator(".ask-turn").last().locator(".ask-response-cost").textContent(),
+    "Cost unknown",
+  );
   console.log(
-    "Chat scroll: saved history, follow latest, manual scroll, batching and final save passed.",
+    "Chat scroll: saved history, follow latest, manual scroll, batching, final save, workspace storage and costs passed.",
   );
 } finally {
   await browser.close();

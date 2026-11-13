@@ -17,6 +17,12 @@ import {
   WORKSPACE_SEARCH_CHANGED,
 } from "../services/ai-preferences";
 import { recordAiOutcome } from "../services/ai-diagnostics";
+import {
+  deleteChatRecord,
+  loadChatRecords,
+  saveChatRecord,
+  type ChatRecord,
+} from "../services/ai-chats";
 import { WebSourceCoordinator, detectWebUrls } from "../services/web-sources";
 import { WEB_LIMITS, type WebAttempt } from "../services/web-source-types";
 import {
@@ -91,7 +97,20 @@ type Turn = {
   mode?: "rewrite" | "insert" | "canvas";
   status?: "applied" | "dismissed";
   undo?: () => void;
+  cost?: AiCost;
 };
+/** What OpenAI reported for one request, priced by Rust (`diagnostics.rs`). */
+type AiCost = {
+  usd: number | null;
+  input: number | null;
+  cached: number | null;
+  output: number | null;
+  reasoning: number | null;
+  tier: string | null;
+  pricing: string;
+};
+/** Everything this chat has cost, including retries and replaced answers. */
+type Spent = { usd: number; priced: number; unpriced: number };
 type Chat = {
   id: string;
   documentId: string;
@@ -99,26 +118,20 @@ type Chat = {
   updated: number;
   turns: Turn[];
   evidence?: Record<string, NonNullable<Turn["request"]>>;
+  spent?: Spent;
 };
-const chatPrefix = (workspace: string) =>
-  `knot.ai.chats.v1:${encodeURIComponent(workspace)}:`;
-function readChats(workspace: string): Chat[] {
-  return Object.keys(localStorage)
-    .filter((key) => key.startsWith(chatPrefix(workspace)))
-    .map((key) => {
-      const chat = JSON.parse(localStorage.getItem(key)!) as Chat;
-      return {
-        ...chat,
-        turns: chat.turns.map((turn) =>
-          turn.evidenceId && chat.evidence?.[turn.evidenceId]
-            ? { ...turn, request: chat.evidence[turn.evidenceId] }
-            : turn,
-        ),
-      };
-    })
-    .sort((a, b) => b.updated - a.updated);
+function hydrateChat(record: ChatRecord): Chat {
+  const chat = record as unknown as Chat;
+  return {
+    ...chat,
+    turns: chat.turns.map((turn) =>
+      turn.evidenceId && chat.evidence?.[turn.evidenceId]
+        ? { ...turn, request: chat.evidence[turn.evidenceId] }
+        : turn,
+    ),
+  };
 }
-function saveChat(workspace: string, chat: Chat) {
+function serializeChat(chat: Chat): string {
   const evidence: NonNullable<Chat["evidence"]> = {};
   const storedTurns = chat.turns.map(({ context, undo, ...turn }) => {
     void context;
@@ -129,16 +142,86 @@ function saveChat(workspace: string, chat: Chat) {
     }
     return turn;
   });
-  localStorage.setItem(
-    chatPrefix(workspace) + chat.id,
-    JSON.stringify({
-      ...chat,
-      evidence,
-      turns: storedTurns,
-    }),
+  return JSON.stringify({ ...chat, evidence, turns: storedTurns });
+}
+const noSpend: Spent = { usd: 0, priced: 0, unpriced: 0 };
+function addSpend(spent: Spent, cost: AiCost): Spent {
+  return cost.usd === null
+    ? { ...spent, unpriced: spent.unpriced + 1 }
+    : { ...spent, usd: spent.usd + cost.usd, priced: spent.priced + 1 };
+}
+/** Readable USD for small API amounts: two significant digits below a cent. */
+function formatUsd(usd: number): string {
+  if (usd === 0) return "$0.00";
+  if (usd < 0.0001) return "< $0.0001";
+  if (usd < 0.01) return `$${usd.toPrecision(2)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+const tokenCount = (n: number | null) =>
+  n === null ? "unknown" : n.toLocaleString();
+function costDetail(cost: AiCost): string {
+  const usage = `${tokenCount(cost.input)} input tokens (${tokenCount(cost.cached)} cached) · ${tokenCount(cost.output)} output tokens (${tokenCount(cost.reasoning)} reasoning)`;
+  if (cost.usd === null) {
+    const tier =
+      cost.tier && !["default", "standard"].includes(cost.tier)
+        ? ` (${cost.tier} service tier)`
+        : "";
+    return `Cost unknown: the usage OpenAI reported for this request can't be priced exactly${tier}. ${usage}. Your OpenAI usage page shows the billed amount.`;
+  }
+  return `Estimated from OpenAI's published standard prices and the usage OpenAI reported. ${usage}. Your OpenAI bill is the final amount.`;
+}
+function spentDetail(spent: Spent): string {
+  const unpriced = spent.unpriced
+    ? ` ${spent.unpriced} request${spent.unpriced === 1 ? "" : "s"} couldn't be priced and ${spent.unpriced === 1 ? "isn't" : "aren't"} included.`
+    : "";
+  return `Estimated total for every request in this chat that OpenAI reported usage for, including retries and replaced answers.${unpriced} Stopped requests report no usage and aren't included. Your OpenAI bill is the final amount.`;
+}
+type AskKnotProps = Omit<
+  Parameters<typeof AskKnotPanel>[0],
+  "initialChats" | "initialError"
+>;
+/** Loads the workspace's saved chats before the panel's state starts. */
+export function AskKnot(props: AskKnotProps) {
+  const [loaded, setLoaded] = useState<{ chats: Chat[]; error: string }>();
+  const { workspace } = props;
+  useEffect(() => {
+    let current = true;
+    loadChatRecords(workspace)
+      .then(({ chats, error }) => {
+        if (current) setLoaded({ chats: chats.map(hydrateChat), error });
+      })
+      .catch(() => {
+        if (current)
+          setLoaded({
+            chats: [],
+            error:
+              "Saved chats could not be loaded. Existing saved data has been kept.",
+          });
+      });
+    return () => {
+      current = false;
+    };
+  }, [workspace]);
+  if (!loaded)
+    return (
+      <section
+        className="ask-knot"
+        aria-label="Ask Knot chat"
+        aria-busy="true"
+      />
+    );
+  return (
+    <AskKnotPanel
+      {...props}
+      initialChats={loaded.chats}
+      initialError={loaded.error}
+    />
   );
 }
-export function AskKnot({
+function AskKnotPanel({
+  initialChats,
+  initialError,
   workspace,
   documentId,
   initial,
@@ -161,6 +244,8 @@ export function AskKnot({
   onClose: () => void;
   placement?: "page" | "panel";
   onPlacementChange?: () => void;
+  initialChats: Chat[];
+  initialError: string;
   onSource: (
     document: string,
     block: string,
@@ -168,21 +253,7 @@ export function AskKnot({
     pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation,
   ) => Promise<void>;
 }) {
-  const [loadError] = useState(() => {
-    try {
-      readChats(workspace);
-      return "";
-    } catch {
-      return "Saved chats could not be loaded. Existing saved data has been kept.";
-    }
-  });
-  const [chats, setChats] = useState<Chat[]>(() => {
-    try {
-      return readChats(workspace);
-    } catch {
-      return [];
-    }
-  });
+  const [chats, setChats] = useState<Chat[]>(initialChats);
   const [chatId, setChatId] = useState(() => {
     let previous: string | null = null;
     try {
@@ -211,13 +282,17 @@ export function AskKnot({
   const [turns, setTurns] = useState<Turn[]>(
     () => chats.find((c) => c.id === chatId)?.turns ?? [],
   );
+  const [spent, setSpent] = useState<Spent>(
+    () => chats.find((c) => c.id === chatId)?.spent ?? noSpend,
+  );
+  const spentRef = useRef(spent);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [editedText, setEditedText] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [cardAdded, setCardAdded] = useState<number | null>(null);
-  const [saveError, setSaveError] = useState(loadError);
+  const [saveError, setSaveError] = useState(initialError);
   const turnsRef = useRef(turns);
   const [context, setContext] = useState(initial);
   const sourceChoicesChanged = useRef(false);
@@ -521,22 +596,36 @@ export function AskKnot({
         "New chat",
       updated: Date.now(),
       turns: value,
+      spent: spentRef.current,
     };
-    try {
-      if (value.length) saveChat(workspace, chat);
-      if (mounted.current) setSaveError("");
-    } catch {
-      if (mounted.current)
-        setSaveError(
-          "This chat could not be saved. Free up local storage and try again.",
-        );
-    }
+    if (value.length)
+      saveChatRecord(workspace, chat.id, serializeChat(chat)).then(
+        () => {
+          if (mounted.current) setSaveError("");
+        },
+        () => {
+          if (mounted.current)
+            setSaveError(
+              "This chat could not be saved to the workspace. Try again.",
+            );
+        },
+      );
     if (mounted.current && value.length)
       setChats((previous) => [
         chat,
         ...previous.filter((c) => c.id !== chat.id),
       ]);
-    if (mounted.current) setTurns(value);
+    if (mounted.current) {
+      setTurns(value);
+      setSpent(spentRef.current);
+    }
+  }
+  /** Records a request's cost on its answer and in the chat it was sent from. */
+  function recordCost(draft: Turn, cost: AiCost, chat: string) {
+    if (!mounted.current || chatIdRef.current !== chat) return;
+    draft.cost = cost;
+    spentRef.current = addSpend(spentRef.current, cost);
+    update([...turnsRef.current]);
   }
   function openChat(chat?: Chat) {
     const active = request.current;
@@ -554,6 +643,8 @@ export function AskKnot({
     setChatId(id);
     turnsRef.current = chat?.turns ?? [];
     setTurns(turnsRef.current);
+    spentRef.current = chat?.spent ?? noSpend;
+    setSpent(spentRef.current);
     setPrompt("");
     setEditing(null);
     setError("");
@@ -854,6 +945,8 @@ export function AskKnot({
         const branch = crypto.randomUUID();
         chatIdRef.current = branch;
         setChatId(branch);
+        // A branch starts its own total; the original chat keeps its spend.
+        spentRef.current = noSpend;
       }
       followLatest.current = true;
       update([...base.map((t) => ({ ...t })), user, draft]);
@@ -883,8 +976,10 @@ export function AskKnot({
               )
             : model;
         draft.autoModel = model === "auto" ? chosen : undefined;
-        const channel = new Channel<{ delta: string }>();
-        channel.onmessage = ({ delta }) => {
+        const sentFrom = chatIdRef.current;
+        const channel = new Channel<{ delta: string; cost?: AiCost }>();
+        channel.onmessage = ({ delta, cost }) => {
+          if (cost) return recordCost(draft!, cost, sentFrom);
           if (
             request.current !== id ||
             abort.signal.aborted ||
@@ -1224,6 +1319,8 @@ export function AskKnot({
         const branch = crypto.randomUUID();
         chatIdRef.current = branch;
         setChatId(branch);
+        // A branch starts its own total; the original chat keeps its spend.
+        spentRef.current = noSpend;
       }
       followLatest.current = true;
       update([...base.map((turn) => ({ ...turn })), user, draft]);
@@ -1233,8 +1330,10 @@ export function AskKnot({
       if (!retry) setPrompt("");
       let output = "";
       let displayed = false;
-      const channel = new Channel<{ delta: string }>();
-      channel.onmessage = ({ delta }) => {
+      const sentFrom = chatIdRef.current;
+      const channel = new Channel<{ delta: string; cost?: AiCost }>();
+      channel.onmessage = ({ delta, cost }) => {
+        if (cost) return recordCost(draft!, cost, sentFrom);
         if (request.current !== id || !mounted.current) return;
         output += delta;
         if (action === "ask") {
@@ -1388,6 +1487,8 @@ export function AskKnot({
                   <small>
                     {new Date(chat.updated).toLocaleDateString()} ·{" "}
                     {chat.turns.length} messages
+                    {!!chat.spent?.priced &&
+                      ` · ≈ ${formatUsd(chat.spent.usd)}`}
                   </small>
                 </span>
               </button>
@@ -1404,11 +1505,10 @@ export function AskKnot({
                   <span>Delete this chat permanently?</span>
                   <button
                     disabled={busy}
-                    onClick={() => {
+                    onClick={async () => {
                       try {
-                        localStorage.removeItem(
-                          chatPrefix(workspace) + chat.id,
-                        );
+                        await deleteChatRecord(workspace, chat.id);
+                        if (!mounted.current) return;
                         setChats((previous) =>
                           previous.filter((c) => c.id !== chat.id),
                         );
@@ -1418,9 +1518,10 @@ export function AskKnot({
                         }
                         setDeleting(null);
                       } catch {
-                        setSaveError(
-                          "Could not delete this chat. Please try again.",
-                        );
+                        if (mounted.current)
+                          setSaveError(
+                            "Could not delete this chat. Please try again.",
+                          );
                       }
                     }}
                   >
@@ -1551,7 +1652,8 @@ export function AskKnot({
                   Your key is stored in Windows Credential Manager. Context
                   shown here is sent when you ask. If AI suggestions are
                   enabled, current note excerpts are also sent when you open an
-                  empty chat.
+                  empty chat. Chats are saved in this workspace and included
+                  in its backups.
                 </p>
               </details>
             </section>
@@ -1646,6 +1748,18 @@ export function AskKnot({
                       turn.elapsedSeconds !== undefined && (
                         <ResponseDuration seconds={turn.elapsedSeconds} />
                       )
+                    )}
+                    {turn.cost && (
+                      <span
+                        className="ask-response-cost"
+                        tabIndex={0}
+                        data-tooltip={costDetail(turn.cost)}
+                        aria-label={`${turn.cost.usd === null ? "Cost unknown" : `Estimated cost ${formatUsd(turn.cost.usd)}`}. ${costDetail(turn.cost)}`}
+                      >
+                        {turn.cost.usd === null
+                          ? "Cost unknown"
+                          : `≈ ${formatUsd(turn.cost.usd)}`}
+                      </span>
                     )}
                   </div>
                 )}
@@ -1915,6 +2029,17 @@ export function AskKnot({
                 )}
               </article>
             ))}
+            {(spent.priced > 0 || spent.unpriced > 0) && (
+              <p
+                className="ask-chat-cost"
+                tabIndex={0}
+                data-tooltip={spentDetail(spent)}
+                aria-label={`This chat: about ${formatUsd(spent.usd)}. ${spentDetail(spent)}`}
+              >
+                This chat ≈ {formatUsd(spent.usd)}
+                {spent.unpriced > 0 && ` + ${spent.unpriced} unpriced`}
+              </p>
+            )}
           </div>
           <div className="ask-compose">
             {saveError && (

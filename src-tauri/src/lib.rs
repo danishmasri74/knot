@@ -1,4 +1,5 @@
 mod ai;
+mod ai_chats;
 mod ai_context;
 mod topic;
 mod backup;
@@ -333,6 +334,43 @@ async fn relocate_workspace(
     };
     browser::after_transition(&app).await;
     Ok(relocated)
+}
+/// Runs `f` only if `workspace` is still the active one, so a chat save queued
+/// before a workspace switch can never land in the newly opened workspace.
+fn with_active<T>(
+    state: &State<AppState>,
+    workspace: &str,
+    f: impl FnOnce(&mut Workspace) -> storage::Result<T>,
+) -> Reply<T> {
+    let mut guard = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace lock unavailable")?;
+    let active = workspaces::catalog(&state.base, &guard)
+        .map_err(|e| e.to_string())?
+        .active;
+    if active.as_deref() != Some(workspace) {
+        return Err("The workspace changed. This chat was not saved.".into());
+    }
+    let ws = guard.as_mut().map_err(|error| error.clone())?;
+    f(ws).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn ai_chats_list(state: State<'_, AppState>, workspace: String) -> Reply<Vec<String>> {
+    with_active(&state, &workspace, |w| w.ai_chats())
+}
+#[tauri::command]
+async fn ai_chat_save(
+    state: State<'_, AppState>,
+    workspace: String,
+    id: String,
+    data: String,
+) -> Reply<()> {
+    with_active(&state, &workspace, |w| w.save_ai_chat(&id, &data))
+}
+#[tauri::command]
+async fn ai_chat_delete(state: State<'_, AppState>, workspace: String, id: String) -> Reply<()> {
+    with_active(&state, &workspace, |w| w.delete_ai_chat(&id))
 }
 #[tauri::command]
 async fn set_favorite(state: State<'_, AppState>, id: String, favorite: bool) -> Reply<()> {
@@ -802,6 +840,9 @@ pub fn run() {
                 relocate_workspace,
                 collection_catalog,
                 set_favorite,
+                ai_chats_list,
+                ai_chat_save,
+                ai_chat_delete,
                 create_collection,
                 getting_started_status,
                 install_getting_started,

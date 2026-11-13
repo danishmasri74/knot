@@ -16,3 +16,5 @@
 - The sidebar opens your notebook in one place only, remembers whether it's collapsed and which sections are open, and pinned collections start open.
 - Add to Favorites is now in a notebook's ⋯ menu in the sidebar, and empty sidebar sections show a short hint instead of large placeholders.
 - Ask Knot thinks more carefully with the Reasoning and Premium models (GPT-6.1 Sol and GPT-6 Astra), so their answers can take a little longer.
+- Each Ask Knot answer shows its estimated cost, and the chat shows a running total, so you can see what your OpenAI key is spending.
+- Ask Knot chats are now saved in your workspace, so backups and restores include them. Chats from earlier versions move over automatically.

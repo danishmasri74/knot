@@ -365,14 +365,20 @@ try {
     window.__TAURI_INTERNALS__.invoke("create_backup"),
   );
   assert.ok(backup);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const doc = document.querySelector("affine-editor-container").doc;
     doc
       .getBlocksByFlavour("knot:web-source")
       .forEach(({ model }) => doc.deleteBlock(model));
-    Object.keys(localStorage)
-      .filter((key) => key.startsWith("knot.ai.chats."))
-      .forEach((key) => localStorage.removeItem(key));
+    // Chats are workspace data now; delete them so evidence is proven
+    // independent of chats (the backup still holds its own copy).
+    const tauri = window.__TAURI_INTERNALS__;
+    const { active } = await tauri.invoke("workspace_catalog");
+    for (const data of await tauri.invoke("ai_chats_list", { workspace: active }))
+      await tauri.invoke("ai_chat_delete", {
+        workspace: active,
+        id: JSON.parse(data).id,
+      });
   });
   await stop();
   await launch();
@@ -443,12 +449,13 @@ try {
   );
   await page.evaluate(() => {
     window.invalidRef = false;
-    window.originalStorageSet = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-      if (key.startsWith("knot.ai.chats."))
-        throw new DOMException("Quota exceeded", "QuotaExceededError");
-      return window.originalStorageSet.call(this, key, value);
-    };
+    // Fail chat saves at the IPC boundary to exercise Retry save.
+    const tauri = window.__TAURI_INTERNALS__;
+    window.originalInvoke = tauri.invoke;
+    tauri.invoke = (cmd, ...rest) =>
+      cmd === "ai_chat_save"
+        ? Promise.reject("disk full")
+        : window.originalInvoke(cmd, ...rest);
   });
   await page.getByLabel("Writing actions", { exact: true }).click();
   await page.getByRole("button", { name: "Ask", exact: true }).click();
@@ -459,7 +466,7 @@ try {
   );
   await page.getByRole("button", { name: "Retry save", exact: true }).waitFor();
   await page.evaluate(
-    () => (Storage.prototype.setItem = window.originalStorageSet),
+    () => (window.__TAURI_INTERNALS__.invoke = window.originalInvoke),
   );
   await page.getByRole("button", { name: "Retry save", exact: true }).click();
   assert.equal(
