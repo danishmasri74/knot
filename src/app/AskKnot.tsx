@@ -2423,6 +2423,8 @@ function AskKnotPanel({
                 </select>
                 {busy ? (
                   <button
+                    className="ask-send ask-stop"
+                    aria-label="Stop"
                     onClick={() => {
                       retrievalAbort.current?.abort();
                       clearStreamTimer();
@@ -2442,7 +2444,7 @@ function AskKnotPanel({
                       }
                     }}
                   >
-                    Stop
+                    <ShellIcon name="stop" />
                   </button>
                 ) : (
                   <button

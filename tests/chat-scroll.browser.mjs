@@ -101,6 +101,14 @@ try {
   await page.getByLabel("Ask Knot message").fill("Continue");
   await page.getByLabel("Send to Knot").click();
   await page.waitForFunction(() => !!window.stream);
+  const stop = page.getByRole("button", { name: "Stop", exact: true });
+  assert.equal((await stop.innerText()).trim(), "", "Stop is an icon button");
+  assert.equal(await stop.locator(".shell-icon").count(), 1);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
+    await page.locator(".ask-compose").screenshot({ path: `test-results/ask-stop-${theme}.png` });
+  }
+  await page.evaluate(() => delete document.documentElement.dataset.theme);
   const timer = page.getByRole("timer", { name: "Response time elapsed" });
   await timer.waitFor();
   await page.waitForFunction(() => {

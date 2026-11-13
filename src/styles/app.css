@@ -3589,6 +3589,9 @@ main:has(.settings-modal) > .editor-area {
   width: 17px;
   height: 17px;
 }
+.ask-stop .shell-icon path {
+  fill: currentColor;
+}
 .ask-footnote {
   font-size: 10px;
   line-height: 1.5;

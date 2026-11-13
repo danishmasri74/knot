@@ -24,6 +24,7 @@ export const shellIconPaths = {
     "M10 3l2.4 6.6L19 12l-6.6 2.4L10 21l-2.4-6.6L1 12l6.6-2.4L10 3z M20 2v6 M17 5h6",
   close: "M6 6l12 12 M18 6L6 18",
   arrowUp: "M12 19V5 M6 11l6-6 6 6",
+  stop: "M8 7h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z",
   refresh: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8 M21 3v5h-5",
   locate:
     "M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0",

@@ -240,7 +240,7 @@ try {
       !document
         .querySelector(".web-source-item summary")
         ?.textContent.includes("fetching") &&
-      !document.querySelector(".ask-compose")?.textContent.includes("Stop"),
+      !document.querySelector('.ask-compose [aria-label="Stop"]'),
   );
   assert.deepEqual(await page.evaluate(() => window.webCalls.at(-1)), [
     "https://example.com/missing",
