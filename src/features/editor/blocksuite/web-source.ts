@@ -17,6 +17,7 @@ import {
   webProvenance,
 } from "../../../services/web-ai-evidence";
 import { passageUrl } from "../../../services/text-fragment";
+import { citedSentence } from "../../../services/cited-sentence";
 import {
   ExcerptHtmlAdapter,
   ExcerptTextAdapter,
@@ -45,6 +46,11 @@ class WebSourceBlock extends BlockComponent<WebSourceModel> {
   }
   override renderBlock() {
     const source = readDurableWebSource(this.model.evidence);
+    // The first line names the content these excerpts support.
+    const supports = this.model.text
+      .toString()
+      .split("\n", 1)[0]
+      .replace(/^Supports:\s*/, "");
     return html`<details class="knot-web-source" contenteditable="false">
       <summary>
         ${source?.sections
@@ -63,15 +69,19 @@ class WebSourceBlock extends BlockComponent<WebSourceModel> {
                 · ${source.method}</small
               >
               ${source.warnings.map((w) => html`<p>${w}</p>`)}
-              ${source.sections.map(
-                (s) =>
-                  html`<blockquote>${s.citation} ${s.text}</blockquote>
-                    <a
-                      class="knot-web-source-passage"
-                      href=${passageUrl(source.finalUrl, s.text)}
-                      >Open passage</a
-                    >`,
-              )}`
+              ${source.sections.map((s) => {
+                const sentence = citedSentence(supports, s.text);
+                // The quote is pre-wrap: keep its template free of whitespace.
+                const text = sentence
+                  ? html`${s.text.slice(0, sentence.start)}<mark>${sentence.text}</mark>${s.text.slice(sentence.end)}`
+                  : s.text;
+                return html`<blockquote>${s.citation} ${text}</blockquote>
+                  <a
+                    class="knot-web-source-passage"
+                    href=${passageUrl(source.finalUrl, sentence?.text ?? s.text)}
+                    >Open passage</a
+                  >`;
+              })}`
           : html`<p>
               Source metadata is invalid. Retained text remains available.
             </p>`

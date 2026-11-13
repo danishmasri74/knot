@@ -38,6 +38,7 @@ import {
 import { WebSourceCoordinator, detectWebUrls } from "../services/web-sources";
 import { WEB_LIMITS, type WebAttempt } from "../services/web-source-types";
 import { passageUrl } from "../services/text-fragment";
+import { citedSentence, claimsFor } from "../services/cited-sentence";
 import {
   composeAiContext,
   retainedWebAttempts,
@@ -3198,6 +3199,11 @@ const CitationSources = memo(function CitationSources({
           (sources.every((source) => !source.citation)
             ? sources[id - 1]
             : undefined);
+        // A long website passage is narrowed to the sentence the answer used.
+        const sentence =
+          source?.kind === "web"
+            ? citedSentence(claimsFor(text, `[S${id}]`), source.text)
+            : null;
         return source ? (
           <div key={id}>
             <div className="ask-source-title">
@@ -3205,9 +3211,23 @@ const CitationSources = memo(function CitationSources({
               <ShellIcon name={source.kind === "link" ? "globe" : "note"} />
               <span>{source.title || "Source note"}</span>
             </div>
-            <blockquote>
-              {source.kind === "link" ? linkLabel(source.url) : source.text}
-            </blockquote>
+            {source.kind === "web" && sentence ? (
+              <>
+                <blockquote>
+                  {sentence.start > 0 && "… "}
+                  {sentence.text}
+                  {sentence.end < source.text.length && " …"}
+                </blockquote>
+                <details className="ask-source-passage">
+                  <summary>Full passage</summary>
+                  <blockquote>{source.text}</blockquote>
+                </details>
+              </>
+            ) : (
+              <blockquote>
+                {source.kind === "link" ? linkLabel(source.url) : source.text}
+              </blockquote>
+            )}
             <button
               onClick={() => {
                 setError("");
@@ -3220,7 +3240,7 @@ const CitationSources = memo(function CitationSources({
                             retainedWebAttempts(context).find(
                               (a) => a.capture?.captureId === source.captureId,
                             )?.capture?.finalUrl ?? "",
-                            source.text,
+                            sentence?.text ?? source.text,
                           ),
                         )
                       : onSource(
