@@ -37,6 +37,7 @@ import {
 } from "../services/ai-chats";
 import { WebSourceCoordinator, detectWebUrls } from "../services/web-sources";
 import { WEB_LIMITS, type WebAttempt } from "../services/web-source-types";
+import { passageUrl } from "../services/text-fragment";
 import {
   composeAiContext,
   retainedWebAttempts,
@@ -3215,9 +3216,12 @@ const CitationSources = memo(function CitationSources({
                     ? browserApi.external(source.url)
                     : source.kind === "web"
                       ? browserApi.external(
-                          retainedWebAttempts(context).find(
-                            (a) => a.capture?.captureId === source.captureId,
-                          )?.capture?.finalUrl ?? "",
+                          passageUrl(
+                            retainedWebAttempts(context).find(
+                              (a) => a.capture?.captureId === source.captureId,
+                            )?.capture?.finalUrl ?? "",
+                            source.text,
+                          ),
                         )
                       : onSource(
                           source.document,

@@ -16,6 +16,7 @@ import {
   readDurableWebSource,
   webProvenance,
 } from "../../../services/web-ai-evidence";
+import { passageUrl } from "../../../services/text-fragment";
 import {
   ExcerptHtmlAdapter,
   ExcerptTextAdapter,
@@ -62,7 +63,15 @@ class WebSourceBlock extends BlockComponent<WebSourceModel> {
                 · ${source.method}</small
               >
               ${source.warnings.map((w) => html`<p>${w}</p>`)}
-              ${source.sections.map((s) => html`<blockquote>${s.citation} ${s.text}</blockquote>`)}`
+              ${source.sections.map(
+                (s) =>
+                  html`<blockquote>${s.citation} ${s.text}</blockquote>
+                    <a
+                      class="knot-web-source-passage"
+                      href=${passageUrl(source.finalUrl, s.text)}
+                      >Open passage</a
+                    >`,
+              )}`
           : html`<p>
               Source metadata is invalid. Retained text remains available.
             </p>`
