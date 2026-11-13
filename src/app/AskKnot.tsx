@@ -1496,7 +1496,10 @@ function AskKnotPanel({
       if (proposed) {
         try {
           draft.proposal = validateProposal(
-            JSON.parse(action === "auto" ? toolArguments : output),
+            action === "auto"
+              ? // Each tool sends only its own field; restore the other.
+                { replacements: [], blocks: [], ...JSON.parse(toolArguments) }
+              : JSON.parse(output),
             requestContext,
           );
           if (

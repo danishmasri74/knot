@@ -12,7 +12,8 @@ Where the build differs from the design below:
 - **Model choice** uses edit intent: with tools offered and an edit-like message, automatic model choice prefers writing models, otherwise the Ask order.
 - **Per-chat abilities** are stored with the chat only when they differ from Settings; otherwise the chat follows Settings live.
 - **"Insert into note" / "Make canvas cards"** show the short label in the chat and send the answer as the message (`request.message`), because history isn't replayed for scoped requests.
-- **Verification:** Rust tests for tool payloads and function-call streams, unit tests for abilities, tool selection, edit intent and proposal history, `tests/ask-auto-actions.browser.mjs` (mocked backend), and 20 routing cases in `tests/benchmarks/routing.v1.json` (paid run not yet done).
+- **Verification:** Rust tests for tool payloads and function-call streams, unit tests for abilities, tool selection, edit intent and proposal history, `tests/ask-auto-actions.browser.mjs` (mocked backend), and 20 routing cases in `tests/benchmarks/routing.v1.json`.
+- **Routing runs on GPT-6 Luna (13 November 2026, US$0.50 approved limit, about US$0.0024 per run).** First run: 19/20 routes correct. Case 13 ("Rewrite this to sound more formal" with only the canvas tool offered) created a canvas card instead of answering, and case 19 routed correctly but its rewrite also returned `blocks`, which Apply refuses. Fixes: each tool's parameters now hold only its own fields (`tool_schema`; a rewrite can't return blocks, and the app restores the missing field before validating), and the routing rule says to answer when the tool for the requested change isn't offered. Second run: 20/20, no rewrite with blocks; case 13 answers with a formal version and says it can't edit here. Output quality is ungraded.
 
 ## 1. Problem
 

@@ -177,10 +177,10 @@ try {
         call: "rewrite_selection",
       },
       {
-        delta: JSON.stringify({
-          replacements: ["Beta ships in March."],
-          blocks: [],
-        }).slice(20),
+        // The rewrite tool sends only replacements.
+        delta: JSON.stringify({ replacements: ["Beta ships in March."] }).slice(
+          20,
+        ),
         call: "rewrite_selection",
       },
     ]),

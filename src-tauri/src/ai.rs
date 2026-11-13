@@ -369,16 +369,30 @@ pub(crate) const TOOLS: [(&str, &str); 3] = [
 pub(crate) fn tool_mode(name: &str) -> Option<&'static str> {
     TOOLS.iter().find(|(tool, _)| *tool == name).map(|(_, mode)| *mode)
 }
-const AUTO_ROUTING: &str = "Answer in chat by default. You may also propose one edit by calling a tool, but only when the user asks to change, add to, or create something in their note or canvas (for example rewrite, shorten, fix, translate, add a section, draft into the note, turn this into cards, make a mind map). Questions, explanations and summaries the user has not asked to put into the note get a chat answer. If it is unclear whether the user wants the note changed, answer in chat. Call at most one tool. When you call a tool, write at most one short sentence before it and never repeat the proposal's content in chat. The user previews every proposal and decides whether to apply it; never say it was applied or saved.";
+const AUTO_ROUTING: &str = "Answer in chat by default. You may also propose one edit by calling a tool, but only when the user asks to change, add to, or create something in their note or canvas (for example rewrite, shorten, fix, translate, add a section, draft into the note, turn this into cards, make a mind map). Questions, explanations and summaries the user has not asked to put into the note get a chat answer. If it is unclear whether the user wants the note changed, answer in chat. Call at most one tool, and only the tool for the kind of change the user asked for; if that tool is not offered, answer in chat and say you can't make that change here. When you call a tool, write at most one short sentence before it and never repeat the proposal's content in chat. The user previews every proposal and decides whether to apply it; never say it was applied or saved.";
 const AUTO_EDIT: &str = "Tool arguments never include HTML.";
 /// When to call each tool and how to fill its arguments. Stable per tool so
 /// automatic requests with the same tools share an instruction prefix.
 fn tool_rules(name: &str) -> String {
     match name {
-        "rewrite_selection" => format!("rewrite_selection replaces the supplied runs, which are the user's selected text; use it to rewrite, shorten, expand, fix, restyle or translate the selection. {BASE_REWRITE} {BASE_REWRITE_BLOCKS}"),
-        "insert_blocks" => format!("insert_blocks appends new content to the current note; use it to add, draft or insert content into the note. {BASE_INSERT} Leave replacements empty."),
+        "rewrite_selection" => format!("rewrite_selection replaces the supplied runs, which are the user's selected text; use it to rewrite, shorten, expand, fix, restyle or translate the selection. {BASE_REWRITE}"),
+        "insert_blocks" => format!("insert_blocks appends new content to the current note; use it to add, draft or insert content into the note. {BASE_INSERT}"),
         _ => format!("create_on_canvas adds cards, arrows and/or a native mind map to the open canvas; use it when the user asks to put content on the canvas or to make cards, a mind map or a diagram. {CANVAS_RULES} {CANVAS_CLOSE}"),
     }
+}
+/// A tool's parameters: the edit schema without the field its edit never
+/// uses, so a rewrite cannot also return blocks. The app restores the
+/// missing field as an empty array before validating.
+fn tool_schema(mode: &str, web: bool) -> Value {
+    let mut schema = edit_schema(mode, web);
+    let unused = if mode == "rewrite" { "blocks" } else { "replacements" };
+    if let Some(properties) = schema["properties"].as_object_mut() {
+        properties.remove(unused);
+    }
+    if let Some(required) = schema["required"].as_array_mut() {
+        required.retain(|field| field != unused);
+    }
+    schema
 }
 fn tool_description(name: &str) -> &'static str {
     match name {
@@ -423,7 +437,7 @@ fn tool_request_body(
     body["tools"] = json!(tools
         .iter()
         .map(|name| json!({"type": "function", "name": name, "description": tool_description(name),
-            "strict": true, "parameters": edit_schema(tool_mode(name).unwrap_or("insert"), web)}))
+            "strict": true, "parameters": tool_schema(tool_mode(name).unwrap_or("insert"), web)}))
         .collect::<Vec<_>>());
     body["tool_choice"] = json!("auto");
     body["parallel_tool_calls"] = json!(false);
@@ -858,7 +872,7 @@ mod tests {
         for tool in offered {
             assert_eq!(tool["type"], "function");
             assert_eq!(tool["strict"], true);
-            assert_eq!(tool["parameters"], edit_schema(tool_mode(tool["name"].as_str().unwrap()).unwrap(), false));
+            assert_eq!(tool["parameters"], tool_schema(tool_mode(tool["name"].as_str().unwrap()).unwrap(), false));
         }
         let instructions = body["instructions"].as_str().unwrap();
         assert!(instructions.starts_with(BASE_CORE));
@@ -873,7 +887,13 @@ mod tests {
         // Web evidence adds sourceRefs to tool arguments as it does to proposals.
         let web = r#"{"webOutcomes":[{"state":"ready"}],"citationSources":[{"kind":"web","ref":"c/s1","text":"A"}]}"#;
         let canvas = tool_request_body(MODELS[0], &messages, web, &["create_on_canvas".into()], None, None);
-        assert_eq!(canvas["tools"][0]["parameters"], edit_schema("canvas", true));
+        assert_eq!(canvas["tools"][0]["parameters"], tool_schema("canvas", true));
+        // Each tool has only its own fields: a rewrite cannot return blocks.
+        let fields = |tool: &Value| tool["parameters"]["required"].as_array().unwrap().iter().map(|f| f.as_str().unwrap().to_owned()).collect::<Vec<_>>();
+        assert_eq!(fields(&offered[0]), ["replacements"]);
+        assert_eq!(fields(&offered[1]), ["blocks"]);
+        assert_eq!(fields(&canvas["tools"][0]), ["blocks", "connections", "mindmap"]);
+        assert!(canvas["tools"][0]["parameters"]["properties"].get("replacements").is_none());
         assert!(canvas["instructions"].as_str().unwrap().contains(CANVAS_RULES));
     }
     /// Serves one SSE body and returns the result, delivered events and operation.
