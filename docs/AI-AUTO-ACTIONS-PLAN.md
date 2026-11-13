@@ -13,6 +13,7 @@ Chosen 13 November 2026: the model decides when to search, accepting about 1–2
 - **Without an open note** an automatic message goes through the same loop with no note context (`sendWorkspace` with `auto`). Older chats' Ask messages and "Ask"-mode retries keep the search-first path.
 - **"Just answer instead"** is now an automatic message with the edit tools removed, so it can still search.
 - **Verification:** Rust tests for the search tool, result input and privacy of evidence fields; unit tests for resolution, history and tool selection; `tests/ask-auto-actions.browser.mjs` drives a search round trip; `chat-composer.browser.mjs` now covers the Abilities popover instead of the dropdown; routing cases 21–26 cover search.
+- **Routing run on GPT-6 Luna (13 November 2026, US$0.50 approved limit, about US$0.0033):** 27/27. Cases 21, 24 and 26 searched with short, specific queries ("spaced repetition", "pricing experiments", "onboarding"); questions the open note answers, a summary of it and a general-knowledge question did not search. Case 27 sent a completed search back: the API accepted the call and result items, and the answer used both excerpts with their continued citations ([S7], [S8]) and kept the exception. The full loop in the app (search on the device between rounds) is covered by the mocked browser test, not by a live run.
 
 ## Phase 1 as built
 
