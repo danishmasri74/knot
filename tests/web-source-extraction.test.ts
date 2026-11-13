@@ -58,3 +58,20 @@ test("long passages keep Unicode intact and reject excessive DOMs", () => {
     ),
   ).toThrow("DOM limit");
 });
+
+test("layout tables become text and cell whitespace collapses", () => {
+  const { sections } = extractWebSource(
+    `<html><body><main><h1>Guide</h1><table><tr><td class="icon"><i title="Note"></i></td><td class="content">This tutorial needs a review.
+         You can edit it.</td></tr></table><table><tr><th>Name</th><th>Note</th></tr><tr><td>Tea</td><td></td></tr><tr><td>Rice
+      bowl</td><td>Hot</td></tr></table></main></body></html>`,
+    "text/html",
+  );
+  expect(sections.find((s) => s.text.startsWith("This tutorial"))).toMatchObject({
+    kind: "text",
+    text: "This tutorial needs a review. You can edit it.",
+  });
+  // Real data tables keep empty cells so columns stay aligned.
+  expect(sections.find((s) => s.kind === "table")?.text).toBe(
+    "Name | Note\nTea | \nRice bowl | Hot",
+  );
+});

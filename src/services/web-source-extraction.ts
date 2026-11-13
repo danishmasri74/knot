@@ -133,17 +133,26 @@ export function extractWebSource(body: string, contentType: string) {
       } else if (tag === "pre")
         add(node.textContent ?? "", "code", headings.filter(Boolean));
       else if (tag === "table") {
-        add(
-          Array.from(node.querySelectorAll("tr"))
-            .map((row) =>
-              Array.from(row.querySelectorAll("th,td"))
-                .map((cell) => cell.textContent?.trim() ?? "")
-                .join(" | "),
-            )
-            .join("\n"),
-          "table",
-          headings.filter(Boolean),
+        // Cells render as one line of flowing text, like the browser shows them.
+        const rows = Array.from(node.querySelectorAll("tr")).map((row) =>
+          Array.from(row.querySelectorAll("th,td")).map((cell) =>
+            (cell.textContent ?? "").replace(/\s+/g, " ").trim(),
+          ),
         );
+        // A table with at most one filled cell per row is layout, such as a
+        // note banner beside an icon cell: keep its text, not "| text".
+        if (rows.every((cells) => cells.filter(Boolean).length <= 1))
+          add(
+            rows.flatMap((cells) => cells.filter(Boolean)).join("\n"),
+            "text",
+            headings.filter(Boolean),
+          );
+        else
+          add(
+            rows.map((cells) => cells.join(" | ")).join("\n"),
+            "table",
+            headings.filter(Boolean),
+          );
       } else if (
         ["p", "li", "blockquote"].includes(tag) &&
         !node.querySelector("p,pre,table")
