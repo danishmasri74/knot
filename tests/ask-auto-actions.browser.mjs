@@ -164,18 +164,18 @@ try {
     exact: true,
   });
   await abilities.click();
-  const edit = page.getByRole("button", { name: "Edit the current note" });
-  assert.equal(await edit.getAttribute("aria-pressed"), "true");
+  const edit = page.getByRole("switch", { name: "Edit the current note" });
+  assert.equal(await edit.getAttribute("aria-checked"), "true");
   assert.equal(
     await page
-      .getByRole("button", { name: "Search my workspace" })
-      .getAttribute("aria-pressed"),
+      .getByRole("switch", { name: "Search my workspace" })
+      .getAttribute("aria-checked"),
     "true",
   );
   assert.equal(
     await page
-      .getByRole("button", { name: "Create cards on canvas" })
-      .getAttribute("aria-pressed"),
+      .getByRole("switch", { name: "Create cards on canvas" })
+      .getAttribute("aria-checked"),
     "true",
   );
   for (const theme of ["light", "dark"]) {
@@ -187,7 +187,7 @@ try {
     });
   }
   await edit.click();
-  assert.equal(await edit.getAttribute("aria-pressed"), "false");
+  assert.equal(await edit.getAttribute("aria-checked"), "false");
   await page.keyboard.press("Escape");
   assert.equal(await page.locator(".ask-abilities-dot").count(), 1);
 
@@ -361,7 +361,7 @@ try {
 
   // With search off for the chat, the tool is not offered.
   await abilities.click();
-  await page.getByRole("button", { name: "Search my workspace" }).click();
+  await page.getByRole("switch", { name: "Search my workspace" }).click();
   await page.keyboard.press("Escape");
   call = await send("What else do my notes say?");
   assert.ok(!(call.tools ?? []).includes("search_workspace"));

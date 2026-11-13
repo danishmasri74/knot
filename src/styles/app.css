@@ -2820,7 +2820,9 @@ main:has(.settings-modal) > .editor-area {
   margin: 8px 0 0;
   color: var(--shell-muted);
 }
-.settings-page button.settings-toggle {
+/* The Settings switch; .knot-switch draws it inside a row that is the switch. */
+.settings-page button.settings-toggle,
+.knot-switch {
   width: 38px;
   height: 22px;
   padding: 3px;
@@ -2829,7 +2831,12 @@ main:has(.settings-modal) > .editor-area {
   background: light-dark(#c5c5c5, #555);
   flex-shrink: 0;
 }
-.settings-toggle span {
+.knot-switch {
+  display: block;
+  box-sizing: border-box;
+}
+.settings-toggle span,
+.knot-switch span {
   display: block;
   width: 16px;
   height: 16px;
@@ -2837,10 +2844,12 @@ main:has(.settings-modal) > .editor-area {
   background: white;
   transition: transform 120ms;
 }
-.settings-page button.settings-toggle[aria-checked="true"] {
+.settings-page button.settings-toggle[aria-checked="true"],
+[aria-checked="true"] > .knot-switch {
   background: var(--control-accent);
 }
-.settings-toggle[aria-checked="true"] span {
+.settings-toggle[aria-checked="true"] span,
+[aria-checked="true"] > .knot-switch span {
   transform: translateX(16px);
 }
 
@@ -2911,7 +2920,8 @@ main:has(.settings-modal) > .editor-area {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .settings-toggle span {
+  .settings-toggle span,
+  .knot-switch span {
     transition: none;
   }
 }
@@ -5941,6 +5951,10 @@ knot-web-source { display: block; margin-block: 8px; }
 .ask-compose-actions > .ask-abilities-button .shell-icon { width: 16px; height: 16px; }
 .ask-abilities-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--shell-accent); }
 .collection-popover:has(.ask-abilities) { width: min(260px, calc(100vw - 16px)); }
+/* Dropdown rows let their text fill the row; the switch keeps its size. */
+.ask-abilities .ask-ability > .knot-switch { flex: none; width: 38px; }
+.ask-abilities .ask-ability:disabled { color: var(--shell-muted); }
+.ask-abilities .ask-ability:disabled .knot-switch { opacity: 0.5; }
 .ask-abilities > p, .ask-abilities > small { display: block; margin: 4px var(--dropdown-row-padding); color: var(--shell-muted); font-size: 11px; line-height: 16px; }
 .ask-proposal-actions .ask-answer-instead { margin-left: auto; color: var(--ask-muted); }
 .ask-composer-box .web-source-item { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; flex: 0 0 auto; }

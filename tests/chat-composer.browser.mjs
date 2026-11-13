@@ -89,11 +89,11 @@ try {
       await trigger.click();
       const menu = page.getByRole("dialog", { name: "Abilities", exact: true });
       await menu.waitFor();
-      const search = menu.getByRole("button", {
+      const search = menu.getByRole("switch", {
         name: "Search my workspace",
         exact: true,
       });
-      const edit = menu.getByRole("button", {
+      const edit = menu.getByRole("switch", {
         name: "Edit the current note",
         exact: true,
       });
@@ -104,8 +104,21 @@ try {
         "the first row takes focus",
       );
       for (const row of [search, edit]) {
-        assert.equal(await row.getAttribute("aria-pressed"), "true");
-        assert.equal(await row.locator('[data-icon="check"]').count(), 1);
+        assert.equal(await row.getAttribute("aria-checked"), "true");
+        assert.equal(
+          await row
+            .locator(".knot-switch")
+            .evaluate((el) => getComputedStyle(el).backgroundColor),
+          await page.evaluate(() => {
+            const probe = document.createElement("span");
+            probe.style.color = "var(--control-accent)";
+            document.body.append(probe);
+            const color = getComputedStyle(probe).color;
+            probe.remove();
+            return color;
+          }),
+          "an on switch uses the Settings accent",
+        );
       }
       const anchor = await trigger.boundingBox();
       const box = await menu.boundingBox();
@@ -125,13 +138,13 @@ try {
         path: `test-results/chat-composer/${theme}-${width}-open.png`,
       });
       // Web search is off in Settings, so its row is disabled and skipped.
-      const web = menu.getByRole("button", {
+      const web = menu.getByRole("switch", {
         name: "Search the web",
         exact: true,
       });
       assert.equal(await web.isDisabled(), true);
-      assert.equal(await web.getAttribute("aria-pressed"), "false");
-      const images = menu.getByRole("button", {
+      assert.equal(await web.getAttribute("aria-checked"), "false");
+      const images = menu.getByRole("switch", {
         name: "Look at images",
         exact: true,
       });
@@ -142,8 +155,15 @@ try {
         true,
       );
       await images.press("Enter");
-      assert.equal(await images.getAttribute("aria-pressed"), "false");
-      assert.equal(await images.locator('[data-icon="check"]').count(), 0);
+      assert.equal(await images.getAttribute("aria-checked"), "false");
+      await page.waitForTimeout(200); // the knob slides for 120ms
+      assert.equal(
+        await images
+          .locator(".knot-switch span")
+          .evaluate((el) => getComputedStyle(el).transform),
+        "none",
+        "an off switch has its knob on the left",
+      );
       assert.equal(await page.locator(".ask-abilities-dot").count(), 1);
       await images.press("Enter");
       assert.equal(await page.locator(".ask-abilities-dot").count(), 0);

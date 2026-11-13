@@ -2885,7 +2885,9 @@ function AskKnotPanel({
                                 ? "Turned off in Settings → AI"
                                 : undefined
                             }
-                            aria-pressed={
+                            role="switch"
+                            className="ask-ability"
+                            aria-checked={
                               settingOff(key) ? false : abilities[key]
                             }
                             onClick={() => {
@@ -2906,9 +2908,10 @@ function AskKnotPanel({
                             }}
                           >
                             <span>{label}</span>
-                            {abilities[key] && !settingOff(key) && (
-                              <ShellIcon name="check" />
-                            )}
+                            {/* The same switch as Settings → AI. */}
+                            <span className="knot-switch" aria-hidden="true">
+                              <span />
+                            </span>
                           </button>
                         ))}
                       </div>
