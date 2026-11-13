@@ -84,7 +84,7 @@ fn network(error: reqwest::Error) -> Failure {
     }
 }
 
-fn public_ip(ip: IpAddr) -> bool {
+pub(crate) fn public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v) => {
             let [a, b, c, _] = v.octets();
@@ -158,6 +158,18 @@ async fn addresses(url: &Url, _policy: &FetchPolicy) -> Result<Vec<SocketAddr>, 
         .collect();
     validate_addresses(&values)?;
     Ok(values)
+}
+/// Address and DNS checks for the rendered fallback, which loads the page
+/// in a WebView instead of this client.
+pub(crate) async fn check_public(value: &str) -> Result<Url, String> {
+    let url = validate_url(value).map_err(|e| e.message)?;
+    addresses(&url, &FetchPolicy::default())
+        .await
+        .map_err(|e| e.message)?;
+    Ok(url)
+}
+pub(crate) fn validate_public_url(value: &str) -> Result<Url, String> {
+    validate_url(value).map_err(|e| e.message)
 }
 fn validate_addresses(values: &[SocketAddr]) -> Result<(), Failure> {
     if values.is_empty() || values.iter().any(|v| !public_ip(v.ip())) {
@@ -532,12 +544,17 @@ pub async fn web_sources_fetch(
     result
 }
 #[tauri::command]
-pub fn web_sources_cancel(state: State<'_, Requests>, id: String) {
+pub fn web_sources_cancel(
+    state: State<'_, Requests>,
+    renders: State<'_, crate::web_render::Renders>,
+    id: String,
+) {
     if let Ok(requests) = state.0.lock() {
         if let Some(cancel) = requests.get(&id) {
             cancel.notify_one();
         }
     }
+    renders.cancel(&id);
 }
 
 #[cfg(test)]

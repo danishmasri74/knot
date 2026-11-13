@@ -79,6 +79,42 @@ export function webSourceLabel(url: string) {
   }
 }
 
+/** Pages with scripts and less text than this are rendered if they also look
+ * like an app shell; below EMPTY_TEXT they are rendered regardless. */
+const SCRIPT_PAGE_TEXT = 400;
+const EMPTY_TEXT = 50;
+/** Markers of a page that fills itself in with JavaScript. */
+const APP_SHELL =
+  /<noscript[\s>]|<script[^>]*\btype=["']?module|<app-root[\s>]|<[a-z]+[^>]*\bid=["']?(?:root|app|__next|__nuxt|___gatsby|svelte)["']?[^>]*>\s*<\//i;
+/**
+ * Whether a fetched page should be loaded in the hidden renderer: it ships
+ * scripts and its text is missing, or small with app-shell markers. A short
+ * ordinary page (like example.com) is not rendered again. Login, challenge,
+ * paywall and error pages are not retried; rendering doesn't fix those.
+ */
+export function needsRenderedCapture(
+  body: string,
+  contentType: string,
+  outcome: { textLength: number } | { error: string },
+): boolean {
+  if (!/html/i.test(contentType)) return false;
+  if ("error" in outcome) return /require JavaScript/i.test(outcome.error);
+  if (!/<script[\s>]/i.test(body)) return false;
+  return (
+    outcome.textLength < EMPTY_TEXT ||
+    (outcome.textLength < SCRIPT_PAGE_TEXT && APP_SHELL.test(body))
+  );
+}
+export function isHashRoute(url: string) {
+  return /^#(?:!|\/)/.test(new URL(url).hash);
+}
+type RenderedPage = {
+  finalUrl: string;
+  body: string;
+  contentType: string;
+  fetchedAt: string;
+};
+
 export function extractInWorker(
   body: string,
   contentType: string,
@@ -163,14 +199,12 @@ export class WebSourceCoordinator {
     };
     const pending: Promise<void>[] = [];
     const groups = new Map<string, WebAttempt[]>();
+    const hashRoutes: WebAttempt[] = [];
     for (const attempt of attempts) {
-      if (/^#(?:!|\/)/.test(new URL(attempt.url).hash)) {
-        report({
-          ...attempt,
-          state: "failed",
-          reason:
-            "This hash-route page needs rendered browser capture, which is not available yet. Open it externally or attach a saved document.",
-        });
+      if (isHashRoute(attempt.url)) {
+        // The route lives after "#", so only a rendered page has its content.
+        hashRoutes.push(attempt);
+        update({ ...attempt, state: "queued" });
         continue;
       }
       const key = webFetchKey(attempt.url);
@@ -178,6 +212,90 @@ export class WebSourceCoordinator {
       update({ ...attempt, state: "queued" });
     }
     const valid = () => this.active?.id === id && !controller.signal.aborted;
+    const finish = async (
+      group: WebAttempt[],
+      page: { finalUrl: string; contentType: string; fetchedAt: string },
+      extracted: Awaited<ReturnType<typeof extractInWorker>>,
+      rendered: boolean,
+    ) => {
+      const hash = Array.from(
+        new Uint8Array(
+          await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(
+              extracted.sections.map((s) => s.text).join("\n"),
+            ),
+          ),
+        ),
+      )
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      if (!valid()) return;
+      const captureId = crypto.randomUUID();
+      for (const attempt of group) {
+        const capture: WebCapture = {
+          version: 1,
+          sourceId: attempt.id,
+          captureId,
+          requestedUrl: attempt.url,
+          finalUrl: page.finalUrl,
+          fetchedAt: page.fetchedAt,
+          contentType: page.contentType,
+          contentHash: hash,
+          ...extracted,
+          method: rendered ? `rendered-${extracted.method}` : extracted.method,
+          title: extracted.title || webSourceLabel(page.finalUrl),
+        };
+        report({
+          ...attempt,
+          capture,
+          state: capture.warnings.length ? "partial" : "ready",
+          reason: undefined,
+        });
+      }
+    };
+    // Rendering runs one page at a time, after the plain fetch showed the page
+    // needs its scripts (or for hash routes, straight away).
+    let renderTurn = Promise.resolve();
+    const render = (
+      url: string,
+      group: WebAttempt[],
+      failed: (error: unknown) => Promise<void> | void,
+    ) => {
+      const run = renderTurn.then(async () => {
+        if (!valid()) return;
+        group.forEach((a) => update({ ...a, state: "fetching" }));
+        try {
+          const page = await invoke<RenderedPage>("web_sources_render", {
+            id,
+            url,
+          });
+          if (!valid()) return;
+          group.forEach((a) => update({ ...a, state: "extracting" }));
+          const extracted = await extractInWorker(
+            page.body,
+            page.contentType,
+            controller.signal,
+          );
+          if (!valid()) return;
+          await finish(group, page, extracted, true);
+        } catch (error) {
+          if (valid()) await failed(error);
+        }
+      });
+      renderTurn = run.catch(() => {});
+      return run;
+    };
+    for (const attempt of hashRoutes)
+      pending.push(
+        render(attempt.url, [attempt], (error) =>
+          report({
+            ...attempt,
+            state: "failed",
+            reason: `This page builds its content with JavaScript and could not be rendered: ${String(error).replace(/^(?:Error: )+/, "")} Open it externally or attach a saved document.`,
+          }),
+        ),
+      );
     let resolveDelivered: () => void = () => {};
     const delivered = new Promise<void>((resolve, reject) => {
       resolveDelivered = resolve;
@@ -218,52 +336,45 @@ export class WebSourceCoordinator {
             return;
           }
           group.forEach((a) => update({ ...a, state: "extracting" }));
+          const body = result.body;
+          const contentType = result.contentType!;
+          let extracted: Awaited<ReturnType<typeof extractInWorker>>;
           try {
-            const extracted = await extractInWorker(
-              result.body,
-              result.contentType!,
+            extracted = await extractInWorker(
+              body,
+              contentType,
               controller.signal,
             );
-            const hash = Array.from(
-              new Uint8Array(
-                await crypto.subtle.digest(
-                  "SHA-256",
-                  new TextEncoder().encode(
-                    extracted.sections.map((s) => s.text).join("\n"),
-                  ),
-                ),
-              ),
-            )
-              .map((b) => b.toString(16).padStart(2, "0"))
-              .join("");
-            if (!valid()) return;
-            const captureId = crypto.randomUUID();
-            for (const attempt of group) {
-              const capture: WebCapture = {
-                version: 1,
-                sourceId: attempt.id,
-                captureId,
-                requestedUrl: attempt.url,
-                finalUrl: result.finalUrl!,
-                fetchedAt: result.fetchedAt!,
-                contentType: result.contentType!,
-                contentHash: hash,
-                ...extracted,
-                title: extracted.title || webSourceLabel(result.finalUrl!),
-              };
-              report({
-                ...attempt,
-                capture,
-                state: capture.warnings.length ? "partial" : "ready",
-                reason: undefined,
-              });
-            }
           } catch (error) {
-            if (valid())
+            if (!valid()) return;
+            const reason = String(error).replace(/^(?:Error: )+/, "");
+            const fail = (extra = "") =>
               group.forEach((a) =>
-                report({ ...a, state: "failed", reason: String(error) }),
+                report({ ...a, state: "failed", reason: reason + extra }),
               );
+            if (needsRenderedCapture(body, contentType, { error: reason }))
+              await render(event.url, group, () =>
+                fail(" Rendering the page with its scripts did not help."),
+              );
+            else fail();
+            return;
           }
+          if (!valid()) return;
+          const textLength = extracted.sections.reduce(
+            (n, s) => n + s.text.length,
+            0,
+          );
+          const page = {
+            finalUrl: result.finalUrl!,
+            contentType,
+            fetchedAt: result.fetchedAt!,
+          };
+          if (needsRenderedCapture(body, contentType, { textLength }))
+            // Keep the plain capture when rendering fails.
+            await render(event.url, group, () =>
+              finish(group, page, extracted, false),
+            );
+          else await finish(group, page, extracted, false);
         })(),
       );
     };

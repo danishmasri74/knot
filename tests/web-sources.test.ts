@@ -6,6 +6,8 @@ import {
   webSourceLabel,
   WebSourceCoordinator,
   extractInWorker,
+  needsRenderedCapture,
+  isHashRoute,
 } from "../src/services/web-sources";
 import {
   composeAiContext,
@@ -246,4 +248,90 @@ test("batch waits for ordered channel delivery after native command completion",
   deliver!({ url: "", status: "complete" });
   await run;
   expect(updates.at(-1)?.state).toBe("failed");
+});
+
+test("only script-built pages go to the rendered fallback", () => {
+  const html = "text/html; charset=utf-8";
+  const shell = '<html><body><div id="root"></div><script src="/app.js"></script></body></html>';
+  expect(needsRenderedCapture(shell, html, { textLength: 120 })).toBe(true);
+  expect(
+    needsRenderedCapture("<body><noscript>Enable JavaScript</noscript><script></script>", html, { textLength: 300 }),
+  ).toBe(true);
+  // A short ordinary page with an analytics script is not rendered again.
+  expect(
+    needsRenderedCapture("<body><h1>Example</h1><p>Short page.</p><script>track()</script>", html, { textLength: 180 }),
+  ).toBe(false);
+  expect(needsRenderedCapture("<body><script></script>", html, { textLength: 10 })).toBe(true);
+  expect(needsRenderedCapture(shell, html, { textLength: 5000 })).toBe(false);
+  expect(needsRenderedCapture("<p>No scripts</p>", html, { textLength: 0 })).toBe(false);
+  expect(needsRenderedCapture(shell, "text/plain", { textLength: 0 })).toBe(false);
+  expect(
+    needsRenderedCapture(shell, html, {
+      error: "No readable text was captured. The page may require JavaScript.",
+    }),
+  ).toBe(true);
+  expect(
+    needsRenderedCapture(shell, html, {
+      error: "This page requires login or a browser challenge.",
+    }),
+  ).toBe(false);
+  expect(isHashRoute("https://example.com/#/guide")).toBe(true);
+  expect(isHashRoute("https://example.com/#!/guide")).toBe(true);
+  expect(isHashRoute("https://example.com/page#section")).toBe(false);
+});
+
+test("hash-route pages are captured through the hidden renderer", async () => {
+  vi.stubGlobal(
+    "Worker",
+    class {
+      onmessage?: (event: { data: unknown }) => void;
+      terminate() {}
+      postMessage({ body }: { body: string }) {
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: {
+              result: {
+                title: "Guide",
+                author: null,
+                published: null,
+                method: "semantic-main-v1",
+                warnings: [],
+                sections: [
+                  { id: "section-1", kind: "text", headings: [], text: body.replace(/<[^>]+>/g, "") },
+                ],
+              },
+            },
+          }),
+        );
+      }
+    },
+  );
+  mock.invoke.mockImplementation(async (command: string) => {
+    if (command === "web_sources_render")
+      return {
+        finalUrl: "https://example.com/#/guide",
+        body: "<main><p>Rendered guide text</p></main>",
+        contentType: "text/html",
+        fetchedAt: "1",
+      };
+    throw new Error(`unexpected ${command}`);
+  });
+  try {
+    const updates: WebAttempt[] = [];
+    await new WebSourceCoordinator().capture(
+      "s",
+      [{ id: "a", url: "https://example.com/#/guide", state: "queued" }],
+      (a) => updates.push(a),
+    );
+    expect(mock.invoke).toHaveBeenCalledWith("web_sources_render", {
+      id: expect.any(String),
+      url: "https://example.com/#/guide",
+    });
+    const last = updates.at(-1)!;
+    expect(last.state).toBe("ready");
+    expect(last.capture?.method).toBe("rendered-semantic-main-v1");
+    expect(last.capture?.sections[0].text).toBe("Rendered guide text");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

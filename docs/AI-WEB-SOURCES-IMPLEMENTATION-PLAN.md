@@ -174,6 +174,8 @@ This can handle some JavaScript-rendered pages and pages the user has legitimate
 
 Automated browser rendering of arbitrary URL batches is a separate future capability. It must not navigate away from the user's existing browser page or reuse its authenticated session silently.
 
+Implemented 13 November 2026 as a separate hidden renderer rather than the mini browser: it uses its own throwaway profile, so it never touches the user's browser page or session. See "Pages built with JavaScript" in [AI.md](AI.md). The explicit "Use this page in Ask Knot" action above is still open.
+
 ## Required acceptance matrix
 
 Use deterministic fixture pages/transports and mocked AI. Public smoke tests are optional; they must not replace assertions or require user API charges.

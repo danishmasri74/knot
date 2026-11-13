@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Manager, Webview, WebviewUrl};
 #[cfg(windows)]
 #[path = "browser_windows.rs"]
-mod platform;
+pub(crate) mod platform;
 pub const LABEL: &str = "mini-browser";
 type Reply<T> = Result<T, String>;
 
@@ -19,7 +19,7 @@ pub fn trusted(view: &Webview) -> bool {
                     && u.port() == Some(1420))
         })
 }
-fn remote(u: &tauri::Url) -> bool {
+pub(crate) fn remote(u: &tauri::Url) -> bool {
     matches!(u.scheme(), "http" | "https")
         && u.host_str().is_some_and(|h| {
             let h = h.trim_end_matches('.');

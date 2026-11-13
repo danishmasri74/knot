@@ -21,6 +21,7 @@ mod tests;
 mod ui_preferences;
 mod workspaces;
 mod web_sources;
+mod web_render;
 use std::sync::Mutex;
 use storage::{Object, Snapshot, Workspace};
 use tauri::{Manager, State};
@@ -700,7 +701,14 @@ pub fn run() {
         // test shell explicitly so its absolute profile cannot be ignored.
         context.config_mut().app.windows[0].create = false;
     }
-    tauri::Builder::default()
+    // Isolated native test runs (debug only) must not hand off to an
+    // installed Knot that is already open.
+    #[cfg(debug_assertions)]
+    let isolated = std::env::var_os("KNOT_TEST_DATA_DIR").is_some();
+    #[cfg(not(debug_assertions))]
+    let isolated = false;
+    let builder = tauri::Builder::default();
+    let builder = if isolated { builder } else { builder
         // Must be first: a second launch (double-clicking a .knotbook while Knot
         // is open) hands its file to this instance instead of failing on the
         // workspace lock, and brings the window forward.
@@ -714,7 +722,8 @@ pub fn run() {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
-        }))
+        })) };
+    builder
         // Signed updates from the releases repository; see docs/UPDATER-INSTALLER-PLAN.md.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -763,6 +772,7 @@ pub fn run() {
         .manage(LastShare(Mutex::new(None)))
         .manage(KnotbookFiles::default())
         .manage(web_sources::Requests::default())
+        .manage(web_render::Renders::default())
         .manage(browser::Browser::default())
         .on_window_event(|window, event| {
             // WebView2 can defer the JS close listener while minimized. Wake
@@ -815,6 +825,7 @@ pub fn run() {
                 ai::ai_cancel,
                 web_sources::web_sources_fetch,
                 web_sources::web_sources_cancel,
+                web_render::web_sources_render,
                 diagnostics::ai_diagnostics,
                 diagnostics::ai_diagnostics_enabled,
                 diagnostics::ai_diagnostics_clear,
