@@ -1296,6 +1296,24 @@ export function App() {
       if (view === "edgeless") setTransition(null);
     }
   }
+  /**
+   * Shows a cited card in the view its document is open in: on the canvas
+   * (opening a document follows Settings → open notes in) or as a page.
+   */
+  async function focusCitedCard(
+    opened: EditorSession,
+    id: string,
+    excerpt: string,
+  ) {
+    const view = opened.editor.mode === "edgeless" ? "edgeless" : "page";
+    if (view === "edgeless") await opened.focusCanvasCard(id);
+    else await opened.focusNotebookNote(id);
+    setMode(opened.editor.mode);
+    setFocusedNote(view === "page" ? id : null);
+    if (session.current !== opened) return;
+    // Jump to the cited words inside the card and highlight them, as search does.
+    await opened.revealSearchMatch(excerpt, id);
+  }
   function select(item: KnowledgeObject, record = true) {
     const view =
       session.current?.doc.id === item.id
@@ -3828,10 +3846,8 @@ export function App() {
                           throw Error(
                             "The cited card placement has changed. The captured excerpt remains here.",
                           );
-                        await opened.focusNotebookNote(location.placement);
+                        await focusCitedCard(opened, location.placement, text);
                         if (!current() || session.current !== opened) return;
-                        setMode(opened.editor.mode);
-                        setFocusedNote(location.placement);
                         openPane("ask");
                         return;
                       }
@@ -3875,8 +3891,7 @@ export function App() {
                         throw Error(
                           "The cited card placement is no longer available.",
                         );
-                      await opened.focusNotebookNote(placement);
-                      setFocusedNote(placement);
+                      await focusCitedCard(opened, placement, text);
                       openPane("ask");
                       return;
                     }
@@ -3944,19 +3959,23 @@ export function App() {
                     const opened = session.current;
                     if (!opened || opened.doc.id !== document) return;
                     if (target.note)
-                      await opened.focusNotebookNote(target.note);
-                    else await opened.setMode("page");
+                      await focusCitedCard(opened, target.note, text);
+                    else {
+                      await opened.setMode("page");
+                      setMode(opened.editor.mode);
+                      setFocusedNote(opened.revealedNoteId);
+                    }
                     if (session.current !== opened) return;
-                    setMode(opened.editor.mode);
-                    setFocusedNote(opened.revealedNoteId);
                     requestAnimationFrame(() => {
                       const element = session.current?.editor.querySelector(
                         `[data-block-id="${CSS.escape(target.id)}"]`,
                       );
-                      element?.scrollIntoView({
-                        block: "center",
-                        behavior: "smooth",
-                      });
+                      // A cited card was already revealed at the excerpt.
+                      if (!target.note)
+                        element?.scrollIntoView({
+                          block: "center",
+                          behavior: "smooth",
+                        });
                       element?.animate(
                         [
                           { backgroundColor: "#ffe08a" },
