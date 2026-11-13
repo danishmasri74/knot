@@ -23,27 +23,30 @@ fn live_quality_benchmark() {
     // Per-case input reservation. The largest v1 case used 1,219 input tokens
     // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
     // more stops the run. Maximum output is capped by the request (6,000).
-    // Web search results arrive as input tokens, so routing reserves more,
-    // plus up to three searches per case at their per-call price.
-    let input_reserve: u64 = if routing { 80_000 } else { 20_000 };
-    let search_reserve = if routing { 3.0 * crate::diagnostics::WEB_SEARCH_USD } else { 0.0 };
+    // Web search results arrive as input tokens, so a case that offers
+    // web_search reserves 80,000 input tokens plus three searches.
     // Reserve the input bound at the highest cache-write rate and maximum output.
     // User must configure STANDARD service and a matching provider project cap.
-    let reserve = estimate(
-        &model,
-        &Usage {
-            input: Some(input_reserve),
-            cached: Some(0),
-            output: Some(6000),
-            cache_write: Some(input_reserve),
-            cache_write_30m: Some(0),
-            cache_write_12h: Some(input_reserve),
-            ..Usage::default()
-        },
-        Some("default"),
-    )
-    .unwrap()
-        + search_reserve;
+    let limits = |case: &Value| -> (u64, u64, f64) {
+        let web = case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "web_search"));
+        let (input, searches) = if web { (80_000, 3) } else { (20_000, 0) };
+        let usd = estimate(
+            &model,
+            &Usage {
+                input: Some(input),
+                cached: Some(0),
+                output: Some(6000),
+                cache_write: Some(input),
+                cache_write_30m: Some(0),
+                cache_write_12h: Some(input),
+                ..Usage::default()
+            },
+            Some("default"),
+        )
+        .unwrap()
+            + searches as f64 * crate::diagnostics::WEB_SEARCH_USD;
+        (input, searches, usd)
+    };
     let suite: Value = serde_json::from_str(if routing {
         include_str!("../../tests/benchmarks/routing.v1.json")
     } else {
@@ -52,8 +55,10 @@ fn live_quality_benchmark() {
     .unwrap();
     let cases = suite["cases"].as_array().unwrap();
     assert_eq!(cases.len(), if routing { 32 } else { 60 });
+    let reserved = cases.iter().map(|case| limits(case).2).sum::<f64>();
+    let largest = cases.iter().map(|case| limits(case).2).fold(0.0, f64::max);
     assert!(
-        reserve * cases.len() as f64 <= budget,
+        reserved <= budget,
         "Budget is below the conservative full-suite reservation; no calls made"
     );
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/benchmarks");
@@ -81,7 +86,7 @@ fn live_quality_benchmark() {
     let mut spent = prior
         .iter()
         .skip(1)
-        .map(|row| row["cost_usd"].as_f64().unwrap_or(reserve))
+        .map(|row| row["cost_usd"].as_f64().unwrap_or(largest))
         .sum::<f64>();
     let completed: std::collections::HashSet<String> = prior
         .iter()
@@ -90,7 +95,13 @@ fn live_quality_benchmark() {
         .filter_map(|row| row["case"].as_str().map(str::to_owned))
         .collect();
     assert!(
-        spent + reserve * (cases.len() - completed.len()) as f64 <= budget,
+        spent
+            + cases
+                .iter()
+                .filter(|case| !completed.contains(case["id"].as_str().unwrap()))
+                .map(|case| limits(case).2)
+                .sum::<f64>()
+            <= budget,
         "Remaining suite exceeds remaining approved budget"
     );
     let mut file = std::fs::OpenOptions::new()
@@ -99,7 +110,7 @@ fn live_quality_benchmark() {
         .open(&result_path)
         .unwrap();
     if resume.is_none() {
-        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*cases.len() as f64,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":input_reserve})).unwrap();
+        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserved,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":20_000,"web_input_reserve_tokens":80_000})).unwrap();
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -111,6 +122,7 @@ fn live_quality_benchmark() {
         // Measurement is used in-memory only; save/finish are deliberately not called.
         for case in cases {
             if completed.contains(case["id"].as_str().unwrap()) { continue; }
+            let (input_reserve, search_limit, reserve) = limits(case);
             assert!(spent + reserve <= budget, "Spending limit reached");
             let messages: Vec<Message> = serde_json::from_value(case["messages"].clone()).unwrap();
             let context = case["context"].to_string();
@@ -158,7 +170,7 @@ fn live_quality_benchmark() {
             println!("{}: success={}, accounted USD {:.6}/{:.2}",case["id"],result.is_ok(),spent,budget);
             let bounded = matches!(measurement.attempt.service_tier.as_deref(), Some("default" | "standard"))
                 && measurement.attempt.usage.input.is_some_and(|n| n <= input_reserve)
-                && searches <= 3
+                && searches <= search_limit
                 && measurement.attempt.usage.output.is_some_and(|n| n <= 6000);
             assert!(result.is_ok() && bounded && cost.is_none_or(|n| n <= reserve), "Request failed or reservation cannot be verified; stopped, results are partial and ungraded");
         }
