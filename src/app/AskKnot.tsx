@@ -15,7 +15,10 @@ import {
   AI_ABILITIES_CHANGED,
   AI_MODELS_CHANGED,
   AI_TOOL_MODES,
+  MAX_IMAGES,
   MAX_SEARCHES,
+  WEB_SEARCH_CHANGED,
+  getWebSearchEnabled,
   automaticAiTools,
   getAiAbilities,
   getAiEnabled,
@@ -53,9 +56,11 @@ import { usesNoteSources } from "../services/ai-source-scope";
 import { type Passage } from "./PassagePicker";
 import type { AiPdfSource } from "../services/pdf-input";
 import {
+  linkCitations,
   readCitationSources,
   withCitationSources,
 } from "../services/ai-citations";
+import type { LinkCitation } from "../services/web-source-types";
 import { prepareAiImage } from "../services/ai-image";
 import {
   aiModelName,
@@ -98,6 +103,11 @@ type Turn = {
     message?: string;
     /** Workspace searches Knot ran for this message, with their evidence. */
     searches?: { callId: string; query: string; evidence: string }[];
+    /** Web searches OpenAI ran for this message, and the links it cited. */
+    webSearches?: number;
+    links?: LinkCitation[];
+    /** Names of the images Knot looked at (the pixels are never stored). */
+    imagesViewed?: string[];
     sourceMode?: SourceMode;
     pdfSource?: AiPdfSource;
     image?: { key: string; name: string };
@@ -110,8 +120,8 @@ type Turn = {
   mode?: "rewrite" | "insert" | "canvas";
   /** While streaming: the model is preparing a proposal (not persisted). */
   preparing?: boolean;
-  /** While streaming: the workspace query being searched (not persisted). */
-  searching?: string;
+  /** While streaming: what Knot is doing, e.g. "Searching the web" (not persisted). */
+  activity?: string;
   status?: "applied" | "dismissed";
   undo?: () => void;
   cost?: AiCost;
@@ -125,6 +135,8 @@ type AiCost = {
   reasoning: number | null;
   tier: string | null;
   pricing: string;
+  /** Hosted web searches, charged per search on top of tokens. */
+  web_searches?: number;
 };
 /** Everything this chat has cost, including retries and replaced answers. */
 type Spent = { usd: number; priced: number; unpriced: number };
@@ -153,11 +165,11 @@ function hydrateChat(record: ChatRecord): Chat {
 function serializeChat(chat: Chat): string {
   const evidence: NonNullable<Chat["evidence"]> = {};
   const storedTurns = chat.turns.map(
-    ({ context, undo, preparing, searching, ...turn }) => {
+    ({ context, undo, preparing, activity, ...turn }) => {
       void context;
       void undo;
       void preparing;
-      void searching;
+      void activity;
       if (turn.request?.sourceMode === "workspace" && turn.attemptId) {
         evidence[turn.attemptId] = turn.request;
         return { ...turn, evidenceId: turn.attemptId, request: undefined };
@@ -192,7 +204,10 @@ function costDetail(cost: AiCost): string {
         : "";
     return `Cost unknown: the usage OpenAI reported for this request can't be priced exactly${tier}. ${usage}. Your OpenAI usage page shows the billed amount.`;
   }
-  return `Estimated from OpenAI's published standard prices and the usage OpenAI reported. ${usage}. Your OpenAI bill is the final amount.`;
+  const searches = cost.web_searches
+    ? ` Includes ${cost.web_searches} web search${cost.web_searches === 1 ? "" : "es"} at $0.01 each.`
+    : "";
+  return `Estimated from OpenAI's published standard prices and the usage OpenAI reported. ${usage}.${searches} Your OpenAI bill is the final amount.`;
 }
 function spentDetail(spent: Spent): string {
   const unpriced = spent.unpriced
@@ -420,12 +435,26 @@ function AskKnotPanel({
     return () => window.removeEventListener(AI_ABILITIES_CHANGED, changed);
   }, []);
   /** Whether Knot may search the workspace for this chat's next message. */
+  const [webSearch, setWebSearch] = useState(getWebSearchEnabled);
+  useEffect(() => {
+    const changed = () => setWebSearch(getWebSearchEnabled());
+    window.addEventListener(WEB_SEARCH_CHANGED, changed);
+    return () => window.removeEventListener(WEB_SEARCH_CHANGED, changed);
+  }, []);
   function searchAvailable() {
     return (
       getAiEnabled() &&
       getWorkspaceSearchEnabled() &&
       (chatAbilitiesRef.current ?? getAiAbilities()).searchWorkspace
     );
+  }
+  /** Abilities Settings turns off for every chat. */
+  function settingOff(key: keyof AiAbilities) {
+    return key === "searchWorkspace"
+      ? !automaticSearch
+      : key === "searchWeb"
+        ? !webSearch
+        : false;
   }
   function changeAbilities(next: AiAbilities | undefined) {
     chatAbilitiesRef.current = next;
@@ -1015,7 +1044,14 @@ function AskKnotPanel({
             : "",
       );
       if (auto) {
-        const tools: AiTool[] = searchAvailable() ? ["search_workspace"] : [];
+        const tools = automaticAiTools(abilities, {
+          selection: false,
+          note: false,
+          canvas: false,
+          editable: false,
+          search: searchAvailable(),
+          web: getAiEnabled() && getWebSearchEnabled(),
+        });
         const chosen =
           model === "auto"
             ? automaticAiModel(models, "ask", input, false, 0)
@@ -1126,12 +1162,15 @@ function AskKnotPanel({
       link?: { parent: string; kind: string };
     };
     sentFrom: string;
+    /** Images view_images may show, from the open note or canvas. */
+    images?: { key: string; name: string }[];
   }): Promise<
     { output: string; toolCall?: AiTool; toolArguments: string } | undefined
   > {
     const searches: NonNullable<NonNullable<Turn["request"]>["searches"]> = [];
     let tools = r.tools;
     let attempt = r.id;
+    const viewed: { callId: string; names: string[]; images: string[] }[] = [];
     const abort = new AbortController();
     if (tools.includes("search_workspace")) {
       retrievalAbort.current?.abort();
@@ -1145,26 +1184,55 @@ function AskKnotPanel({
       let callId = "";
       let toolArguments = "";
       let displayed = false;
+      let cited: {
+        url: string;
+        title?: string;
+        start?: number;
+        end?: number;
+      }[] = [];
       const channel = new Channel<{
         delta: string;
         cost?: AiCost;
         call?: string;
         call_id?: string;
+        status?: string;
+        citations?: typeof cited;
       }>();
-      channel.onmessage = ({ delta, cost, call, call_id }) => {
+      channel.onmessage = ({
+        delta,
+        cost,
+        call,
+        call_id,
+        status,
+        citations,
+      }) => {
         if (cost) return recordCost(r.draft, cost, r.sentFrom);
         if (request.current !== r.id || !mounted.current) return;
+        if (status === "web") {
+          r.request.webSearches = (r.request.webSearches ?? 0) + 1;
+          r.draft.activity = "Searching the web";
+          update([...turnsRef.current]);
+          return;
+        }
+        if (citations) {
+          cited = [...cited, ...citations];
+          return;
+        }
         if (call) {
           if (!toolCall) {
             toolCall = call as AiTool;
             callId = call_id ?? "";
-            if (call === "search_workspace") r.draft.searching = "";
+            if (call === "search_workspace")
+              r.draft.activity = "Searching workspace";
+            else if (call === "view_images")
+              r.draft.activity = "Looking at images";
             else r.draft.preparing = true;
             update([...turnsRef.current]);
           }
           toolArguments += delta;
           return;
         }
+        r.draft.activity = undefined;
         output += delta;
         if (r.mode === "ask" || r.mode === "auto") {
           r.draft.content = output;
@@ -1192,19 +1260,61 @@ function AskKnotPanel({
           mode:
             r.mode !== "auto"
               ? r.mode
-              : tools.length || searches.length
+              : tools.length || searches.length || viewed.length
                 ? "auto"
                 : "ask",
           tools: tools.length ? tools : undefined,
           searches: searches.length ? searches : undefined,
+          viewed: viewed.length ? viewed : undefined,
           onEvent: channel,
         });
       } finally {
         if (inflight.current === attempt) inflight.current = null;
       }
       if (request.current !== r.id || !mounted.current) return;
+      if (toolCall === "view_images") {
+        // Prepared smaller than attachments: up to three go in one request.
+        const chosen = (r.images ?? []).slice(0, MAX_IMAGES);
+        const prepared = [];
+        for (const image of chosen)
+          prepared.push(
+            await prepareAiImage(image.key, { side: 1600, area: 2500000 }),
+          );
+        if (request.current !== r.id || !mounted.current) return;
+        if (!prepared.length || !callId)
+          throw new Error("No images could be read. Please try again.");
+        viewed.push({
+          callId,
+          names: chosen.map((image) => image.name.slice(0, 200)),
+          images: prepared.map((image) => image.pixels),
+        });
+        r.request.imagesViewed = viewed[0].names;
+        tools = tools.filter((tool) => tool !== "view_images");
+        r.draft.content = "";
+        attempt = crypto.randomUUID();
+        continue;
+      }
       if (toolCall !== "search_workspace") {
-        r.draft.searching = undefined;
+        r.draft.activity = undefined;
+        if (cited.length) {
+          // Web links become numbered sources after the note's and workspace's.
+          const converted = linkCitations(
+            output,
+            cited,
+            lastCitation(r.payload.context, [
+              ...searches,
+              {
+                evidence: JSON.stringify({
+                  citationSources: r.request.links ?? [],
+                }),
+              },
+            ]),
+          );
+          output = converted.text;
+          r.request.links = [...(r.request.links ?? []), ...converted.links];
+          if (r.mode === "ask" || r.mode === "auto") r.draft.content = output;
+          update([...turnsRef.current]);
+        }
         return { output, toolCall, toolArguments };
       }
       let query = "";
@@ -1219,7 +1329,7 @@ function AskKnotPanel({
       }
       if (!query || !callId)
         throw new Error("The search request was invalid. Please try again.");
-      r.draft.searching = query;
+      r.draft.activity = "Searching workspace";
       r.draft.content = "";
       update([...turnsRef.current]);
       setRetrievalStatus(`Searching workspace for “${query}”…`);
@@ -1577,6 +1687,8 @@ function AskKnotPanel({
           pdfSource,
         },
       };
+      // Images view_images may show: the focused note's, else the document's.
+      const pictures = action === "auto" ? noteImages(s, current.note) : [];
       // The context a proposal applies to: the retried one, or this capture.
       const editContext: AiContext = retry?.context ?? {
         ...current,
@@ -1609,6 +1721,12 @@ function AskKnotPanel({
                   !editContext.pdf &&
                   editContext.instance === s.doc,
                 search: searchAvailable(),
+                // Captured websites have their own evidence rules.
+                web:
+                  getAiEnabled() &&
+                  getWebSearchEnabled() &&
+                  !webSourcesRef.current.length,
+                images: !!pictures.length,
               },
             )
           : [];
@@ -1672,13 +1790,14 @@ function AskKnotPanel({
             : undefined,
         },
         sentFrom: chatIdRef.current,
+        images: pictures,
       });
       if (!result || request.current !== id || !mounted.current) return;
       const { output, toolCall, toolArguments } = result;
       const proposed =
         action === "auto"
-          ? toolCall && toolCall !== "search_workspace"
-            ? AI_TOOL_MODES[toolCall]
+          ? toolCall && toolCall in AI_TOOL_MODES
+            ? AI_TOOL_MODES[toolCall as keyof typeof AI_TOOL_MODES]
             : undefined
           : action === "ask"
             ? undefined
@@ -1724,7 +1843,7 @@ function AskKnotPanel({
         draft.elapsedSeconds = responseElapsedSeconds(requestStartedAt.current);
         draft.failed = true;
         draft.preparing = undefined;
-        draft.searching = undefined;
+        draft.activity = undefined;
         if (!draft.content) draft.content = "Response interrupted. Try again.";
         update([...turnsRef.current]);
       }
@@ -2152,8 +2271,8 @@ function AskKnotPanel({
                       )
                     ) : (
                       <span className="ask-thinking">
-                        {turn.searching !== undefined
-                          ? "Searching workspace"
+                        {turn.activity
+                          ? turn.activity
                           : turn.preparing ||
                               (turn.request &&
                                 turn.request.mode !== "ask" &&
@@ -2729,7 +2848,9 @@ function AskKnotPanel({
                           if (!["ArrowDown", "ArrowUp"].includes(event.key))
                             return;
                           const buttons = Array.from(
-                            event.currentTarget.querySelectorAll("button"),
+                            event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                              "button:not(:disabled)",
+                            ),
                           );
                           const index = buttons.indexOf(
                             document.activeElement as HTMLButtonElement,
@@ -2746,6 +2867,8 @@ function AskKnotPanel({
                         {(
                           [
                             ["searchWorkspace", "Search my workspace"],
+                            ["searchWeb", "Search the web"],
+                            ["viewImages", "Look at images"],
                             ["editNote", "Edit the current note"],
                             ["canvasCards", "Create cards on canvas"],
                           ] as const
@@ -2753,18 +2876,14 @@ function AskKnotPanel({
                           <button
                             key={key}
                             autoFocus={index === 0}
-                            disabled={
-                              key === "searchWorkspace" && !automaticSearch
-                            }
+                            disabled={settingOff(key)}
                             title={
-                              key === "searchWorkspace" && !automaticSearch
+                              settingOff(key)
                                 ? "Turned off in Settings → AI"
                                 : undefined
                             }
                             aria-pressed={
-                              key === "searchWorkspace" && !automaticSearch
-                                ? false
-                                : abilities[key]
+                              settingOff(key) ? false : abilities[key]
                             }
                             onClick={() => {
                               const next = {
@@ -2772,21 +2891,21 @@ function AskKnotPanel({
                                 [key]: !abilities[key],
                               };
                               changeAbilities(
-                                next.editNote === defaultAbilities.editNote &&
-                                  next.canvasCards ===
-                                    defaultAbilities.canvasCards &&
-                                  next.searchWorkspace ===
-                                    defaultAbilities.searchWorkspace
+                                (
+                                  Object.keys(next) as (keyof AiAbilities)[]
+                                ).every(
+                                  (name) =>
+                                    next[name] === defaultAbilities[name],
+                                )
                                   ? undefined
                                   : next,
                               );
                             }}
                           >
                             <span>{label}</span>
-                            {abilities[key] &&
-                              !(
-                                key === "searchWorkspace" && !automaticSearch
-                              ) && <ShellIcon name="check" />}
+                            {abilities[key] && !settingOff(key) && (
+                              <ShellIcon name="check" />
+                            )}
                           </button>
                         ))}
                       </div>
@@ -3038,30 +3157,34 @@ const CitationSources = memo(function CitationSources({
           <div key={id}>
             <div className="ask-source-title">
               <span className="ask-source-index">{index + 1}</span>
-              <ShellIcon name="note" />
+              <ShellIcon name={source.kind === "link" ? "globe" : "note"} />
               <span>{source.title || "Source note"}</span>
             </div>
-            <blockquote>{source.text}</blockquote>
+            <blockquote>
+              {source.kind === "link" ? linkLabel(source.url) : source.text}
+            </blockquote>
             <button
               onClick={() => {
                 setError("");
                 void (
-                  source.kind === "web"
-                    ? browserApi.external(
-                        retainedWebAttempts(context).find(
-                          (a) => a.capture?.captureId === source.captureId,
-                        )?.capture?.finalUrl ?? "",
-                      )
-                    : onSource(
-                        source.document,
-                        source.id,
-                        source.text,
-                        source.pdf,
-                      )
+                  source.kind === "link"
+                    ? browserApi.external(source.url)
+                    : source.kind === "web"
+                      ? browserApi.external(
+                          retainedWebAttempts(context).find(
+                            (a) => a.capture?.captureId === source.captureId,
+                          )?.capture?.finalUrl ?? "",
+                        )
+                      : onSource(
+                          source.document,
+                          source.id,
+                          source.text,
+                          source.pdf,
+                        )
                 ).catch((e) => setError(String(e)));
               }}
             >
-              Open source
+              {source.kind === "link" ? "Open link" : "Open source"}
             </button>
           </div>
         ) : (
@@ -3075,6 +3198,14 @@ const CitationSources = memo(function CitationSources({
 function WorkspaceCoverage({ context }: { context?: string }) {
   try {
     const data = JSON.parse(context ?? "{}");
+    const extra = [
+      data.webSearches ? "Searched the web" : "",
+      data.imagesViewed?.length
+        ? `Looked at ${data.imagesViewed.length} image${data.imagesViewed.length === 1 ? "" : "s"}`
+        : "",
+    ].filter(Boolean);
+    if (extra.length && !data.workspaceSearch)
+      return <small className="ask-model-notice">{extra.join(" · ")}</small>;
     if (data.workspaceSearch) {
       const { queries, coverage } = data.workspaceSearch as {
         queries: string[];
@@ -3092,6 +3223,7 @@ function WorkspaceCoverage({ context }: { context?: string }) {
             ? ` · Partial coverage (${coverage.indexed}/${coverage.total})`
             : ""}
           {!coverage.semantic ? " · Keyword search only" : ""}
+          {extra.map((part) => ` · ${part}`).join("")}
         </small>
       );
     }
@@ -3111,24 +3243,61 @@ function WorkspaceCoverage({ context }: { context?: string }) {
 }
 /** A message's context with the excerpts its searches found, for citations. */
 function shownContext(request?: Turn["request"]): string | undefined {
-  if (!request?.searches?.length) return request?.context;
+  if (
+    !request?.searches?.length &&
+    !request?.links?.length &&
+    !request?.webSearches &&
+    !request?.imagesViewed?.length
+  )
+    return request?.context;
   try {
     const data = JSON.parse(request.context);
-    const found = request.searches.map((search) => JSON.parse(search.evidence));
+    const searches = request.searches ?? [];
+    const found = searches.map((search) => JSON.parse(search.evidence));
     return JSON.stringify({
       ...data,
       citationSources: [
         ...(data.citationSources ?? []),
         ...found.flatMap((evidence) => evidence.citationSources ?? []),
+        ...(request.links ?? []),
       ],
-      workspaceSearch: {
-        queries: request.searches.map((search) => search.query),
-        coverage: found.at(-1)?.coverage,
-      },
+      workspaceSearch: searches.length
+        ? {
+            queries: searches.map((search) => search.query),
+            coverage: found.at(-1)?.coverage,
+          }
+        : undefined,
+      webSearches: request.webSearches,
+      imagesViewed: request.imagesViewed,
     });
   } catch {
     return request.context;
   }
+}
+/** A cited link without its scheme, for showing under its title. */
+function linkLabel(url: string) {
+  return url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+}
+/**
+ * Images view_images may show: those in the focused note or card when it has
+ * any, otherwise every image in the document.
+ */
+function noteImages(
+  session: EditorSession,
+  noteId?: string | null,
+): { key: string; name: string }[] {
+  const all = session.imageSources?.() ?? [];
+  const note = noteId ? session.doc.getBlock?.(noteId)?.model : undefined;
+  if (!note) return all;
+  const keys = new Set<string>();
+  const walk = (model: { children: unknown[]; sourceId?: string }) => {
+    if (model.sourceId) keys.add(model.sourceId);
+    for (const child of model.children)
+      walk(child as { children: unknown[]; sourceId?: string });
+  };
+  walk(note as unknown as { children: unknown[]; sourceId?: string });
+  const inNote = all.filter((image) => keys.has(image.key));
+  return inNote.length ? inNote : all;
 }
 /** The highest citation number used so far, so new excerpts continue it. */
 function lastCitation(
@@ -3154,6 +3323,7 @@ function addCost(a: AiCost, b: AiCost): AiCost {
     reasoning: sum(a.reasoning, b.reasoning),
     tier: a.tier === b.tier ? a.tier : null,
     pricing: b.pricing,
+    web_searches: (a.web_searches ?? 0) + (b.web_searches ?? 0),
   };
 }
 function citationIds(text: string) {

@@ -64,13 +64,17 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     editNote: true,
     canvasCards: true,
     searchWorkspace: true,
+    searchWeb: true,
+    viewImages: true,
   });
   expect(normalizeAiAbilities({ editNote: false, junk: 1 })).toEqual({
     editNote: false,
     canvasCards: true,
     searchWorkspace: true,
+    searchWeb: true,
+    viewImages: true,
   });
-  const all = { editNote: true, canvasCards: true, searchWorkspace: true };
+  const all = normalizeAiAbilities(null);
   const open = { selection: true, note: true, canvas: true, editable: true };
   expect(automaticAiTools(all, open)).toEqual([
     "rewrite_selection",
@@ -97,4 +101,20 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
   expect(automaticAiTools(all, { ...open, search: false })).not.toContain(
     "search_workspace",
   );
+  // Web search needs Settings; images need images and the ability.
+  expect(
+    automaticAiTools(all, {
+      ...open,
+      editable: false,
+      web: true,
+      images: true,
+    }),
+  ).toEqual(["web_search", "view_images"]);
+  expect(
+    automaticAiTools(
+      { ...all, searchWeb: false, viewImages: false },
+      { ...open, editable: false, web: true, images: true },
+    ),
+  ).toEqual([]);
+  expect(automaticAiTools(all, { ...open, editable: false })).toEqual([]);
 });

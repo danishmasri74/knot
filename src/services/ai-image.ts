@@ -54,7 +54,11 @@ function samplePalette(
 }
 
 /** Render through the browser so notebook SVGs and screenshots share one wire format. */
-export async function prepareAiImage(key: string) {
+export async function prepareAiImage(
+  key: string,
+  /** Longest side and pixel area; smaller when several images are sent. */
+  limit = { side: 3200, area: 6000000 },
+) {
   const bytes = new Uint8Array(await attachments.get(key));
   const header = new TextDecoder().decode(bytes.subarray(0, 4096));
   const blob = new Blob([bytes], {
@@ -67,8 +71,8 @@ export async function prepareAiImage(key: string) {
     await image.decode();
     const scale = Math.min(
       1,
-      3200 / Math.max(image.naturalWidth, image.naturalHeight),
-      Math.sqrt(6000000 / (image.naturalWidth * image.naturalHeight)),
+      limit.side / Math.max(image.naturalWidth, image.naturalHeight),
+      Math.sqrt(limit.area / (image.naturalWidth * image.naturalHeight)),
     );
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));

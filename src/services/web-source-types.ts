@@ -80,7 +80,17 @@ export type NoteCitation = {
   title?: string;
   citation?: string;
 };
-export type CitationSource = NoteCitation | WebCitation;
+/** A link OpenAI's web search cited in an answer. */
+export type LinkCitation = {
+  kind: "link";
+  document: string;
+  id: string;
+  text: string;
+  title: string;
+  url: string;
+  citation?: string;
+};
+export type CitationSource = NoteCitation | WebCitation | LinkCitation;
 export type NativeWebResult = {
   url: string;
   finalUrl?: string;

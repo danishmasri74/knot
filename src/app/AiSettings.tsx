@@ -13,6 +13,8 @@ import {
   setWorkspaceSearchEnabled,
   getAiAbilities,
   setAiAbilities,
+  getWebSearchEnabled,
+  setWebSearchEnabled,
   getAiModels,
   setAiModels,
   setAiEnabled,
@@ -30,6 +32,7 @@ export function AiSettings({
   );
   const [suggestions, setSuggestions] = useState(getAiSuggestionsEnabled);
   const [abilities, setAbilities] = useState(getAiAbilities);
+  const [webSearch, setWebSearch] = useState(getWebSearchEnabled);
   const [confirm, setConfirm] = useState(false);
   const [models, setModels] = useState(getAiModels);
   const [connectorShape, setConnectorShape] = useState(getAiConnectorShape);
@@ -153,6 +156,62 @@ export function AiSettings({
               setSaveError("");
             } catch {
               setSaveError("Could not save workspace search preference.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-web-search-label">Search the web</strong>
+          <p>
+            Let Knot search the web when a question needs current or outside
+            information. Searches go through OpenAI and cost about $0.01 each,
+            shown in the answer&apos;s cost.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-web-search-label"
+          aria-checked={webSearch}
+          disabled={!enabled}
+          onClick={() => {
+            try {
+              setWebSearchEnabled(!webSearch);
+              setWebSearch(!webSearch);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save web search preference.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-view-images-label">Look at images in my notes</strong>
+          <p>
+            Let Knot look at up to three images from the open note or canvas
+            when a question is about them. Images you attach are always read.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-view-images-label"
+          aria-checked={abilities.viewImages}
+          disabled={!enabled}
+          onClick={() => {
+            const next = { ...abilities, viewImages: !abilities.viewImages };
+            try {
+              setAiAbilities(next);
+              setAbilities(next);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save AI abilities.");
             }
           }}
         >

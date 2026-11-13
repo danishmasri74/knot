@@ -168,6 +168,10 @@ export type AiAbilities = {
   canvasCards: boolean;
   /** Per chat only: Settings → AI → Search my workspace is the default. */
   searchWorkspace: boolean;
+  /** Per chat only: Settings → AI → Search the web must also be on. */
+  searchWeb: boolean;
+  /** Look at images in the open note or canvas when a question needs them. */
+  viewImages: boolean;
 };
 export const AI_ABILITIES_CHANGED = "knot-ai-abilities-changed";
 const abilitiesKey = "knot.ai-abilities.v1";
@@ -180,6 +184,8 @@ export function normalizeAiAbilities(value: unknown): AiAbilities {
     editNote: saved.editNote !== false,
     canvasCards: saved.canvasCards !== false,
     searchWorkspace: saved.searchWorkspace !== false,
+    searchWeb: saved.searchWeb !== false,
+    viewImages: saved.viewImages !== false,
   };
 }
 export function getAiAbilities(): AiAbilities {
@@ -206,7 +212,11 @@ export const AI_TOOL_MODES = {
   create_on_canvas: "canvas",
 } as const;
 /** Searches the workspace on this device; results go back to the model. */
-export type AiTool = keyof typeof AI_TOOL_MODES | "search_workspace";
+export type AiTool =
+  | keyof typeof AI_TOOL_MODES
+  | "search_workspace"
+  | "web_search"
+  | "view_images";
 /** Searches one message may run; matches MAX_SEARCHES in ai.rs. */
 export const MAX_SEARCHES = 2;
 /**
@@ -222,14 +232,41 @@ export function automaticAiTools(
     editable: boolean;
     /** Workspace search is on in Settings. */
     search?: boolean;
+    /** Web search is on in Settings and nothing rules it out. */
+    web?: boolean;
+    /** The open note or canvas has images. */
+    images?: boolean;
   },
 ): AiTool[] {
   const tools: AiTool[] = [];
   if (abilities.searchWorkspace && target.search)
     tools.push("search_workspace");
+  if (abilities.searchWeb && target.web) tools.push("web_search");
+  if (abilities.viewImages && target.images) tools.push("view_images");
   if (!target.editable) return tools;
   if (abilities.editNote && target.selection) tools.push("rewrite_selection");
   if (abilities.editNote && target.note) tools.push("insert_blocks");
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
   return tools;
+}
+
+/** Images view_images may send at once; matches MAX_IMAGES in ai.rs. */
+export const MAX_IMAGES = 3;
+
+/**
+ * Settings → AI → Search the web. Off by default: searches go through
+ * OpenAI and each one is charged.
+ */
+export const WEB_SEARCH_CHANGED = "knot-web-search-changed";
+const webSearchKey = "knot.ai-web-search";
+export function getWebSearchEnabled(): boolean {
+  try {
+    return localStorage.getItem(webSearchKey) === "true";
+  } catch {
+    return false;
+  }
+}
+export function setWebSearchEnabled(enabled: boolean) {
+  localStorage.setItem(webSearchKey, String(enabled));
+  window.dispatchEvent(new Event(WEB_SEARCH_CHANGED));
 }

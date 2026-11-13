@@ -161,6 +161,17 @@ pub struct StreamEvent {
     /// Sent with the call's first event; a search result must quote it.
     #[serde(skip_serializing_if = "Option::is_none")]
     call_id: Option<String>,
+    /// "web": OpenAI started a web search for this answer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<&'static str>,
+    /// The answer's web links: url, title and the cited text span.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    citations: Option<Vec<Value>>,
+}
+impl StreamEvent {
+    fn delta(delta: String, call: Option<String>) -> Self {
+        Self { delta, cost: None, call, call_id: None, status: None, citations: None }
+    }
 }
 #[derive(Debug, PartialEq)]
 enum Event {
@@ -169,6 +180,10 @@ enum Event {
     Call(String, String),
     Arguments(String),
     CallDone(String),
+    /// A hosted web search started.
+    WebSearch,
+    /// The finished message's url_citation annotations.
+    Citations(Vec<Value>),
     Done,
 }
 #[tauri::command]
@@ -205,6 +220,20 @@ fn event(frame: &[u8]) -> Result<Option<Event>, String> {
         Some("response.output_item.done") if value["item"]["type"] == "function_call" => Ok(Some(
             Event::CallDone(value["item"]["arguments"].as_str().unwrap_or_default().into()),
         )),
+        Some("response.output_item.added") if value["item"]["type"] == "web_search_call" => Ok(Some(Event::WebSearch)),
+        Some("response.output_item.done") if value["item"]["type"] == "message" => {
+            let links: Vec<Value> = value["item"]["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|part| part["type"] == "output_text")
+                .flat_map(|part| part["annotations"].as_array().cloned().unwrap_or_default())
+                .filter(|a| a["type"] == "url_citation" && a["url"].as_str().is_some_and(|u| u.starts_with("https://") || u.starts_with("http://")))
+                .take(40)
+                .map(|a| json!({"url": a["url"], "title": a["title"], "start": a["start_index"], "end": a["end_index"]}))
+                .collect();
+            Ok((!links.is_empty()).then_some(Event::Citations(links)))
+        }
         Some("error") if out_of_credits(&value) || out_of_credits(&value["error"]) => Err(NO_CREDITS.into()),
         Some("response.failed") if out_of_credits(&value["response"]["error"]) => Err(NO_CREDITS.into()),
         Some("response.failed" | "response.incomplete" | "error") => {
@@ -228,12 +257,14 @@ pub async fn ai_respond(
     mode: String,
     tools: Option<Vec<String>>,
     searches: Option<Vec<SearchResult>>,
+    viewed: Option<Vec<ImageResult>>,
     image: Option<String>,
     pdf_input: Option<String>,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
     let tools = tools.unwrap_or_default();
     let searches = searches.unwrap_or_default();
+    let viewed = viewed.unwrap_or_default();
     let mut composition = if diagnostics.collecting() {
         crate::diagnostics::Composition::context(&context)
     } else {
@@ -256,7 +287,7 @@ pub async fn ai_respond(
         || id.len() > 80
         // Automatic requests offer 1-3 distinct known tools; no other mode offers any.
         || (mode == "auto") == tools.is_empty()
-        || tools.iter().any(|name| tool_mode(name).is_none() && name != SEARCH_TOOL)
+        || tools.iter().any(|name| tool_mode(name).is_none() && ![SEARCH_TOOL, WEB_TOOL, IMAGES_TOOL].contains(&name.as_str()))
         || tools.iter().enumerate().any(|(i, name)| tools[..i].contains(name))
         // Search results only follow an automatic request's own search calls.
         || (!searches.is_empty() && mode != "auto")
@@ -264,6 +295,14 @@ pub async fn ai_respond(
         || (searches.len() == MAX_SEARCHES && tools.iter().any(|name| name == SEARCH_TOOL))
         || searches.iter().any(|s| s.call_id.is_empty() || s.call_id.len() > 100 || s.query.len() > 2000)
         || searches.iter().map(|s| s.evidence.len()).sum::<usize>() > 60000
+        // At most one look at up to three images, after the model's own call.
+        || (!viewed.is_empty() && (mode != "auto" || viewed.len() > 1 || tools.iter().any(|name| name == IMAGES_TOOL)))
+        || viewed.iter().any(|v| v.call_id.is_empty() || v.call_id.len() > 100 || v.images.is_empty()
+            || v.images.len() > MAX_IMAGES || v.names.len() != v.images.len()
+            || v.names.iter().any(|n| n.len() > 200) || !v.images.iter().all(|i| valid_image(i)))
+        // Captured website evidence has its own rules; web search is not mixed in.
+        || (tools.iter().any(|name| name == WEB_TOOL)
+            && serde_json::from_str::<Value>(&context).ok().is_some_and(|v| v["webOutcomes"].as_array().is_some_and(|a| !a.is_empty())))
     {
         return Err("Unsupported request".into());
     }
@@ -313,7 +352,7 @@ pub async fn ai_respond(
     let result = tokio::select! {
         biased;
         _ = cancel.notified() => Err("Request stopped".into()),
-        result = respond(&model, &messages, &context, &mode, &tools, &searches, image.as_deref(), pdf_input.as_deref(), on_event, &mut measurement) => result,
+        result = respond(&model, &messages, &context, &mode, &tools, &searches, &viewed, image.as_deref(), pdf_input.as_deref(), on_event, &mut measurement) => result,
     };
     if let Ok(mut requests) = state.0.lock() {
         requests.remove(&id);
@@ -455,6 +494,24 @@ fn tool_description(name: &str) -> &'static str {
 pub(crate) const SEARCH_TOOL: &str = "search_workspace";
 pub(crate) const MAX_SEARCHES: usize = 2;
 const SEARCH_RULES: &str = "search_workspace searches the user's other notes, cards and PDFs on their device and returns verbatim excerpts. Call it when the answer may be in notes beyond the supplied context, such as what the user's notes say about a topic. Do not call it when the supplied context already answers, or for general knowledge and writing requests. Write a short, specific query with the key terms, resolving words like it or that from the conversation. Search again with a different query only if the results miss the point. Answer from the excerpts' text and cite them with their exact citation field. Preserve exceptions, conditions, corrections and conflicting claims with their separate citations. Repeated copies are not independent confirmation. Distinguish attributed saved quotations and website evidence from the user's commentary. Coverage may be incomplete; disclose that when it matters. If the excerpts do not support an answer, say so.";
+/// OpenAI's hosted web search; off unless the user turns it on.
+pub(crate) const WEB_TOOL: &str = "web_search";
+const WEB_RULES: &str = "web_search searches the public web through OpenAI. Use it only when the answer needs current or outside information that the supplied context, the user's notes and general knowledge cannot give, such as recent events, prices, releases or a specific website. For anything about the user's own notes, use the supplied context or search_workspace instead. Each web search costs the user money, so search only when it is needed. Base web claims on the results and keep the links the search provides; never invent URLs.";
+/// Shows the model images from the open note or canvas; the app sends them.
+pub(crate) const IMAGES_TOOL: &str = "view_images";
+pub(crate) const MAX_IMAGES: usize = 3;
+const IMAGES_RULES: &str = "view_images shows you up to three images from the open note or canvas. Call it when the question is about pictures, diagrams, charts or screenshots there that the supplied text does not describe. Do not call it otherwise, and call it at most once.";
+/// Images the app sent for a view_images call.
+#[derive(Deserialize)]
+pub struct ImageResult {
+    call_id: String,
+    names: Vec<String>,
+    /// PNG or JPEG data URLs, prepared on the device.
+    images: Vec<String>,
+}
+fn valid_image(data: &str) -> bool {
+    data.len() <= 8_000_000 && (data.starts_with("data:image/jpeg;base64,") || data.starts_with("data:image/png;base64,"))
+}
 /// A workspace search the app ran for a search_workspace call.
 #[derive(Deserialize)]
 pub struct SearchResult {
@@ -479,11 +536,12 @@ fn tool_request_body(
     context: &str,
     tools: &[String],
     searches: &[SearchResult],
+    viewed: &[ImageResult],
     image: Option<&str>,
     pdf_input: Option<&str>,
 ) -> Value {
     let mut body = request_body(model, messages, context, "ask", image, pdf_input);
-    if tools.is_empty() && searches.is_empty() {
+    if tools.is_empty() && searches.is_empty() && viewed.is_empty() {
         return body;
     }
     let edits: Vec<&String> = tools.iter().filter(|name| tool_mode(name).is_some()).collect();
@@ -491,8 +549,13 @@ fn tool_request_body(
     // Mirror the decisions compose_body made for this context.
     let web = base.contains("Web evidence was explicitly captured");
     let compacted = base.contains(crate::ai_context::COMPACT_INSTRUCTIONS);
+    let browsing = if tools.iter().any(|name| name == WEB_TOOL) {
+        "No browsing except with web_search, no diagram edits or cross-document edits."
+    } else {
+        "No browsing, diagram edits or cross-document edits."
+    };
     let mut instructions = base
-        .replace("No browsing, tools, diagram edits or cross-document edits.", "No browsing, diagram edits or cross-document edits.")
+        .replace("No browsing, tools, diagram edits or cross-document edits.", browsing)
         .replace("\nCurrent operation: ask.", if edits.is_empty() { "\nCurrent operation: answer." } else { "\nCurrent operation: answer, or propose one edit with a tool." });
     if !edits.is_empty() {
         instructions.push('\n');
@@ -511,6 +574,18 @@ fn tool_request_body(
         instructions.push('\n');
         instructions.push_str(SEARCH_RULES);
     }
+    if tools.iter().any(|name| name == WEB_TOOL) {
+        instructions.push('\n');
+        instructions.push_str(WEB_RULES);
+    }
+    if tools.iter().any(|name| name == IMAGES_TOOL) || !viewed.is_empty() {
+        instructions.push('\n');
+        instructions.push_str(IMAGES_RULES);
+    }
+    if !viewed.is_empty() && !instructions.contains(BASE_VISUAL) {
+        instructions.push('\n');
+        instructions.push_str(BASE_VISUAL);
+    }
     body["instructions"] = json!(instructions);
     // Each search the app ran: the model's call, then its result.
     if let Some(input) = body["input"].as_array_mut() {
@@ -518,6 +593,13 @@ fn tool_request_body(
             input.push(json!({"type": "function_call", "call_id": search.call_id, "name": SEARCH_TOOL,
                 "arguments": json!({"query": search.query}).to_string()}));
             input.push(json!({"type": "function_call_output", "call_id": search.call_id, "output": search_output(&search.evidence)}));
+        }
+        for view in viewed {
+            let names = view.names.iter().enumerate().map(|(i, name)| format!("{}. {name}", i + 1)).collect::<Vec<_>>().join("\n");
+            let mut output = vec![json!({"type": "input_text", "text": format!("Images from the open document, in order:\n{names}")})];
+            output.extend(view.images.iter().map(|url| json!({"type": "input_image", "image_url": url, "detail": "high"})));
+            input.push(json!({"type": "function_call", "call_id": view.call_id, "name": IMAGES_TOOL, "arguments": "{}"}));
+            input.push(json!({"type": "function_call_output", "call_id": view.call_id, "output": output}));
         }
     }
     if tools.is_empty() {
@@ -528,6 +610,10 @@ fn tool_request_body(
         .map(|name| match tool_mode(name) {
             Some(mode) => json!({"type": "function", "name": name, "description": tool_description(name),
                 "strict": true, "parameters": tool_schema(mode, web)}),
+            None if name == WEB_TOOL => json!({"type": "web_search"}),
+            None if name == IMAGES_TOOL => json!({"type": "function", "name": IMAGES_TOOL,
+                "description": "Look at up to three images from the user's open note or canvas.",
+                "strict": true, "parameters": {"type": "object", "additionalProperties": false, "required": [], "properties": {}}}),
             None => json!({"type": "function", "name": SEARCH_TOOL,
                 "description": "Search the user's notes, cards and PDFs on their device for passages about a topic.",
                 "strict": true, "parameters": {"type": "object", "additionalProperties": false, "required": ["query"],
@@ -673,13 +759,14 @@ async fn respond(
     mode: &str,
     tools: &[String],
     searches: &[SearchResult],
+    viewed: &[ImageResult],
     image: Option<&str>,
     pdf_input: Option<&str>,
     channel: Channel<StreamEvent>,
     measurement: &mut crate::diagnostics::Measurement,
 ) -> Result<(), String> {
     let body = if mode == "auto" {
-        tool_request_body(model, messages, context, tools, searches, image, pdf_input)
+        tool_request_body(model, messages, context, tools, searches, viewed, image, pdf_input)
     } else {
         request_body(model, messages, context, mode, image, pdf_input)
     };
@@ -761,7 +848,7 @@ async fn consume_response(
                 crate::diagnostics::cost_from_frame(&measurement.attempt.model, &buffer[..end])
             {
                 // Cost is informational; a closed channel is reported by the next delta.
-                let _ = channel.send(StreamEvent { delta: String::new(), cost: Some(cost), call: None, call_id: None });
+                let _ = channel.send(StreamEvent { cost: Some(cost), ..StreamEvent::delta(String::new(), None) });
             }
             let (delta, tool) = match event(&buffer[..end])? {
                 Some(Event::Done) => {
@@ -773,13 +860,14 @@ async fn consume_response(
                     // Only offered tools, and at most one call per response.
                     let Some(mode) = tool_mode(&name)
                         .or((name == SEARCH_TOOL).then_some("search"))
+                        .or((name == IMAGES_TOOL).then_some("images"))
                         .filter(|_| call.is_none() && tools.contains(&name))
                     else {
                         return Err("The response used an unavailable action. Please retry.".into());
                     };
                     measurement.attempt.operation = format!("auto:{mode}");
                     channel
-                        .send(StreamEvent { delta: String::new(), cost: None, call: Some(name.clone()), call_id: Some(call_id) })
+                        .send(StreamEvent { call_id: Some(call_id), ..StreamEvent::delta(String::new(), Some(name.clone())) })
                         .map_err(|_| "Conversation closed")?;
                     call = Some(name);
                     (String::new(), None)
@@ -796,6 +884,18 @@ async fn consume_response(
                     streamed_arguments = true;
                     (arguments, call.clone())
                 }
+                Some(Event::WebSearch) => {
+                    channel
+                        .send(StreamEvent { status: Some("web"), ..StreamEvent::delta(String::new(), None) })
+                        .map_err(|_| "Conversation closed")?;
+                    (String::new(), None)
+                }
+                Some(Event::Citations(links)) => {
+                    channel
+                        .send(StreamEvent { citations: Some(links), ..StreamEvent::delta(String::new(), None) })
+                        .map_err(|_| "Conversation closed")?;
+                    (String::new(), None)
+                }
                 Some(Event::CallDone(_)) | None => (String::new(), None),
             };
             if !delta.is_empty() {
@@ -804,7 +904,7 @@ async fn consume_response(
                     return Err("Response exceeded the limit".into());
                 }
                 channel
-                    .send(StreamEvent { delta, cost: None, call: tool, call_id: None })
+                    .send(StreamEvent::delta(delta, tool))
                     .map_err(|_| "Conversation closed")?;
             }
             buffer.drain(..end + width);
@@ -957,10 +1057,10 @@ mod tests {
         let messages = vec![Message { role: "user".into(), content: "Shorten this".into() }];
         let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[{"text":"Long text","protected":false}]}"#;
         // Without tools an automatic request is exactly an Ask request.
-        assert_eq!(tool_request_body(MODELS[0], &messages, context, &[], &[], None, None), request_body(MODELS[0], &messages, context, "ask", None, None));
+        assert_eq!(tool_request_body(MODELS[0], &messages, context, &[], &[], &[], None, None), request_body(MODELS[0], &messages, context, "ask", None, None));
         let ask = request_body(MODELS[0], &messages, context, "ask", None, None);
         let tools: Vec<String> = vec!["rewrite_selection".into(), "insert_blocks".into()];
-        let body = tool_request_body(MODELS[0], &messages, context, &tools, &[], None, None);
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &[], &[], None, None);
         assert!(body.get("text").is_none(), "answers stay free text");
         assert_eq!(body["tool_choice"], "auto");
         assert_eq!(body["parallel_tool_calls"], false);
@@ -980,12 +1080,12 @@ mod tests {
         assert!(!instructions.contains(CANVAS_RULES), "rules only for offered tools");
         assert!(!instructions.contains("No browsing, tools,") && !instructions.contains("Current operation: ask."));
         // Same tools, same instruction prefix: different notes still share it.
-        let other = tool_request_body(MODELS[0], &[Message { role: "user".into(), content: "Other".into() }], r#"{"sourceMode":"current","text":"Other note","structure":[],"citationSources":[],"runs":[]}"#, &tools, &[], None, None);
+        let other = tool_request_body(MODELS[0], &[Message { role: "user".into(), content: "Other".into() }], r#"{"sourceMode":"current","text":"Other note","structure":[],"citationSources":[],"runs":[]}"#, &tools, &[], &[], None, None);
         assert_eq!(other["instructions"], body["instructions"]);
         assert_eq!(other["tools"], body["tools"]);
         // Web evidence adds sourceRefs to tool arguments as it does to proposals.
         let web = r#"{"webOutcomes":[{"state":"ready"}],"citationSources":[{"kind":"web","ref":"c/s1","text":"A"}]}"#;
-        let canvas = tool_request_body(MODELS[0], &messages, web, &["create_on_canvas".into()], &[], None, None);
+        let canvas = tool_request_body(MODELS[0], &messages, web, &["create_on_canvas".into()], &[], &[], None, None);
         assert_eq!(canvas["tools"][0]["parameters"], tool_schema("canvas", true));
         // Each tool has only its own fields: a rewrite cannot return blocks.
         let fields = |tool: &Value| tool["parameters"]["required"].as_array().unwrap().iter().map(|f| f.as_str().unwrap().to_owned()).collect::<Vec<_>>();
@@ -1000,7 +1100,7 @@ mod tests {
         let messages = vec![Message { role: "user".into(), content: "What do my notes say about spaced repetition?".into() }];
         let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[{"citation":"[S1]","text":"Note","document":"d","id":"b"}],"runs":[]}"#;
         let search: Vec<String> = vec!["search_workspace".into()];
-        let body = tool_request_body(MODELS[0], &messages, context, &search, &[], None, None);
+        let body = tool_request_body(MODELS[0], &messages, context, &search, &[], &[], None, None);
         assert_eq!(body["tools"][0]["name"], "search_workspace");
         assert_eq!(body["tools"][0]["strict"], true);
         assert_eq!(body["tools"][0]["parameters"]["required"], json!(["query"]));
@@ -1010,7 +1110,7 @@ mod tests {
         let evidence = r#"{"version":1,"sourceMode":"workspace","activation":"PRIVATE-ACTIVATION","coverage":{"indexed":3,"total":3,"failed":0,"semantic":true},"citationSources":[{"citation":"[S2]","title":"Study","text":"Review cards at growing intervals.","document":"PRIVATE-DOC","id":"PRIVATE-BLOCK","revision":"PRIVATE-REV","vector":[0.5]}]}"#;
         let searches = vec![SearchResult { call_id: "call_1".into(), query: "spaced repetition".into(), evidence: evidence.into() }];
         let tools: Vec<String> = vec!["insert_blocks".into(), "search_workspace".into()];
-        let body = tool_request_body(MODELS[0], &messages, context, &tools, &searches, None, None);
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &searches, &[], None, None);
         let input = body["input"].as_array().unwrap();
         let n = input.len();
         // The call, then its result, after the user's message.
@@ -1026,10 +1126,71 @@ mod tests {
         assert!(body["instructions"].as_str().unwrap().contains(SEARCH_RULES));
         assert_eq!(body["tools"].as_array().unwrap().len(), 2);
         // After the last allowed search, results are still sent without the tool.
-        let last = tool_request_body(MODELS[0], &messages, context, &[], &searches, None, None);
+        let last = tool_request_body(MODELS[0], &messages, context, &[], &searches, &[], None, None);
         assert!(last.get("tools").is_none());
         assert_eq!(last["input"].as_array().unwrap().len(), n);
         assert!(last["instructions"].as_str().unwrap().contains(SEARCH_RULES));
+    }
+    #[test]
+    fn web_search_and_images_are_offered_as_tools() {
+        let messages = vec![Message { role: "user".into(), content: "What changed in the latest release?".into() }];
+        let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[]}"#;
+        let tools: Vec<String> = vec!["web_search".into(), "view_images".into()];
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &[], &[], None, None);
+        assert_eq!(body["tools"][0], json!({"type": "web_search"}), "OpenAI's hosted tool");
+        assert_eq!(body["tools"][1]["name"], "view_images");
+        assert_eq!(body["tools"][1]["strict"], true);
+        assert_eq!(body["tools"][1]["parameters"]["properties"], json!({}));
+        let instructions = body["instructions"].as_str().unwrap();
+        assert!(instructions.contains(WEB_RULES) && instructions.contains(IMAGES_RULES));
+        assert!(instructions.contains("No browsing except with web_search"));
+        assert!(!instructions.contains(BASE_VISUAL), "visual rules only once images arrive");
+        // Without web_search the model is told it cannot browse.
+        let images = tool_request_body(MODELS[0], &messages, context, &["view_images".into()], &[], &[], None, None);
+        assert!(images["instructions"].as_str().unwrap().contains("No browsing, diagram edits"));
+        // The images the app sent come back as the call's result.
+        let viewed = vec![ImageResult { call_id: "call_img".into(), names: vec!["Diagram".into()], images: vec!["data:image/png;base64,AA==".into()] }];
+        let body = tool_request_body(MODELS[0], &messages, context, &[], &[], &viewed, None, None);
+        let input = body["input"].as_array().unwrap();
+        let n = input.len();
+        assert_eq!(input[n - 2], json!({"type": "function_call", "call_id": "call_img", "name": "view_images", "arguments": "{}"}));
+        assert_eq!(input[n - 1]["call_id"], "call_img");
+        let output = input[n - 1]["output"].as_array().unwrap();
+        assert_eq!(output[0]["type"], "input_text");
+        assert!(output[0]["text"].as_str().unwrap().contains("1. Diagram"));
+        assert_eq!(output[1], json!({"type": "input_image", "image_url": "data:image/png;base64,AA==", "detail": "high"}));
+        assert!(body["instructions"].as_str().unwrap().contains(BASE_VISUAL));
+        assert!(body.get("tools").is_none());
+        assert!(valid_image("data:image/jpeg;base64,AA==") && !valid_image("https://example.com/a.png"));
+    }
+    #[test]
+    fn web_search_status_and_citations_stream() {
+        let frame = |v: Value| format!("data: {v}\n\n");
+        let body = [
+            frame(json!({"type":"response.output_item.added","item":{"type":"web_search_call","id":"ws_1","status":"in_progress"}})),
+            frame(json!({"type":"response.output_text.delta","delta":"Version 2 shipped ([example.com](https://example.com/news?utm_source=openai))."})),
+            frame(json!({"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"...","annotations":[
+                {"type":"url_citation","url":"https://example.com/news?utm_source=openai","title":"News","start_index":18,"end_index":72},
+                {"type":"url_citation","url":"javascript:alert(1)","title":"Bad","start_index":0,"end_index":1},
+                {"type":"file_citation","file_id":"f"}]}]}})),
+            frame(json!({"type":"response.completed","response":{}})),
+        ].concat();
+        let (result, events, operation) = stream(body, &["web_search".into()]);
+        assert!(result.is_ok());
+        assert_eq!(operation, "auto:answer");
+        assert_eq!(events[0], json!({"delta":"","status":"web"}));
+        assert_eq!(events[2], json!({"delta":"","citations":[{"url":"https://example.com/news?utm_source=openai","title":"News","start":18,"end":72}]}), "only web links");
+    }
+    #[test]
+    fn web_search_calls_are_added_to_the_cost() {
+        let frame = br#"data: {"type":"response.completed","response":{"service_tier":"default","output":[{"type":"web_search_call"},{"type":"web_search_call"},{"type":"message"}],"usage":{"input_tokens":1000,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0},"output_tokens":100}}}"#;
+        let cost = crate::diagnostics::cost_from_frame("gpt-6-luna", frame).unwrap();
+        assert_eq!(cost.web_searches, 2);
+        let tokens = (1000.0 * 0.10 + 100.0 * 0.50) / 1_000_000.0;
+        assert!((cost.usd.unwrap() - (tokens + 0.02)).abs() < 1e-9);
+        let plain = br#"data: {"type":"response.completed","response":{"service_tier":"default","output":[],"usage":{"input_tokens":1000,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0},"output_tokens":100}}}"#;
+        let cost = crate::diagnostics::cost_from_frame("gpt-6-luna", plain).unwrap();
+        assert!(serde_json::to_value(&cost).unwrap().get("web_searches").is_none());
     }
     /// Serves one SSE body and returns the result, delivered events and operation.
     fn stream(body: String, tools: &[String]) -> (Result<(), String>, Vec<Value>, String) {

@@ -302,7 +302,15 @@ pub struct Cost {
     pub reasoning: Option<u64>,
     pub tier: Option<String>,
     pub pricing: &'static str,
+    /// Hosted web searches in this response, billed per call.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub web_searches: u64,
 }
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+/// USD per hosted web search call ($10 per 1,000 calls, 13 November 2026).
+pub const WEB_SEARCH_USD: f64 = 0.01;
 /// The cost carried by a final SSE frame, independent of diagnostics settings.
 pub fn cost_from_frame(model: &str, frame: &[u8]) -> Option<Cost> {
     // Only final events carry usage; skip parsing every text delta.
@@ -316,9 +324,16 @@ pub fn cost_from_frame(model: &str, frame: &[u8]) -> Option<Cost> {
         .collect::<Vec<_>>()
         .join("
 ");
-    let (usage, tier) = usage_from(&serde_json::from_str::<Value>(&data).ok()?)?;
+    let value = serde_json::from_str::<Value>(&data).ok()?;
+    let (usage, tier) = usage_from(&value)?;
+    // Search content tokens are in usage; each search call is charged on top.
+    let web_searches = value["response"]["output"]
+        .as_array()
+        .map_or(0, |items| items.iter().filter(|i| i["type"] == "web_search_call").count() as u64);
     Some(Cost {
-        usd: estimate(model, &usage, tier.as_deref()),
+        usd: estimate(model, &usage, tier.as_deref())
+            .map(|usd| usd + web_searches as f64 * WEB_SEARCH_USD),
+        web_searches,
         input: usage.input,
         cached: usage.cached,
         output: usage.output,

@@ -14,7 +14,7 @@ free-running conversation drift. The synthetic PDF and diagram are committed und
 
 ## Routing suite
 
-`routing.v1.json` holds 27 synthetic automatic-routing cases (13 November 2026; cases 21–26 add workspace search, case 27 sends a completed search back): each offers
+`routing.v1.json` holds 32 synthetic automatic-routing cases (13 November 2026; cases 21–26 add workspace search, case 27 sends a completed search back, cases 28–31 add web search and images, case 32 sends images back; web search cases cost about $0.01 each per search): each offers
 a set of tools and names the expected route (`answer` or a tool). Run it with the same gate
 plus `KNOT_BENCHMARK_SUITE=routing`. Result rows add `route`, `expected_route` and
 `route_ok`. Phase 1 of [automatic actions](../../docs/AI-AUTO-ACTIONS-PLAN.md) should not
@@ -39,7 +39,7 @@ cargo test --lib ai::tests::live_quality_benchmark -- --ignored --exact --nocapt
 The sequential runner reserves 20,000 input tokens (at the highest cache-write rate for
 GPT-6) and 6,000 output tokens per case using the versioned standard rates. The largest v1
 case used 1,219 input tokens, and any request reporting more than the reservation stops
-the run. It refuses to start unless the full suite fits the limit. Unknown usage,
+the run. The routing suite reserves 80,000 input tokens and three web searches ($0.01 each) per case, because web search results arrive as input tokens. It refuses to start unless the full suite fits the limit. Unknown usage,
 nonstandard service tiers, failures or an exceeded reservation stop further requests.
 Unknown cost with reported standard tier and bounded input/output consumes the full
 reservation. No automatic retries. The reservation is a conservative client check, not a

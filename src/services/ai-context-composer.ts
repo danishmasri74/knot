@@ -81,7 +81,7 @@ export function composeAiContext(
   }
   attempts = [...combined.values()];
   const citationSources: CitationSource[] = readCitationSources(context).filter(
-    (s) => s.kind !== "web" && !s.webSource,
+    (s) => (s.kind === undefined || s.kind === "note") && !s.webSource,
   );
   for (const source of [
     ...(data.structure ?? []),

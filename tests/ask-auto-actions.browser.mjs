@@ -38,6 +38,7 @@ try {
         if (cmd === "ai_models") return ["gpt-5.4-mini"];
         if (cmd === "topic_catalog") return { activation: "test", sources: [] };
         if (cmd === "topic_pending") return [];
+        if (cmd === "get_blob") return window.png;
         if (cmd === "ai_respond") {
           window.calls.push(args);
           // The test streams events, then resolves the request.
@@ -58,6 +59,17 @@ try {
     // one excerpt numbered from [S1], as the real search does.
     const { TopicIndexer } = await import("/src/services/workspace-topic.ts");
     window.searched = [];
+    // A tiny PNG for the image look.
+    const pixel = document.createElement("canvas");
+    pixel.width = pixel.height = 4;
+    pixel.getContext("2d").fillRect(0, 0, 4, 4);
+    window.png = Array.from(
+      new Uint8Array(
+        await (
+          await new Promise((resolve) => pixel.toBlob(resolve, "image/png"))
+        ).arrayBuffer(),
+      ),
+    );
     TopicIndexer.prototype.search = async (query) => {
       window.searched.push(query);
       return {
@@ -82,7 +94,7 @@ try {
     const session = {
       doc,
       editor: new EventTarget(),
-      imageSources: () => [],
+      imageSources: () => window.images ?? [],
       topicOverlay: () => [],
       topicVersion: () => 1,
     };
@@ -355,6 +367,101 @@ try {
   assert.ok(!(call.tools ?? []).includes("search_workspace"));
   await page.evaluate(() => window.emit([{ delta: "Only this note." }]));
   await page.getByText("Only this note.").waitFor();
+
+  // Web search: off until Settings turns it on; then OpenAI's hosted tool is
+  // offered, and the links it cites become numbered sources.
+  assert.ok(
+    !call.tools?.includes("web_search"),
+    "web search is off by default",
+  );
+  await page.evaluate(async () => {
+    const { setWebSearchEnabled } =
+      await import("/src/services/ai-preferences.ts");
+    setWebSearchEnabled(true);
+  });
+  call = await send("What changed in the latest release?");
+  assert.ok(call.tools.includes("web_search"));
+  const url = "https://example.com/news?utm_source=openai";
+  await page.evaluate(() => {
+    const call = window.calls.at(-1);
+    call.onEvent.onmessage({ delta: "", status: "web" });
+  });
+  await page.getByText("Searching the web").waitFor();
+  await page.evaluate(
+    (url) =>
+      window.emit([
+        { delta: `Version 2 shipped ([example.com](${url})).` },
+        {
+          delta: "",
+          citations: [
+            {
+              url,
+              title: "Release news",
+              start: 18,
+              end: 18 + `([example.com](${url}))`.length,
+            },
+          ],
+        },
+        {
+          delta: "",
+          cost: {
+            usd: 0.0102,
+            input: 1000,
+            cached: 0,
+            output: 100,
+            reasoning: 0,
+            tier: "default",
+            pricing: "test",
+            web_searches: 1,
+          },
+        },
+      ]),
+    url,
+  );
+  const webAnswer = page
+    .locator(".ask-message-text", { hasText: "Version 2 shipped" })
+    .last();
+  await webAnswer.waitFor();
+  assert.ok(!(await webAnswer.innerText()).includes("example.com]("));
+  await page.getByText("Searched the web").waitFor();
+  await page.locator(".ask-sources summary").last().click();
+  await page.getByText("Release news").waitFor();
+  await page.getByText("example.com/news").waitFor();
+  await page.getByRole("button", { name: "Open link" }).waitFor();
+  assert.match(
+    await page.locator(".ask-response-cost").last().getAttribute("aria-label"),
+    /1 web search at \$0\.01/,
+  );
+  await page.screenshot({ path: "test-results/ask-auto-actions/web.png" });
+
+  // Images: offered when the note has images; the app sends them back.
+  await page.evaluate(() => {
+    window.images = [{ key: "img1", name: "Launch diagram" }];
+  });
+  call = await send("What does the diagram show?");
+  assert.ok(call.tools.includes("view_images"));
+  const beforeLook = await page.evaluate(() => window.calls.length);
+  await page.evaluate(() =>
+    window.emit([
+      { delta: "", call: "view_images", call_id: "call_img" },
+      { delta: "{}", call: "view_images" },
+    ]),
+  );
+  await page.waitForFunction((n) => window.calls.length > n, beforeLook);
+  const look = await page.evaluate(() => {
+    const { onEvent, ...call } = window.calls.at(-1);
+    void onEvent;
+    return call;
+  });
+  assert.equal(look.viewed.length, 1);
+  assert.equal(look.viewed[0].callId, "call_img");
+  assert.deepEqual(look.viewed[0].names, ["Launch diagram"]);
+  assert.match(look.viewed[0].images[0], /^data:image\/png;base64,/);
+  assert.ok(!look.tools.includes("view_images"), "one look per message");
+  await page.evaluate(() =>
+    window.emit([{ delta: "The diagram shows the launch flow." }]),
+  );
+  await page.getByText("Looked at 1 image").waitFor();
   assert.deepEqual(errors, []);
   console.log("ask auto actions: ok");
 } finally {

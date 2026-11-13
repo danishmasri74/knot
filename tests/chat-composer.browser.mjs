@@ -124,17 +124,28 @@ try {
       await page.screenshot({
         path: `test-results/chat-composer/${theme}-${width}-open.png`,
       });
+      // Web search is off in Settings, so its row is disabled and skipped.
+      const web = menu.getByRole("button", {
+        name: "Search the web",
+        exact: true,
+      });
+      assert.equal(await web.isDisabled(), true);
+      assert.equal(await web.getAttribute("aria-pressed"), "false");
+      const images = menu.getByRole("button", {
+        name: "Look at images",
+        exact: true,
+      });
       // Keyboard: move to a row and toggle it; the chat is then marked.
       await search.press("ArrowDown");
       assert.equal(
-        await edit.evaluate((el) => document.activeElement === el),
+        await images.evaluate((el) => document.activeElement === el),
         true,
       );
-      await edit.press("Enter");
-      assert.equal(await edit.getAttribute("aria-pressed"), "false");
-      assert.equal(await edit.locator('[data-icon="check"]').count(), 0);
+      await images.press("Enter");
+      assert.equal(await images.getAttribute("aria-pressed"), "false");
+      assert.equal(await images.locator('[data-icon="check"]').count(), 0);
       assert.equal(await page.locator(".ask-abilities-dot").count(), 1);
-      await edit.press("Enter");
+      await images.press("Enter");
       assert.equal(await page.locator(".ask-abilities-dot").count(), 0);
       await page.keyboard.press("Escape");
       assert.equal(await menu.count(), 0);

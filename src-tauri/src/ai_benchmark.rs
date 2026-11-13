@@ -18,28 +18,32 @@ fn live_quality_benchmark() {
     assert!(budget.is_finite() && budget > 0.0);
     let model = std::env::var("KNOT_BENCHMARK_MODEL").expect("Explicit model required");
     assert!(MODELS.contains(&model.as_str()));
+    // KNOT_BENCHMARK_SUITE=routing runs the automatic-routing cases instead.
+    let routing = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("routing");
     // Per-case input reservation. The largest v1 case used 1,219 input tokens
     // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
     // more stops the run. Maximum output is capped by the request (6,000).
-    const INPUT_RESERVE: u64 = 20_000;
+    // Web search results arrive as input tokens, so routing reserves more,
+    // plus up to three searches per case at their per-call price.
+    let input_reserve: u64 = if routing { 80_000 } else { 20_000 };
+    let search_reserve = if routing { 3.0 * crate::diagnostics::WEB_SEARCH_USD } else { 0.0 };
     // Reserve the input bound at the highest cache-write rate and maximum output.
     // User must configure STANDARD service and a matching provider project cap.
     let reserve = estimate(
         &model,
         &Usage {
-            input: Some(INPUT_RESERVE),
+            input: Some(input_reserve),
             cached: Some(0),
             output: Some(6000),
-            cache_write: Some(INPUT_RESERVE),
+            cache_write: Some(input_reserve),
             cache_write_30m: Some(0),
-            cache_write_12h: Some(INPUT_RESERVE),
+            cache_write_12h: Some(input_reserve),
             ..Usage::default()
         },
         Some("default"),
     )
-    .unwrap();
-    // KNOT_BENCHMARK_SUITE=routing runs the automatic-routing cases instead.
-    let routing = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("routing");
+    .unwrap()
+        + search_reserve;
     let suite: Value = serde_json::from_str(if routing {
         include_str!("../../tests/benchmarks/routing.v1.json")
     } else {
@@ -47,7 +51,7 @@ fn live_quality_benchmark() {
     })
     .unwrap();
     let cases = suite["cases"].as_array().unwrap();
-    assert_eq!(cases.len(), if routing { 27 } else { 60 });
+    assert_eq!(cases.len(), if routing { 32 } else { 60 });
     assert!(
         reserve * cases.len() as f64 <= budget,
         "Budget is below the conservative full-suite reservation; no calls made"
@@ -95,7 +99,7 @@ fn live_quality_benchmark() {
         .open(&result_path)
         .unwrap();
     if resume.is_none() {
-        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*cases.len() as f64,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":INPUT_RESERVE})).unwrap();
+        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*cases.len() as f64,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":input_reserve})).unwrap();
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -119,14 +123,18 @@ fn live_quality_benchmark() {
             let tools: Vec<String> = serde_json::from_value(case["tools"].clone()).unwrap_or_default();
             // A completed search, to check results are accepted and used.
             let searches: Vec<SearchResult> = serde_json::from_value(case["searches"].clone()).unwrap_or_default();
-            let body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,&searches,image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
+            let viewed: Vec<ImageResult> = serde_json::from_value(case["viewed"].clone()).unwrap_or_default();
+            let body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,&searches,&viewed,image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
             assert!(context.len() + messages.iter().map(|m|m.content.len()).sum::<usize>() < 100_000);
             let output = Arc::new(Mutex::new(String::new())); let copy = output.clone();
             let route = Arc::new(Mutex::new(String::from("answer"))); let called = route.clone();
+            let web = Arc::new(Mutex::new(0u64)); let searched = web.clone();
             let channel = Channel::new(move |body| {
                 if let tauri::ipc::InvokeResponseBody::Json(s) = body {
                     let v: Value = serde_json::from_str(&s).unwrap();
                     if let Some(name) = v["call"].as_str() { name.clone_into(&mut called.lock().unwrap()); }
+                    // A hosted web search is not a function call.
+                    if v["status"] == "web" { "web_search".clone_into(&mut called.lock().unwrap()); *searched.lock().unwrap() += 1; }
                     if let Some(delta) = v["delta"].as_str() { copy.lock().unwrap().push_str(delta); }
                 } Ok(())
             });
@@ -139,7 +147,9 @@ fn live_quality_benchmark() {
                 if !response.status().is_success() { return Err(response_error(response).await); }
                 consume_response(response,channel,&mut measurement,&tools).await
             }.await;
-            let cost = estimate(&model,&measurement.attempt.usage,measurement.attempt.service_tier.as_deref());
+            let searches = *web.lock().unwrap();
+            let cost = estimate(&model,&measurement.attempt.usage,measurement.attempt.service_tier.as_deref())
+                .map(|usd| usd + searches as f64 * crate::diagnostics::WEB_SEARCH_USD);
             // Unknown pricing consumes the full reservation. Continue only when
             // reported standard-tier input/output proves it is within that bound.
             spent += cost.unwrap_or(reserve);
@@ -147,7 +157,8 @@ fn live_quality_benchmark() {
             file.flush().unwrap();
             println!("{}: success={}, accounted USD {:.6}/{:.2}",case["id"],result.is_ok(),spent,budget);
             let bounded = matches!(measurement.attempt.service_tier.as_deref(), Some("default" | "standard"))
-                && measurement.attempt.usage.input.is_some_and(|n| n <= INPUT_RESERVE)
+                && measurement.attempt.usage.input.is_some_and(|n| n <= input_reserve)
+                && searches <= 3
                 && measurement.attempt.usage.output.is_some_and(|n| n <= 6000);
             assert!(result.is_ok() && bounded && cost.is_none_or(|n| n <= reserve), "Request failed or reservation cannot be verified; stopped, results are partial and ungraded");
         }

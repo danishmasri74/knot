@@ -1,6 +1,15 @@
 # Ask Knot automatic actions (tool calling)
 
-Design · 13 November 2026 · Approved · Phases 1 and 2 implemented 13 November 2026
+Design · 13 November 2026 · Approved · Phases 1–3 implemented 13 November 2026
+
+## Phase 3 as built
+
+- **Web search** is OpenAI's hosted tool (`{"type": "web_search"}`, $10 per 1,000 searches plus search content billed as input tokens; verified on the OpenAI docs 13 November 2026). It is offered when Settings → AI → Search the web is on (off by default; `knot.ai-web-search`) and the chat allows it, and never alongside captured website evidence, which has its own rules. The streaming event names for web search and annotations are not documented, so Rust reads them from items: a `web_search_call` item starting sends `status: "web"` ("Searching the web"), and the finished message's `url_citation` annotations are sent once as `citations` (http/https only).
+- **Web links become numbered sources** (`linkCitations` in `ai-citations.ts`): each cited link's span (or, when the offsets miss, the Markdown link to the same URL) is replaced with `[Sn]` after the message's other sources; OpenAI's `utm_source` is dropped; a link that can't be placed is listed at the end. Links are a new citation kind (`kind: "link"`) shown with a globe and "Open link", which opens the external browser. The answer notes "Searched the web".
+- **Cost**: Rust counts `web_search_call` items in the final response and adds $0.01 each to the answer's cost (`web_searches` on the cost; the tooltip says how many). Diagnostics attempts still price tokens only.
+- **Images** are a `view_images` tool with no arguments, offered when the ability is on (Settings → AI → Look at images in my notes, on by default; also per chat) and the open document has images. The app sends up to three: the focused note's or card's images when it has any, otherwise the document's (`noteImages`), prepared at most 1,600 px / 2.5 MP each. They go back as the call's `function_call_output` (an `input_text` listing the names, then `input_image` parts at high detail), and the visual rules are added to that request. One look per message; the answer notes "Looked at N images"; only the names are saved with the chat.
+- **Abilities popover** gains Search the web (disabled while Settings has it off) and Look at images; arrow keys skip disabled rows.
+- **Verification:** Rust tests for the hosted tool, the image result shape, web status and citation events, and the per-search cost; unit tests for link conversion and tool selection; `ask-auto-actions.browser.mjs` covers a web answer (sources, notice, cost text) and an image round trip with a mocked backend; routing cases 28–32 (the routing suite reserves 80,000 input tokens and three searches per case).
 
 ## Phase 2 as built
 
