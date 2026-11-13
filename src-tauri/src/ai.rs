@@ -62,6 +62,26 @@ fn status_error(status: reqwest::StatusCode) -> String {
         _ => "OpenAI could not complete this request. Please try again.",
     }.into()
 }
+const NO_CREDITS: &str = "Your OpenAI account has no credits left. Add credits at platform.openai.com under Settings → Billing, then retry.";
+/// True for OpenAI's out-of-credits errors (an `error` object from a failed
+/// response, a streamed error event, or an error response body).
+fn out_of_credits(error: &Value) -> bool {
+    matches!(error["code"].as_str(), Some("insufficient_quota" | "credit_balance_exhausted"))
+        || error["type"] == "insufficient_quota"
+}
+/// A failed response's message. Only the error code is read; the provider's
+/// own text is never shown or stored.
+async fn response_error(response: reqwest::Response) -> String {
+    let status = response.status();
+    if status.as_u16() == 429 {
+        if let Ok(body) = response.json::<Value>().await {
+            if out_of_credits(&body["error"]) {
+                return NO_CREDITS.into();
+            }
+        }
+    }
+    status_error(status)
+}
 /// Open only the fixed account page, never a URL supplied by document content.
 #[tauri::command]
 pub fn ai_open_api_keys() -> Result<(), String> {
@@ -103,7 +123,7 @@ async fn available(api_key: &str) -> Result<Vec<String>, String> {
         .await
         .map_err(|_| "Could not reach OpenAI. Check your connection.")?;
     if !response.status().is_success() {
-        return Err(status_error(response.status()));
+        return Err(response_error(response).await);
     }
     let body: Value = response
         .json()
@@ -178,6 +198,8 @@ fn event(frame: &[u8]) -> Result<Option<Event>, String> {
         Some("response.output_item.done") if value["item"]["type"] == "function_call" => Ok(Some(
             Event::CallDone(value["item"]["arguments"].as_str().unwrap_or_default().into()),
         )),
+        Some("error") if out_of_credits(&value) || out_of_credits(&value["error"]) => Err(NO_CREDITS.into()),
+        Some("response.failed") if out_of_credits(&value["response"]["error"]) => Err(NO_CREDITS.into()),
         Some("response.failed" | "response.incomplete" | "error") => {
             Err("The response was interrupted or exceeded its limit. Please retry.".into())
         }
@@ -621,7 +643,7 @@ async fn respond(
         .map_err(|_| "Connection failed or timed out. Please retry.")?;
     measurement.attempt.http_status = Some(response.status().as_u16());
     if !response.status().is_success() {
-        return Err(status_error(response.status()));
+        return Err(response_error(response).await);
     }
     consume_response(response, channel, measurement, tools).await
 }
@@ -959,6 +981,30 @@ mod tests {
         }
     }
     #[test]
+    fn rejected_requests_name_missing_credits() {
+        use std::io::{Read, Write};
+        let reply = |body: &'static str| {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let _ = socket.read(&mut [0u8; 4096]).unwrap();
+                let _ = write!(socket, "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            });
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            let message = runtime.block_on(async {
+                response_error(reqwest::Client::new().get(format!("http://{address}")).send().await.unwrap()).await
+            });
+            server.join().unwrap();
+            message
+        };
+        assert_eq!(reply(r#"{"error":{"code":"credit_balance_exhausted","type":"insufficient_quota","message":"PRIVATE"}}"#), NO_CREDITS);
+        // Rate limits, and bodies that are not JSON, keep the general 429 message.
+        let general = status_error(reqwest::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(reply(r#"{"error":{"code":"rate_limit_exceeded"}}"#), general);
+        assert_eq!(reply("busy"), general);
+    }
+    #[test]
     fn suggestions_use_bounded_separate_payload() {
         let body = request_body(MODELS[0], &[], r#"{"text":"Meeting notes"}"#, "suggestions", None, None);
         assert_eq!(body["max_output_tokens"], 800);
@@ -1160,6 +1206,15 @@ mod tests {
         assert_eq!(event(br#"data: {"type":"response.function_call_arguments.delta","delta":"{\"bl"}"#).unwrap(), Some(Event::Arguments("{\"bl".into())));
         assert_eq!(event(br#"data: {"type":"response.output_item.done","item":{"type":"function_call","arguments":"{}"}}"#).unwrap(), Some(Event::CallDone("{}".into())));
         assert!(event(b"data: {\"type\":\"response.failed\"}").is_err());
+        // Out-of-credits errors say so, however OpenAI reports them.
+        for frame in [
+            br#"data: {"type":"error","code":"insufficient_quota","message":"x"}"#.as_slice(),
+            br#"data: {"type":"error","error":{"code":"credit_balance_exhausted","type":"insufficient_quota"}}"#,
+            br#"data: {"type":"response.failed","response":{"error":{"code":"insufficient_quota"}}}"#,
+        ] {
+            assert_eq!(event(frame).unwrap_err(), NO_CREDITS);
+        }
+        assert_ne!(event(br#"data: {"type":"error","code":"rate_limit_exceeded"}"#).unwrap_err(), NO_CREDITS);
         assert!(event(b"data: {\"type\":\"response.incomplete\"}").is_err());
         assert!(event(b"data: invalid").is_err());
         assert_eq!(

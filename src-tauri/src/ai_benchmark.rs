@@ -134,7 +134,7 @@ fn live_quality_benchmark() {
             // Same production transport and stream consumer; no auto-retries.
             let result = async {
                 let response = client()?.post("https://api.openai.com/v1/responses").bearer_auth(key()?).json(&body).send().await.map_err(|_|"Connection failed".to_string())?;
-                if !response.status().is_success() { return Err(status_error(response.status())); }
+                if !response.status().is_success() { return Err(response_error(response).await); }
                 consume_response(response,channel,&mut measurement,&tools).await
             }.await;
             let cost = estimate(&model,&measurement.attempt.usage,measurement.attempt.service_tier.as_deref());
