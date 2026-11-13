@@ -2070,6 +2070,617 @@
         "Follow the requested operation without claiming to save edits.",
         "Answer in chat without calling a tool."
       ]
+    },
+    {
+      "id": "knot-routing-21",
+      "category": "routing",
+      "mode": "auto",
+      "tools": [
+        "search_workspace",
+        "insert_blocks"
+      ],
+      "expected_route": "search_workspace",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "What do my notes say about spaced repetition?"
+        }
+      ],
+      "expected": "Call search_workspace with a specific query.",
+      "rubric": [
+        "Choose the expected route: search_workspace.",
+        "Follow the requested operation without claiming to save edits.",
+        "Call search_workspace with a specific query."
+      ]
+    },
+    {
+      "id": "knot-routing-22",
+      "category": "routing",
+      "mode": "auto",
+      "tools": [
+        "search_workspace",
+        "rewrite_selection",
+        "insert_blocks"
+      ],
+      "expected_route": "answer",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Who owns launch?"
+        }
+      ],
+      "expected": "Answer in chat without calling a tool.",
+      "rubric": [
+        "Choose the expected route: answer.",
+        "Follow the requested operation without claiming to save edits.",
+        "Answer in chat without calling a tool."
+      ]
+    },
+    {
+      "id": "knot-routing-23",
+      "category": "routing",
+      "mode": "auto",
+      "tools": [
+        "search_workspace",
+        "insert_blocks"
+      ],
+      "expected_route": "answer",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Summarise this note."
+        }
+      ],
+      "expected": "Answer in chat without calling a tool.",
+      "rubric": [
+        "Choose the expected route: answer.",
+        "Follow the requested operation without claiming to save edits.",
+        "Answer in chat without calling a tool."
+      ]
+    },
+    {
+      "id": "knot-routing-24",
+      "category": "routing",
+      "mode": "auto",
+      "tools": [
+        "search_workspace"
+      ],
+      "expected_route": "search_workspace",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Find what I wrote about pricing experiments in my other notes."
+        }
+      ],
+      "expected": "Call search_workspace with a specific query.",
+      "rubric": [
+        "Choose the expected route: search_workspace.",
+        "Follow the requested operation without claiming to save edits.",
+        "Call search_workspace with a specific query."
+      ]
+    },
+    {
+      "id": "knot-routing-25",
+      "category": "routing",
+      "mode": "auto",
+      "tools": [
+        "search_workspace"
+      ],
+      "expected_route": "answer",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the capital of France?"
+        }
+      ],
+      "expected": "Answer in chat without calling a tool.",
+      "rubric": [
+        "Choose the expected route: answer.",
+        "Follow the requested operation without claiming to save edits.",
+        "Answer in chat without calling a tool."
+      ]
+    },
+    {
+      "id": "knot-routing-26",
+      "category": "routing",
+      "mode": "auto",
+      "tools": [
+        "search_workspace",
+        "insert_blocks"
+      ],
+      "expected_route": "search_workspace",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Add what my other notes say about onboarding to this note."
+        }
+      ],
+      "expected": "Call search_workspace with a specific query.",
+      "rubric": [
+        "Choose the expected route: search_workspace.",
+        "Follow the requested operation without claiming to save edits.",
+        "Call search_workspace with a specific query."
+      ]
     }
   ]
 }

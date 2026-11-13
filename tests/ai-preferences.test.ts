@@ -63,12 +63,14 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
   expect(normalizeAiAbilities(null)).toEqual({
     editNote: true,
     canvasCards: true,
+    searchWorkspace: true,
   });
   expect(normalizeAiAbilities({ editNote: false, junk: 1 })).toEqual({
     editNote: false,
     canvasCards: true,
+    searchWorkspace: true,
   });
-  const all = { editNote: true, canvasCards: true };
+  const all = { editNote: true, canvasCards: true, searchWorkspace: true };
   const open = { selection: true, note: true, canvas: true, editable: true };
   expect(automaticAiTools(all, open)).toEqual([
     "rewrite_selection",
@@ -76,10 +78,23 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     "create_on_canvas",
   ]);
   expect(automaticAiTools(all, { ...open, editable: false })).toEqual([]);
-  expect(
-    automaticAiTools({ editNote: false, canvasCards: true }, open),
-  ).toEqual(["create_on_canvas"]);
+  expect(automaticAiTools({ ...all, editNote: false }, open)).toEqual([
+    "create_on_canvas",
+  ]);
   expect(
     automaticAiTools(all, { ...open, selection: false, canvas: false }),
   ).toEqual(["insert_blocks"]);
+  // Search needs Settings and the chat to allow it, and works read-only.
+  expect(
+    automaticAiTools(all, { ...open, editable: false, search: true }),
+  ).toEqual(["search_workspace"]);
+  expect(
+    automaticAiTools(
+      { ...all, searchWorkspace: false },
+      { ...open, search: true },
+    ),
+  ).not.toContain("search_workspace");
+  expect(automaticAiTools(all, { ...open, search: false })).not.toContain(
+    "search_workspace",
+  );
 });

@@ -163,7 +163,12 @@ export function setAiSuggestionsEnabled(enabled: boolean) {
  * Settings holds the defaults; a chat can override them. Every proposal is
  * still previewed before it changes anything.
  */
-export type AiAbilities = { editNote: boolean; canvasCards: boolean };
+export type AiAbilities = {
+  editNote: boolean;
+  canvasCards: boolean;
+  /** Per chat only: Settings → AI → Search my workspace is the default. */
+  searchWorkspace: boolean;
+};
 export const AI_ABILITIES_CHANGED = "knot-ai-abilities-changed";
 const abilitiesKey = "knot.ai-abilities.v1";
 export function normalizeAiAbilities(value: unknown): AiAbilities {
@@ -174,6 +179,7 @@ export function normalizeAiAbilities(value: unknown): AiAbilities {
   return {
     editNote: saved.editNote !== false,
     canvasCards: saved.canvasCards !== false,
+    searchWorkspace: saved.searchWorkspace !== false,
   };
 }
 export function getAiAbilities(): AiAbilities {
@@ -199,7 +205,10 @@ export const AI_TOOL_MODES = {
   insert_blocks: "insert",
   create_on_canvas: "canvas",
 } as const;
-export type AiTool = keyof typeof AI_TOOL_MODES;
+/** Searches the workspace on this device; results go back to the model. */
+export type AiTool = keyof typeof AI_TOOL_MODES | "search_workspace";
+/** Searches one message may run; matches MAX_SEARCHES in ai.rs. */
+export const MAX_SEARCHES = 2;
 /**
  * Tools to offer for one request: allowed by the abilities and possible for
  * what is open. A tool that is not offered cannot be called.
@@ -211,10 +220,14 @@ export function automaticAiTools(
     note: boolean;
     canvas: boolean;
     editable: boolean;
+    /** Workspace search is on in Settings. */
+    search?: boolean;
   },
 ): AiTool[] {
-  if (!target.editable) return [];
   const tools: AiTool[] = [];
+  if (abilities.searchWorkspace && target.search)
+    tools.push("search_workspace");
+  if (!target.editable) return tools;
   if (abilities.editNote && target.selection) tools.push("rewrite_selection");
   if (abilities.editNote && target.note) tools.push("insert_blocks");
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");

@@ -71,10 +71,6 @@ await page
 assert.equal(await page.locator(".ask-workspace-host").isVisible(), false);
 await page.getByRole("button", { name: "Go back", exact: true }).click();
 await page.locator(".ask-knot textarea").waitFor();
-await page.getByRole("button", { name: "Source scope", exact: true }).click();
-await page
-  .getByRole("button", { name: "No note sources", exact: true })
-  .click();
 await page.getByRole("button", { name: "Send to Knot", exact: true }).click();
 await page.getByRole("button", { name: "Stop", exact: true }).waitFor();
 await page.getByRole("button", { name: "Move to panel", exact: true }).click();

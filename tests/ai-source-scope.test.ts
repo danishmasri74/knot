@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import {
   editIntent,
-  proposalHistory,
+  exchangeHistory,
   resolveSourceMode,
   usesNoteSources,
 } from "../src/services/ai-source-scope";
@@ -33,7 +33,7 @@ test("explicit sources and source-based requests are preserved", () => {
   ).toBe(true);
   expect(usesNoteSources("none", "rewrite", "Rewrite", true, false)).toBe(true);
 });
-test("edit requests use the open note instead of workspace search", () => {
+test("automatic messages read what is open; Knot searches by itself", () => {
   const base = {
     scope: "auto" as const,
     automatic: true,
@@ -43,44 +43,35 @@ test("edit requests use the open note instead of workspace search", () => {
   };
   for (const prompt of [
     "Shorten this",
-    "Can you rewrite the intro?",
-    "Turn this into a mind map",
-    "Add a summary at the end",
-    "Put the steps on the canvas",
-  ]) {
-    expect(editIntent(prompt), prompt).toBe(true);
+    "What did I write about spaced repetition?",
+    "Who owns support?",
+  ])
     expect(resolveSourceMode({ ...base, mode: "auto", prompt })).toBe(
       "current",
     );
-  }
-  for (const prompt of [
-    "What did I write about spaced repetition?",
-    "Explain the launch plan",
-    "Who owns support?",
-  ]) {
-    expect(editIntent(prompt), prompt).toBe(false);
-    expect(resolveSourceMode({ ...base, mode: "auto", prompt })).toBe(
-      "workspace",
-    );
-  }
-  // Edit intent never widens Ask, and needs an open document.
   expect(
-    resolveSourceMode({ ...base, mode: "ask", prompt: "Shorten this" }),
-  ).toBe("workspace");
+    resolveSourceMode({ ...base, active: false, mode: "auto", prompt: "Hi" }),
+  ).toBe("none");
   expect(
-    resolveSourceMode({
-      ...base,
-      active: false,
-      mode: "auto",
-      prompt: "Shorten this",
-    }),
+    resolveSourceMode({ ...base, attached: true, mode: "auto", prompt: "Hi" }),
+  ).toBe("explicit");
+  expect(
+    resolveSourceMode({ ...base, scope: "none", mode: "auto", prompt: "Hi" }),
+  ).toBe("none");
+  // Ask keeps searching first; forced edits stay legacy.
+  expect(
+    resolveSourceMode({ ...base, mode: "ask", prompt: "Who owns support?" }),
   ).toBe("workspace");
   expect(
     resolveSourceMode({ ...base, mode: "rewrite", prompt: "Shorten this" }),
   ).toBe("legacy");
+  expect(editIntent("Turn this into a mind map")).toBe(true);
+  expect(editIntent("What did I write about spaced repetition?")).toBe(false);
 });
-test("follow-ups after a proposal describe it without its content", () => {
+test("follow-ups replay the user's messages, never answers or proposals", () => {
   const turns = [
+    { role: "user", content: "What are the launch risks?" },
+    { role: "assistant", content: "PRIVATE ANSWER [S1]" },
     { role: "user", content: "Shorten this" },
     {
       role: "assistant",
@@ -89,9 +80,16 @@ test("follow-ups after a proposal describe it without its content", () => {
       mode: "rewrite",
       status: "applied",
     },
+    { role: "user", content: "Failed one" },
+    { role: "assistant", content: "Interrupted", failed: true },
   ];
-  const history = proposalHistory(turns);
+  const history = exchangeHistory(turns);
   expect(history).toEqual([
+    { role: "user", content: "What are the launch risks?" },
+    {
+      role: "assistant",
+      content: "(Answered in chat; the answer is not repeated here.)",
+    },
     { role: "user", content: "Shorten this" },
     {
       role: "assistant",
@@ -100,10 +98,6 @@ test("follow-ups after a proposal describe it without its content", () => {
     },
   ]);
   expect(JSON.stringify(history)).not.toContain("PRIVATE");
-  expect(
-    proposalHistory([turns[0], { role: "assistant", content: "An answer" }]),
-  ).toEqual([]);
-  expect(proposalHistory([turns[0], { ...turns[1], failed: true }])).toEqual(
-    [],
-  );
+  expect(exchangeHistory(turns, 1)).toEqual(history.slice(2));
+  expect(exchangeHistory([])).toEqual([]);
 });

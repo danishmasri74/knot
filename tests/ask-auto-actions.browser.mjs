@@ -36,6 +36,8 @@ try {
       invoke: async (cmd, args) => {
         if (cmd === "ai_connected") return true;
         if (cmd === "ai_models") return ["gpt-5.4-mini"];
+        if (cmd === "topic_catalog") return { activation: "test", sources: [] };
+        if (cmd === "topic_pending") return [];
         if (cmd === "ai_respond") {
           window.calls.push(args);
           // The test streams events, then resolves the request.
@@ -52,9 +54,38 @@ try {
     const { createRoot } = (
       await import("/node_modules/.vite/deps/react-dom_client.js")
     ).default;
+    // The device search is stubbed: it records the model's query and returns
+    // one excerpt numbered from [S1], as the real search does.
+    const { TopicIndexer } = await import("/src/services/workspace-topic.ts");
+    window.searched = [];
+    TopicIndexer.prototype.search = async (query) => {
+      window.searched.push(query);
+      return {
+        version: 1,
+        sourceMode: "workspace",
+        activation: "test",
+        coverage: { indexed: 2, total: 2, failed: 0, semantic: true },
+        citationSources: [
+          {
+            document: "study",
+            id: "p1",
+            revision: "r1",
+            title: "Study habits",
+            text: "Review cards at growing intervals.",
+            citation: "[S1]",
+          },
+        ],
+      };
+    };
     const { AskKnot } = await import("/src/app/AskKnot.tsx");
     const doc = { id: "doc", meta: { title: "Launch plan" } };
-    const session = { doc, editor: new EventTarget(), imageSources: () => [] };
+    const session = {
+      doc,
+      editor: new EventTarget(),
+      imageSources: () => [],
+      topicOverlay: () => [],
+      topicVersion: () => 1,
+    };
     createRoot(document.getElementById("root")).render(
       React.createElement(AskKnot, {
         workspace: "auto-actions",
@@ -125,6 +156,12 @@ try {
   assert.equal(await edit.getAttribute("aria-pressed"), "true");
   assert.equal(
     await page
+      .getByRole("button", { name: "Search my workspace" })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(
+    await page
       .getByRole("button", { name: "Create cards on canvas" })
       .getAttribute("aria-pressed"),
     "true",
@@ -142,10 +179,10 @@ try {
   await page.keyboard.press("Escape");
   assert.equal(await page.locator(".ask-abilities-dot").count(), 1);
 
-  // With editing off nothing can be proposed, so this is an ordinary answer.
+  // With editing off nothing can be proposed; Knot may only search.
   let call = await send("Make this shorter");
-  assert.equal(call.mode, "ask");
-  assert.equal(call.tools, undefined);
+  assert.equal(call.mode, "auto");
+  assert.deepEqual(call.tools, ["search_workspace"]);
   await page.evaluate(() =>
     window.emit([{ delta: "Editing is turned off for this chat." }]),
   );
@@ -158,7 +195,11 @@ try {
   assert.equal(await page.locator(".ask-abilities-dot").count(), 0);
   call = await send("Make this shorter");
   assert.equal(call.mode, "auto");
-  assert.deepEqual(call.tools, ["rewrite_selection", "insert_blocks"]);
+  assert.deepEqual(call.tools, [
+    "search_workspace",
+    "rewrite_selection",
+    "insert_blocks",
+  ]);
   assert.equal(call.messages.at(-1).content, "Make this shorter");
   assert.equal(JSON.parse(call.context).runs.length, 1);
   await page.evaluate(() => {
@@ -199,8 +240,9 @@ try {
     void onEvent;
     return call;
   });
-  assert.equal(call.mode, "ask");
-  assert.equal(call.tools, undefined);
+  // Answer only: it can still search, but not propose.
+  assert.equal(call.mode, "auto");
+  assert.deepEqual(call.tools, ["search_workspace"]);
   await page.evaluate(() =>
     window.emit([{ delta: "Shorter: the beta ships in March." }]),
   );
@@ -247,6 +289,72 @@ try {
     await page.getByRole("button", { name: "Just answer instead" }).count(),
     0,
   );
+
+  // Knot searches the workspace: the device runs the model's query and the
+  // excerpts go back in a second request, numbered after the note's sources.
+  call = await send("What do my notes say about spaced repetition?");
+  const first = await page.evaluate(() => window.calls.length);
+  assert.equal(call.mode, "auto");
+  assert.equal(call.tools[0], "search_workspace");
+  assert.equal(call.searches, undefined);
+  await page.evaluate(() =>
+    window.emit([
+      { delta: "", call: "search_workspace", call_id: "call_1" },
+      { delta: '{"query":"spaced repetition"}', call: "search_workspace" },
+    ]),
+  );
+  await page.waitForFunction((n) => window.calls.length > n, first);
+  assert.deepEqual(await page.evaluate(() => window.searched), [
+    "spaced repetition",
+  ]);
+  const second = await page.evaluate(() => {
+    const [a, b] = window.calls.slice(-2);
+    const { onEvent, ...call } = b;
+    void onEvent;
+    return { ...call, firstId: a.id };
+  });
+  assert.notEqual(second.id, second.firstId, "each round has its own request");
+  assert.equal(second.mode, "auto");
+  assert.equal(second.searches.length, 1);
+  assert.equal(second.searches[0].callId, "call_1");
+  assert.equal(second.searches[0].query, "spaced repetition");
+  const evidence = JSON.parse(second.searches[0].evidence);
+  const noteCitations = JSON.parse(second.context).citationSources.length;
+  assert.equal(
+    evidence.citationSources[0].citation,
+    `[S${noteCitations + 1}]`,
+    "excerpts continue the note's citation numbers",
+  );
+  assert.ok(
+    second.tools.includes("search_workspace"),
+    "one more search allowed",
+  );
+  await page.evaluate(
+    (citation) =>
+      window.emit([
+        { delta: `Review cards at growing intervals ${citation}.` },
+      ]),
+    evidence.citationSources[0].citation,
+  );
+  await page.getByText("Searched workspace for “spaced repetition”").waitFor();
+  await page
+    .locator(".ask-message-text", {
+      hasText: "Review cards at growing intervals",
+    })
+    .last()
+    .waitFor();
+  await page.locator(".ask-sources summary").last().click();
+  await page.getByText("Study habits").waitFor();
+  await page.screenshot({ path: "test-results/ask-auto-actions/search.png" });
+
+  // With search off for the chat, the tool is not offered.
+  await abilities.click();
+  await page.getByRole("button", { name: "Search my workspace" }).click();
+  await page.keyboard.press("Escape");
+  call = await send("What else do my notes say?");
+  assert.ok(!(call.tools ?? []).includes("search_workspace"));
+  await page.evaluate(() => window.emit([{ delta: "Only this note." }]));
+  await page.getByText("Only this note.").waitFor();
   assert.deepEqual(errors, []);
   console.log("ask auto actions: ok");
 } finally {

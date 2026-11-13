@@ -64,11 +64,13 @@ try {
       }),
     );
   });
-  const source = page.getByRole("button", {
-    name: "Source scope",
-    exact: true,
-  });
-  await source.waitFor();
+  // The Abilities popover replaced the Source scope dropdown.
+  const trigger = page.getByRole("button", { name: "Abilities", exact: true });
+  await trigger.waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "Source scope" }).count(),
+    0,
+  );
   for (const theme of ["light", "dark"]) {
     await page.evaluate((theme) => {
       document.documentElement.dataset.theme = theme;
@@ -77,23 +79,6 @@ try {
       await page.evaluate((width) => {
         document.getElementById("root").style.width = `${width}px`;
       }, width);
-      await source.click();
-      const menu = page.getByRole("dialog", {
-        name: "Source scope",
-        exact: true,
-      });
-      await menu.waitFor();
-      await menu
-        .getByRole("button", { name: "Current note", exact: true })
-        .click();
-      assert.equal(await source.innerText(), "Current note");
-      assert.equal(
-        await source
-          .locator("span")
-          .evaluate((el) => el.scrollWidth <= el.clientWidth),
-        true,
-        "source label is fully readable",
-      );
       assert.equal(
         await page
           .locator(".ask-context")
@@ -101,20 +86,32 @@ try {
         true,
         "sources stay inside narrow composers",
       );
-      await source.press("Enter");
-      const selected = menu.getByRole("button", {
-        name: "Current note",
+      await trigger.click();
+      const menu = page.getByRole("dialog", { name: "Abilities", exact: true });
+      await menu.waitFor();
+      const search = menu.getByRole("button", {
+        name: "Search my workspace",
         exact: true,
       });
-      await selected.waitFor();
+      const edit = menu.getByRole("button", {
+        name: "Edit the current note",
+        exact: true,
+      });
       await page.waitForTimeout(80);
-      assert.equal(await selected.getAttribute("aria-pressed"), "true");
-      assert.equal(await selected.locator('[data-icon="check"]').count(), 1);
-      const anchor = await source.boundingBox();
+      assert.equal(
+        await search.evaluate((el) => document.activeElement === el),
+        true,
+        "the first row takes focus",
+      );
+      for (const row of [search, edit]) {
+        assert.equal(await row.getAttribute("aria-pressed"), "true");
+        assert.equal(await row.locator('[data-icon="check"]').count(), 1);
+      }
+      const anchor = await trigger.boundingBox();
       const box = await menu.boundingBox();
       assert.ok(
         box.y + box.height <= anchor.y,
-        "source menu opens above the composer",
+        "abilities open above the composer",
       );
       assert.ok(
         box.x >= 8 && box.x + box.width <= 892 && box.y >= 8,
@@ -127,51 +124,37 @@ try {
       await page.screenshot({
         path: `test-results/chat-composer/${theme}-${width}-open.png`,
       });
-      await selected.press("ArrowDown");
-      const none = menu.getByRole("button", {
-        name: "No note sources",
-        exact: true,
-      });
-      await none.press("Enter");
-      await page.waitForFunction(
-        () =>
-          document.querySelector(".ask-source-scope")?.textContent ===
-          "No note sources",
-      );
+      // Keyboard: move to a row and toggle it; the chat is then marked.
+      await search.press("ArrowDown");
       assert.equal(
-        await page.locator(".ask-context .ask-chip").count(),
-        0,
-        "source-less mode has no duplicate status badge",
-      );
-      assert.equal(
-        await source.evaluate((el) => document.activeElement === el),
+        await edit.evaluate((el) => document.activeElement === el),
         true,
-        "selection restores focus",
       );
-      await source.press("Enter");
-      await menu.waitFor();
+      await edit.press("Enter");
+      assert.equal(await edit.getAttribute("aria-pressed"), "false");
+      assert.equal(await edit.locator('[data-icon="check"]').count(), 0);
+      assert.equal(await page.locator(".ask-abilities-dot").count(), 1);
+      await edit.press("Enter");
+      assert.equal(await page.locator(".ask-abilities-dot").count(), 0);
       await page.keyboard.press("Escape");
       assert.equal(await menu.count(), 0);
       assert.equal(
-        await source.evaluate((el) => document.activeElement === el),
+        await trigger.evaluate((el) => document.activeElement === el),
         true,
         "Escape restores focus",
       );
-      await source.click();
-      await menu
-        .getByRole("button", { name: "Current note", exact: true })
-        .click();
+      await trigger.click();
+      await menu.waitFor();
+      await page.locator(".ask-header h2").click();
+      assert.equal(await menu.count(), 0, "outside click closes the menu");
       await page.screenshot({
         path: `test-results/chat-composer/${theme}-${width}-closed.png`,
       });
-      await source.click();
-      await page.getByRole("textbox", { name: "Ask Knot message" }).click();
-      assert.equal(await menu.count(), 0, "outside click closes source menu");
     }
   }
   assert.deepEqual(errors, []);
   console.log(
-    "Composer: full source labels, wrapping, top placement, shared dropdown styling, selected indicators, keyboard selection, Escape, focus return, and outside dismissal passed in light/dark at 600px/320px.",
+    "Composer: abilities popover placement, shared dropdown styling, selected indicators, keyboard toggling, chat marker, Escape, focus return, outside dismissal and narrow source chips passed in light/dark at 600px/320px.",
   );
 } finally {
   await browser.close();

@@ -13,13 +13,17 @@ export function resolveSourceMode(input: {
   if (input.mode !== "ask" && input.mode !== "auto") return "legacy";
   if (input.scope === "none") return "none";
   if (input.scope === "current") return "current";
-  if (
-    input.selected ||
-    (input.active &&
-      (/\b(this note|this page|this card|this pdf)\b/i.test(input.prompt) ||
-        (input.mode === "auto" && editIntent(input.prompt))))
-  )
-    return "current";
+  const mentioned =
+    input.active &&
+    /\b(this note|this page|this card|this pdf)\b/i.test(input.prompt);
+  if (input.mode === "auto") {
+    // Knot searches the workspace itself when it needs to, so an automatic
+    // message reads what is open and decides from there.
+    if (input.selected || mentioned) return "current";
+    if (input.attached || input.inherited === "explicit") return "explicit";
+    return input.active ? "current" : "none";
+  }
+  if (input.selected || mentioned) return "current";
   if (input.attached) return "explicit";
   if (input.scope === "workspace")
     return input.automatic ? "workspace" : "legacy";
@@ -60,11 +64,12 @@ export function usesNoteSources(
 }
 
 /**
- * After a proposal, a short note of what was proposed and what the user did
- * with it, so "make it shorter" can refine it. Only the user's own message is
- * replayed; the proposal content and any sources never are.
+ * The chat's last few exchanges, so a follow-up ("what are its drawbacks?",
+ * "make it shorter") can refer back. Only the user's own messages are
+ * replayed; each reply is a short note of what Knot did, never its answer,
+ * proposal or sources.
  */
-export function proposalHistory<
+export function exchangeHistory<
   T extends {
     role: string;
     content: string;
@@ -73,27 +78,37 @@ export function proposalHistory<
     mode?: string;
     status?: string;
   },
->(turns: T[]): { role: string; content: string }[] {
-  const last = turns.at(-1);
-  const user = turns.at(-2);
-  if (last?.role !== "assistant" || !last.proposal || last.failed) return [];
-  if (user?.role !== "user") return [];
-  const what =
-    last.mode === "rewrite"
-      ? "a rewrite of the selected text"
-      : last.mode === "canvas"
-        ? "content for the canvas"
-        : "an addition to the note";
-  const outcome =
-    last.status === "applied"
-      ? "The user applied it."
-      : last.status === "dismissed"
-        ? "The user dismissed it."
-        : "The user has not applied it yet.";
-  return [
-    { role: "user", content: user.content },
-    { role: "assistant", content: `(Proposed ${what}. ${outcome})` },
-  ];
+>(turns: T[], limit = 3): { role: string; content: string }[] {
+  const history: { role: string; content: string }[] = [];
+  for (let i = turns.length - 1; i > 0 && history.length < limit * 2; i--) {
+    const reply = turns[i];
+    const user = turns[i - 1];
+    if (reply.role !== "assistant" || user.role !== "user" || reply.failed)
+      continue;
+    const what =
+      reply.mode === "rewrite"
+        ? "a rewrite of the selected text"
+        : reply.mode === "canvas"
+          ? "content for the canvas"
+          : "an addition to the note";
+    const outcome =
+      reply.status === "applied"
+        ? "The user applied it."
+        : reply.status === "dismissed"
+          ? "The user dismissed it."
+          : "The user has not applied it yet.";
+    history.unshift(
+      { role: "user", content: user.content },
+      {
+        role: "assistant",
+        content: reply.proposal
+          ? `(Proposed ${what}. ${outcome})`
+          : "(Answered in chat; the answer is not repeated here.)",
+      },
+    );
+    i--;
+  }
+  return history;
 }
 
 /** Source-less and newly scoped requests never replay legacy source-bearing transcript text. */

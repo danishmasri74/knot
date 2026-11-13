@@ -47,7 +47,7 @@ fn live_quality_benchmark() {
     })
     .unwrap();
     let cases = suite["cases"].as_array().unwrap();
-    assert_eq!(cases.len(), if routing { 20 } else { 60 });
+    assert_eq!(cases.len(), if routing { 26 } else { 60 });
     assert!(
         reserve * cases.len() as f64 <= budget,
         "Budget is below the conservative full-suite reservation; no calls made"
@@ -117,7 +117,7 @@ fn live_quality_benchmark() {
             let image = asset("image_asset"); let pdf = asset("pdf_asset");
             let mode = case["mode"].as_str().unwrap();
             let tools: Vec<String> = serde_json::from_value(case["tools"].clone()).unwrap_or_default();
-            let body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
+            let body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,&[],image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
             assert!(context.len() + messages.iter().map(|m|m.content.len()).sum::<usize>() < 100_000);
             let output = Arc::new(Mutex::new(String::new())); let copy = output.clone();
             let route = Arc::new(Mutex::new(String::from("answer"))); let called = route.clone();

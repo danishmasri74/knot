@@ -158,11 +158,15 @@ pub struct StreamEvent {
     /// delta; later deltas carrying it are that call's JSON arguments.
     #[serde(skip_serializing_if = "Option::is_none")]
     call: Option<String>,
+    /// Sent with the call's first event; a search result must quote it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    call_id: Option<String>,
 }
 #[derive(Debug, PartialEq)]
 enum Event {
     Text(String),
-    Call(String),
+    /// A tool call started: its name and call ID.
+    Call(String, String),
     Arguments(String),
     CallDone(String),
     Done,
@@ -190,7 +194,10 @@ fn event(frame: &[u8]) -> Result<Option<Event>, String> {
     match value["type"].as_str() {
         Some("response.output_text.delta") => Ok(value["delta"].as_str().map(|d| Event::Text(d.into()))),
         Some("response.output_item.added") if value["item"]["type"] == "function_call" => Ok(Some(
-            Event::Call(value["item"]["name"].as_str().unwrap_or_default().into()),
+            Event::Call(
+                value["item"]["name"].as_str().unwrap_or_default().into(),
+                value["item"]["call_id"].as_str().unwrap_or_default().into(),
+            ),
         )),
         Some("response.function_call_arguments.delta") => {
             Ok(value["delta"].as_str().map(|d| Event::Arguments(d.into())))
@@ -220,11 +227,13 @@ pub async fn ai_respond(
     context: String,
     mode: String,
     tools: Option<Vec<String>>,
+    searches: Option<Vec<SearchResult>>,
     image: Option<String>,
     pdf_input: Option<String>,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
     let tools = tools.unwrap_or_default();
+    let searches = searches.unwrap_or_default();
     let mut composition = if diagnostics.collecting() {
         crate::diagnostics::Composition::context(&context)
     } else {
@@ -247,8 +256,14 @@ pub async fn ai_respond(
         || id.len() > 80
         // Automatic requests offer 1-3 distinct known tools; no other mode offers any.
         || (mode == "auto") == tools.is_empty()
-        || tools.iter().any(|name| tool_mode(name).is_none())
+        || tools.iter().any(|name| tool_mode(name).is_none() && name != SEARCH_TOOL)
         || tools.iter().enumerate().any(|(i, name)| tools[..i].contains(name))
+        // Search results only follow an automatic request's own search calls.
+        || (!searches.is_empty() && mode != "auto")
+        || searches.len() > MAX_SEARCHES
+        || (searches.len() == MAX_SEARCHES && tools.iter().any(|name| name == SEARCH_TOOL))
+        || searches.iter().any(|s| s.call_id.is_empty() || s.call_id.len() > 100 || s.query.len() > 2000)
+        || searches.iter().map(|s| s.evidence.len()).sum::<usize>() > 60000
     {
         return Err("Unsupported request".into());
     }
@@ -274,19 +289,31 @@ pub async fn ai_respond(
     }
     if serde_json::from_str::<Value>(&context).ok().is_some_and(|v|v["sourceMode"]=="workspace") && !*topic.1.lock().map_err(|_|"Search state unavailable")? {return Err("Workspace search is disabled".into());}
     crate::topic::validate(&workspace, &context)?;
+    let searching = tools.iter().any(|name| name == SEARCH_TOOL) || !searches.is_empty();
+    if searching && !*topic.1.lock().map_err(|_| "Search state unavailable")? {
+        return Err("Workspace search is disabled".into());
+    }
+    for search in &searches {
+        // Results come from the device's own search of this workspace, and
+        // their sources must not have changed since.
+        if serde_json::from_str::<Value>(&search.evidence).ok().is_none_or(|v| v["sourceMode"] != "workspace") {
+            return Err("Unsupported request".into());
+        }
+        crate::topic::validate(&workspace, &search.evidence)?;
+    }
     let cancel = Arc::new(Notify::new());
     {
         let mut requests = state.0.lock().map_err(|_| "Request lock unavailable")?;
         if requests.len() >= 4 || requests.contains_key(&id) {
             return Err("Another request is still running.".into());
         }
-        if serde_json::from_str::<Value>(&context).ok().is_some_and(|v|v["sourceMode"]=="workspace") {topic.register(&id,cancel.clone())?;}
+        if searching || serde_json::from_str::<Value>(&context).ok().is_some_and(|v|v["sourceMode"]=="workspace") {topic.register(&id,cancel.clone())?;}
         requests.insert(id.clone(), cancel.clone());
     }
     let result = tokio::select! {
         biased;
         _ = cancel.notified() => Err("Request stopped".into()),
-        result = respond(&model, &messages, &context, &mode, &tools, image.as_deref(), pdf_input.as_deref(), on_event, &mut measurement) => result,
+        result = respond(&model, &messages, &context, &mode, &tools, &searches, image.as_deref(), pdf_input.as_deref(), on_event, &mut measurement) => result,
     };
     if let Ok(mut requests) = state.0.lock() {
         requests.remove(&id);
@@ -423,43 +450,89 @@ fn tool_description(name: &str) -> &'static str {
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
 }
-/// An Ask request that may also propose one edit through a tool. Without
-/// tools it is exactly an Ask request.
+/// Searches the user's workspace on the device. The app runs it and sends the
+/// results back with the next request; at most two per message.
+pub(crate) const SEARCH_TOOL: &str = "search_workspace";
+pub(crate) const MAX_SEARCHES: usize = 2;
+const SEARCH_RULES: &str = "search_workspace searches the user's other notes, cards and PDFs on their device and returns verbatim excerpts. Call it when the answer may be in notes beyond the supplied context, such as what the user's notes say about a topic. Do not call it when the supplied context already answers, or for general knowledge and writing requests. Write a short, specific query with the key terms, resolving words like it or that from the conversation. Search again with a different query only if the results miss the point. Answer from the excerpts' text and cite them with their exact citation field. Preserve exceptions, conditions, corrections and conflicting claims with their separate citations. Repeated copies are not independent confirmation. Distinguish attributed saved quotations and website evidence from the user's commentary. Coverage may be incomplete; disclose that when it matters. If the excerpts do not support an answer, say so.";
+/// A workspace search the app ran for a search_workspace call.
+#[derive(Deserialize)]
+pub struct SearchResult {
+    call_id: String,
+    query: String,
+    /// The device's evidence for the query (sourceMode workspace).
+    evidence: String,
+}
+/// What the model receives for a search: excerpts and coverage only, never
+/// document IDs, revisions or vectors.
+fn search_output(evidence: &str) -> String {
+    let v = serde_json::from_str::<Value>(evidence).unwrap_or(Value::Null);
+    json!({"coverage": v["coverage"], "citationSources": v["citationSources"].as_array().unwrap_or(&Vec::new()).iter()
+        .map(|p| json!({"citation": p["citation"], "title": p["title"], "text": p["text"], "attribution": p["attribution"]}))
+        .collect::<Vec<_>>()}).to_string()
+}
+/// An Ask request that may also search the workspace or propose one edit
+/// through a tool. Without tools or searches it is exactly an Ask request.
 fn tool_request_body(
     model: &str,
     messages: &[Message],
     context: &str,
     tools: &[String],
+    searches: &[SearchResult],
     image: Option<&str>,
     pdf_input: Option<&str>,
 ) -> Value {
     let mut body = request_body(model, messages, context, "ask", image, pdf_input);
-    if tools.is_empty() {
+    if tools.is_empty() && searches.is_empty() {
         return body;
     }
+    let edits: Vec<&String> = tools.iter().filter(|name| tool_mode(name).is_some()).collect();
     let base = body["instructions"].as_str().unwrap_or_default();
     // Mirror the decisions compose_body made for this context.
     let web = base.contains("Web evidence was explicitly captured");
     let compacted = base.contains(crate::ai_context::COMPACT_INSTRUCTIONS);
     let mut instructions = base
         .replace("No browsing, tools, diagram edits or cross-document edits.", "No browsing, diagram edits or cross-document edits.")
-        .replace("\nCurrent operation: ask.", "\nCurrent operation: answer, or propose one edit with a tool.");
-    instructions.push('\n');
-    instructions.push_str(AUTO_ROUTING);
-    for name in tools {
+        .replace("\nCurrent operation: ask.", if edits.is_empty() { "\nCurrent operation: answer." } else { "\nCurrent operation: answer, or propose one edit with a tool." });
+    if !edits.is_empty() {
         instructions.push('\n');
-        instructions.push_str(&tool_rules(name));
+        instructions.push_str(AUTO_ROUTING);
+        for name in &edits {
+            instructions.push('\n');
+            instructions.push_str(&tool_rules(name));
+        }
+        instructions.push_str(&format!("\n{AUTO_EDIT} {FORMATTING}\n{EDIT_MARKERS}"));
+        if compacted {
+            instructions.push(' ');
+            instructions.push_str(crate::ai_context::COMPACT_EDIT_INSTRUCTIONS);
+        }
     }
-    instructions.push_str(&format!("\n{AUTO_EDIT} {FORMATTING}\n{EDIT_MARKERS}"));
-    if compacted {
-        instructions.push(' ');
-        instructions.push_str(crate::ai_context::COMPACT_EDIT_INSTRUCTIONS);
+    if tools.iter().any(|name| name == SEARCH_TOOL) || !searches.is_empty() {
+        instructions.push('\n');
+        instructions.push_str(SEARCH_RULES);
     }
     body["instructions"] = json!(instructions);
+    // Each search the app ran: the model's call, then its result.
+    if let Some(input) = body["input"].as_array_mut() {
+        for search in searches {
+            input.push(json!({"type": "function_call", "call_id": search.call_id, "name": SEARCH_TOOL,
+                "arguments": json!({"query": search.query}).to_string()}));
+            input.push(json!({"type": "function_call_output", "call_id": search.call_id, "output": search_output(&search.evidence)}));
+        }
+    }
+    if tools.is_empty() {
+        return body;
+    }
     body["tools"] = json!(tools
         .iter()
-        .map(|name| json!({"type": "function", "name": name, "description": tool_description(name),
-            "strict": true, "parameters": tool_schema(tool_mode(name).unwrap_or("insert"), web)}))
+        .map(|name| match tool_mode(name) {
+            Some(mode) => json!({"type": "function", "name": name, "description": tool_description(name),
+                "strict": true, "parameters": tool_schema(mode, web)}),
+            None => json!({"type": "function", "name": SEARCH_TOOL,
+                "description": "Search the user's notes, cards and PDFs on their device for passages about a topic.",
+                "strict": true, "parameters": {"type": "object", "additionalProperties": false, "required": ["query"],
+                    "properties": {"query": {"type": "string"}}}}),
+        })
         .collect::<Vec<_>>());
     body["tool_choice"] = json!("auto");
     body["parallel_tool_calls"] = json!(false);
@@ -599,13 +672,14 @@ async fn respond(
     context: &str,
     mode: &str,
     tools: &[String],
+    searches: &[SearchResult],
     image: Option<&str>,
     pdf_input: Option<&str>,
     channel: Channel<StreamEvent>,
     measurement: &mut crate::diagnostics::Measurement,
 ) -> Result<(), String> {
     let body = if mode == "auto" {
-        tool_request_body(model, messages, context, tools, image, pdf_input)
+        tool_request_body(model, messages, context, tools, searches, image, pdf_input)
     } else {
         request_body(model, messages, context, mode, image, pdf_input)
     };
@@ -687,7 +761,7 @@ async fn consume_response(
                 crate::diagnostics::cost_from_frame(&measurement.attempt.model, &buffer[..end])
             {
                 // Cost is informational; a closed channel is reported by the next delta.
-                let _ = channel.send(StreamEvent { delta: String::new(), cost: Some(cost), call: None });
+                let _ = channel.send(StreamEvent { delta: String::new(), cost: Some(cost), call: None, call_id: None });
             }
             let (delta, tool) = match event(&buffer[..end])? {
                 Some(Event::Done) => {
@@ -695,14 +769,17 @@ async fn consume_response(
                     (String::new(), None)
                 }
                 Some(Event::Text(delta)) => (delta, None),
-                Some(Event::Call(name)) => {
+                Some(Event::Call(name, call_id)) => {
                     // Only offered tools, and at most one call per response.
-                    let Some(mode) = tool_mode(&name).filter(|_| call.is_none() && tools.contains(&name)) else {
+                    let Some(mode) = tool_mode(&name)
+                        .or((name == SEARCH_TOOL).then_some("search"))
+                        .filter(|_| call.is_none() && tools.contains(&name))
+                    else {
                         return Err("The response used an unavailable action. Please retry.".into());
                     };
                     measurement.attempt.operation = format!("auto:{mode}");
                     channel
-                        .send(StreamEvent { delta: String::new(), cost: None, call: Some(name.clone()) })
+                        .send(StreamEvent { delta: String::new(), cost: None, call: Some(name.clone()), call_id: Some(call_id) })
                         .map_err(|_| "Conversation closed")?;
                     call = Some(name);
                     (String::new(), None)
@@ -727,7 +804,7 @@ async fn consume_response(
                     return Err("Response exceeded the limit".into());
                 }
                 channel
-                    .send(StreamEvent { delta, cost: None, call: tool })
+                    .send(StreamEvent { delta, cost: None, call: tool, call_id: None })
                     .map_err(|_| "Conversation closed")?;
             }
             buffer.drain(..end + width);
@@ -880,10 +957,10 @@ mod tests {
         let messages = vec![Message { role: "user".into(), content: "Shorten this".into() }];
         let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[{"text":"Long text","protected":false}]}"#;
         // Without tools an automatic request is exactly an Ask request.
-        assert_eq!(tool_request_body(MODELS[0], &messages, context, &[], None, None), request_body(MODELS[0], &messages, context, "ask", None, None));
+        assert_eq!(tool_request_body(MODELS[0], &messages, context, &[], &[], None, None), request_body(MODELS[0], &messages, context, "ask", None, None));
         let ask = request_body(MODELS[0], &messages, context, "ask", None, None);
         let tools: Vec<String> = vec!["rewrite_selection".into(), "insert_blocks".into()];
-        let body = tool_request_body(MODELS[0], &messages, context, &tools, None, None);
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &[], None, None);
         assert!(body.get("text").is_none(), "answers stay free text");
         assert_eq!(body["tool_choice"], "auto");
         assert_eq!(body["parallel_tool_calls"], false);
@@ -903,12 +980,12 @@ mod tests {
         assert!(!instructions.contains(CANVAS_RULES), "rules only for offered tools");
         assert!(!instructions.contains("No browsing, tools,") && !instructions.contains("Current operation: ask."));
         // Same tools, same instruction prefix: different notes still share it.
-        let other = tool_request_body(MODELS[0], &[Message { role: "user".into(), content: "Other".into() }], r#"{"sourceMode":"current","text":"Other note","structure":[],"citationSources":[],"runs":[]}"#, &tools, None, None);
+        let other = tool_request_body(MODELS[0], &[Message { role: "user".into(), content: "Other".into() }], r#"{"sourceMode":"current","text":"Other note","structure":[],"citationSources":[],"runs":[]}"#, &tools, &[], None, None);
         assert_eq!(other["instructions"], body["instructions"]);
         assert_eq!(other["tools"], body["tools"]);
         // Web evidence adds sourceRefs to tool arguments as it does to proposals.
         let web = r#"{"webOutcomes":[{"state":"ready"}],"citationSources":[{"kind":"web","ref":"c/s1","text":"A"}]}"#;
-        let canvas = tool_request_body(MODELS[0], &messages, web, &["create_on_canvas".into()], None, None);
+        let canvas = tool_request_body(MODELS[0], &messages, web, &["create_on_canvas".into()], &[], None, None);
         assert_eq!(canvas["tools"][0]["parameters"], tool_schema("canvas", true));
         // Each tool has only its own fields: a rewrite cannot return blocks.
         let fields = |tool: &Value| tool["parameters"]["required"].as_array().unwrap().iter().map(|f| f.as_str().unwrap().to_owned()).collect::<Vec<_>>();
@@ -917,6 +994,42 @@ mod tests {
         assert_eq!(fields(&canvas["tools"][0]), ["blocks", "connections", "mindmap"]);
         assert!(canvas["tools"][0]["parameters"]["properties"].get("replacements").is_none());
         assert!(canvas["instructions"].as_str().unwrap().contains(CANVAS_RULES));
+    }
+    #[test]
+    fn searches_return_excerpts_only_and_follow_their_calls() {
+        let messages = vec![Message { role: "user".into(), content: "What do my notes say about spaced repetition?".into() }];
+        let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[{"citation":"[S1]","text":"Note","document":"d","id":"b"}],"runs":[]}"#;
+        let search: Vec<String> = vec!["search_workspace".into()];
+        let body = tool_request_body(MODELS[0], &messages, context, &search, &[], None, None);
+        assert_eq!(body["tools"][0]["name"], "search_workspace");
+        assert_eq!(body["tools"][0]["strict"], true);
+        assert_eq!(body["tools"][0]["parameters"]["required"], json!(["query"]));
+        let instructions = body["instructions"].as_str().unwrap();
+        assert!(instructions.contains(SEARCH_RULES) && instructions.contains("Current operation: answer."));
+        assert!(!instructions.contains(AUTO_ROUTING) && !instructions.contains(FORMATTING), "no edit rules without edit tools");
+        let evidence = r#"{"version":1,"sourceMode":"workspace","activation":"PRIVATE-ACTIVATION","coverage":{"indexed":3,"total":3,"failed":0,"semantic":true},"citationSources":[{"citation":"[S2]","title":"Study","text":"Review cards at growing intervals.","document":"PRIVATE-DOC","id":"PRIVATE-BLOCK","revision":"PRIVATE-REV","vector":[0.5]}]}"#;
+        let searches = vec![SearchResult { call_id: "call_1".into(), query: "spaced repetition".into(), evidence: evidence.into() }];
+        let tools: Vec<String> = vec!["insert_blocks".into(), "search_workspace".into()];
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &searches, None, None);
+        let input = body["input"].as_array().unwrap();
+        let n = input.len();
+        // The call, then its result, after the user's message.
+        assert_eq!(input[n - 3]["content"], "What do my notes say about spaced repetition?");
+        assert_eq!(input[n - 2], json!({"type":"function_call","call_id":"call_1","name":"search_workspace","arguments":"{\"query\":\"spaced repetition\"}"}));
+        assert_eq!(input[n - 1]["type"], "function_call_output");
+        assert_eq!(input[n - 1]["call_id"], "call_1");
+        let output = input[n - 1]["output"].as_str().unwrap();
+        assert!(output.contains("Review cards at growing intervals.") && output.contains("[S2]") && output.contains("\"indexed\":3"));
+        for private in ["PRIVATE-ACTIVATION", "PRIVATE-DOC", "PRIVATE-BLOCK", "PRIVATE-REV", "vector"] {
+            assert!(!body.to_string().contains(private), "{private}");
+        }
+        assert!(body["instructions"].as_str().unwrap().contains(SEARCH_RULES));
+        assert_eq!(body["tools"].as_array().unwrap().len(), 2);
+        // After the last allowed search, results are still sent without the tool.
+        let last = tool_request_body(MODELS[0], &messages, context, &[], &searches, None, None);
+        assert!(last.get("tools").is_none());
+        assert_eq!(last["input"].as_array().unwrap().len(), n);
+        assert!(last["instructions"].as_str().unwrap().contains(SEARCH_RULES));
     }
     /// Serves one SSE body and returns the result, delivered events and operation.
     fn stream(body: String, tools: &[String]) -> (Result<(), String>, Vec<Value>, String) {
@@ -953,7 +1066,7 @@ mod tests {
     fn tool_calls_stream_as_marked_arguments() {
         let frame = |v: Value| format!("data: {v}\n\n");
         let tools: Vec<String> = vec!["insert_blocks".into(), "create_on_canvas".into()];
-        let call = |name: &str| frame(json!({"type":"response.output_item.added","item":{"type":"function_call","name":name,"arguments":""}}));
+        let call = |name: &str| frame(json!({"type":"response.output_item.added","item":{"type":"function_call","name":name,"call_id":"call_1","arguments":""}}));
         let args = |d: &str| frame(json!({"type":"response.function_call_arguments.delta","delta":d}));
         let done = frame(json!({"type":"response.completed","response":{}}));
         let body = [frame(json!({"type":"response.output_text.delta","delta":"Here are cards."})), call("create_on_canvas"), args("{\"blocks\""), args(":[]}"),
@@ -962,7 +1075,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(operation, "auto:canvas");
         assert_eq!(events[0], json!({"delta":"Here are cards."}));
-        assert_eq!(events[1], json!({"delta":"","call":"create_on_canvas"}));
+        assert_eq!(events[1], json!({"delta":"","call":"create_on_canvas","call_id":"call_1"}));
         // Streamed arguments are not repeated from the completed item.
         assert_eq!(events[2..], [json!({"delta":"{\"blocks\"","call":"create_on_canvas"}), json!({"delta":":[]}","call":"create_on_canvas"})]);
         // Arguments that arrive only with the completed call are still delivered.
@@ -971,6 +1084,11 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(operation, "auto:insert");
         assert_eq!(events.last().unwrap(), &json!({"delta":"{}","call":"insert_blocks"}));
+        let (result, events, operation) = stream([call("search_workspace"), args("{\"query\":\"spaced repetition\"}"), done.clone()].concat(), &["search_workspace".into()]);
+        assert!(result.is_ok());
+        assert_eq!(operation, "auto:search");
+        assert_eq!(events[0], json!({"delta":"","call":"search_workspace","call_id":"call_1"}));
+        assert!(stream([call("search_workspace"), args("{}"), done.clone()].concat(), &tools).0.is_err(), "search was not offered");
         // A plain answer is recorded as such.
         let (result, _, operation) = stream([frame(json!({"type":"response.output_text.delta","delta":"Hi"})), done.clone()].concat(), &tools);
         assert!(result.is_ok());
@@ -1201,7 +1319,7 @@ mod tests {
     #[test]
     fn streaming_events() {
         assert_eq!(event(b"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}").unwrap(), Some(Event::Text("hello".into())));
-        assert_eq!(event(br#"data: {"type":"response.output_item.added","item":{"type":"function_call","name":"insert_blocks","arguments":""}}"#).unwrap(), Some(Event::Call("insert_blocks".into())));
+        assert_eq!(event(br#"data: {"type":"response.output_item.added","item":{"type":"function_call","name":"insert_blocks","call_id":"call_9","arguments":""}}"#).unwrap(), Some(Event::Call("insert_blocks".into(), "call_9".into())));
         assert_eq!(event(br#"data: {"type":"response.output_item.added","item":{"type":"message"}}"#).unwrap(), None);
         assert_eq!(event(br#"data: {"type":"response.function_call_arguments.delta","delta":"{\"bl"}"#).unwrap(), Some(Event::Arguments("{\"bl".into())));
         assert_eq!(event(br#"data: {"type":"response.output_item.done","item":{"type":"function_call","arguments":"{}"}}"#).unwrap(), Some(Event::CallDone("{}".into())));

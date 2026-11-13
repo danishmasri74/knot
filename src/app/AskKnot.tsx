@@ -3,19 +3,19 @@ import { Mascot } from "./Mascot";
 import { AskSuggestion } from "./AskSuggestion";
 import { AiStarters } from "./AiStarters";
 import { useCallback } from "react";
-import { ChoicePopover } from "./ChoicePopover";
 import { topicIndex } from "../services/workspace-topic";
 import {
   editIntent,
   resolveSourceMode,
   outgoingSourceHistory,
-  proposalHistory,
+  exchangeHistory,
   type SourceMode,
 } from "../services/ai-source-scope";
 import {
   AI_ABILITIES_CHANGED,
   AI_MODELS_CHANGED,
   AI_TOOL_MODES,
+  MAX_SEARCHES,
   automaticAiTools,
   getAiAbilities,
   getAiEnabled,
@@ -96,6 +96,8 @@ type Turn = {
     context: string;
     /** Text sent to the model when it differs from the message shown. */
     message?: string;
+    /** Workspace searches Knot ran for this message, with their evidence. */
+    searches?: { callId: string; query: string; evidence: string }[];
     sourceMode?: SourceMode;
     pdfSource?: AiPdfSource;
     image?: { key: string; name: string };
@@ -108,6 +110,8 @@ type Turn = {
   mode?: "rewrite" | "insert" | "canvas";
   /** While streaming: the model is preparing a proposal (not persisted). */
   preparing?: boolean;
+  /** While streaming: the workspace query being searched (not persisted). */
+  searching?: string;
   status?: "applied" | "dismissed";
   undo?: () => void;
   cost?: AiCost;
@@ -149,10 +153,11 @@ function hydrateChat(record: ChatRecord): Chat {
 function serializeChat(chat: Chat): string {
   const evidence: NonNullable<Chat["evidence"]> = {};
   const storedTurns = chat.turns.map(
-    ({ context, undo, preparing, ...turn }) => {
+    ({ context, undo, preparing, searching, ...turn }) => {
       void context;
       void undo;
       void preparing;
+      void searching;
       if (turn.request?.sourceMode === "workspace" && turn.attemptId) {
         evidence[turn.attemptId] = turn.request;
         return { ...turn, evidenceId: turn.attemptId, request: undefined };
@@ -414,6 +419,14 @@ function AskKnotPanel({
     window.addEventListener(AI_ABILITIES_CHANGED, changed);
     return () => window.removeEventListener(AI_ABILITIES_CHANGED, changed);
   }, []);
+  /** Whether Knot may search the workspace for this chat's next message. */
+  function searchAvailable() {
+    return (
+      getAiEnabled() &&
+      getWorkspaceSearchEnabled() &&
+      (chatAbilitiesRef.current ?? getAiAbilities()).searchWorkspace
+    );
+  }
   function changeAbilities(next: AiAbilities | undefined) {
     chatAbilitiesRef.current = next;
     setChatAbilities(next);
@@ -556,7 +569,7 @@ function AskKnotPanel({
         retrievalAbort.current?.abort();
         const id = request.current;
         request.current = null;
-        if (id) void invoke("ai_cancel", { id });
+        if (id) void invoke("ai_cancel", { id: inflight.current ?? id });
         const last = turnsRef.current.at(-1);
         if (last?.role === "assistant" && last.attemptId === id) {
           last.failed = true;
@@ -611,6 +624,8 @@ function AskKnotPanel({
     }
   }, [context?.selectedImageKey]);
   const request = useRef<string | null>(null);
+  /** The request in flight: the turn's ID, or a later round after a search. */
+  const inflight = useRef<string | null>(null);
   const requestStartedAt = useRef(0);
   const mounted = useRef(true);
   const messages = useRef<HTMLDivElement>(null);
@@ -658,7 +673,8 @@ function AskKnotPanel({
   /** Records a request's cost on its answer and in the chat it was sent from. */
   function recordCost(draft: Turn, cost: AiCost, chat: string) {
     if (!mounted.current || chatIdRef.current !== chat) return;
-    draft.cost = cost;
+    // A message that searched made several requests; its cost is their sum.
+    draft.cost = draft.cost ? addCost(draft.cost, cost) : cost;
     spentRef.current = addSpend(spentRef.current, cost);
     update([...turnsRef.current]);
   }
@@ -666,7 +682,7 @@ function AskKnotPanel({
     const active = request.current;
     request.current = null;
     clearStreamTimer();
-    if (active) void invoke("ai_cancel", { id: active });
+    if (active) void invoke("ai_cancel", { id: inflight.current ?? active });
     setBusy(false);
     sourceCoordinator.current.cancel();
     excludedUrls.current.clear();
@@ -796,7 +812,7 @@ function AskKnotPanel({
       clearStreamTimer();
       if (request.current) {
         const id = request.current;
-        void invoke("ai_cancel", { id });
+        void invoke("ai_cancel", { id: inflight.current ?? id });
         request.current = null;
         const last = turnsRef.current.at(-1);
         if (
@@ -897,6 +913,8 @@ function AskKnotPanel({
     retryIndex?: number,
     edited?: string,
     generalMode?: SourceMode,
+    /** Set for automatic messages: Knot may search instead of being given evidence. */
+    auto?: { inPlace?: boolean; message?: string },
   ) {
     if (!input || busy || request.current || !connected) return;
     const id = crypto.randomUUID();
@@ -933,6 +951,7 @@ function AskKnotPanel({
           : input;
       const live = getSession()?.topicOverlay();
       const fingerprint = getSession()?.topicVersion();
+      if (auto) setRetrievalStatus("");
       const evidence = generalMode
         ? {
             version: 1 as const,
@@ -963,9 +982,10 @@ function AskKnotPanel({
         role: "user",
         content: input,
         request: {
-          mode: "ask",
+          mode: auto ? "auto" : "ask",
           sourceMode: generalMode ?? "workspace",
           context: requestContext,
+          message: auto?.message,
         },
       };
       draft = {
@@ -975,7 +995,7 @@ function AskKnotPanel({
         failed: true,
         request: user.request,
       };
-      if (retryIndex !== undefined && edited === undefined) {
+      if (retryIndex !== undefined && edited === undefined && !auto?.inPlace) {
         const branch = crypto.randomUUID();
         chatIdRef.current = branch;
         setChatId(branch);
@@ -994,7 +1014,31 @@ function AskKnotPanel({
             ? "Keyword search only; semantic search is unavailable."
             : "",
       );
-      if (!generalMode && !evidence.citationSources.length) {
+      if (auto) {
+        const tools: AiTool[] = searchAvailable() ? ["search_workspace"] : [];
+        const chosen =
+          model === "auto"
+            ? automaticAiModel(models, "ask", input, false, 0)
+            : model;
+        draft.autoModel = model === "auto" ? chosen : undefined;
+        const result = await streamWithSearch({
+          id,
+          draft,
+          request: user.request!,
+          mode: "auto",
+          tools,
+          payload: {
+            model: chosen,
+            messages: [
+              ...exchangeHistory(base),
+              { role: "user", content: auto.message ?? input },
+            ],
+            context: requestContext,
+          },
+          sentFrom: chatIdRef.current,
+        });
+        if (!result || request.current !== id || !mounted.current) return;
+      } else if (!generalMode && !evidence.citationSources.length) {
         draft.content = evidence.coverage.failed
           ? "I couldn’t find a supporting passage in the indexed content. Workspace coverage is incomplete."
           : "I couldn’t find a supporting passage in this workspace.";
@@ -1056,8 +1100,170 @@ function AskKnotPanel({
       if (request.current === id) {
         clearStreamTimer();
         request.current = null;
+        automaticRequest.current = false;
         if (mounted.current) setBusy(false);
       }
+    }
+  }
+  /**
+   * Sends a request and streams its answer. When Knot calls search_workspace,
+   * the search runs on this device and its results go back with the next
+   * request, at most twice; the last round answers or proposes. Returns
+   * undefined when the request was stopped or replaced.
+   */
+  async function streamWithSearch(r: {
+    id: string;
+    draft: Turn;
+    request: NonNullable<Turn["request"]>;
+    mode: NonNullable<Turn["request"]>["mode"];
+    tools: AiTool[];
+    payload: {
+      model: string;
+      messages: { role: string; content: string }[];
+      context: string;
+      image?: string;
+      pdfInput?: string;
+      link?: { parent: string; kind: string };
+    };
+    sentFrom: string;
+  }): Promise<
+    { output: string; toolCall?: AiTool; toolArguments: string } | undefined
+  > {
+    const searches: NonNullable<NonNullable<Turn["request"]>["searches"]> = [];
+    let tools = r.tools;
+    let attempt = r.id;
+    const abort = new AbortController();
+    if (tools.includes("search_workspace")) {
+      retrievalAbort.current?.abort();
+      retrievalAbort.current = abort;
+      // Turning workspace search off stops this message.
+      automaticRequest.current = true;
+    }
+    for (;;) {
+      let output = "";
+      let toolCall: AiTool | undefined;
+      let callId = "";
+      let toolArguments = "";
+      let displayed = false;
+      const channel = new Channel<{
+        delta: string;
+        cost?: AiCost;
+        call?: string;
+        call_id?: string;
+      }>();
+      channel.onmessage = ({ delta, cost, call, call_id }) => {
+        if (cost) return recordCost(r.draft, cost, r.sentFrom);
+        if (request.current !== r.id || !mounted.current) return;
+        if (call) {
+          if (!toolCall) {
+            toolCall = call as AiTool;
+            callId = call_id ?? "";
+            if (call === "search_workspace") r.draft.searching = "";
+            else r.draft.preparing = true;
+            update([...turnsRef.current]);
+          }
+          toolArguments += delta;
+          return;
+        }
+        output += delta;
+        if (r.mode === "ask" || r.mode === "auto") {
+          r.draft.content = output;
+          if (!displayed) {
+            displayed = true;
+            recordAiOutcome(r.id, "answer_displayed");
+          }
+          // Coalesce token bursts so parsing, rendering and localStorage writes
+          // leave the main thread available for scrolling. The draft always
+          // holds the latest text, including when stopped or unmounted.
+          streamTimer.current ??= setTimeout(() => {
+            streamTimer.current = undefined;
+            if (request.current === r.id && mounted.current)
+              update([...turnsRef.current]);
+          }, 80);
+        }
+      };
+      inflight.current = attempt;
+      try {
+        await invoke("ai_respond", {
+          ...r.payload,
+          id: attempt,
+          link: attempt === r.id ? r.payload.link : undefined,
+          // Without tools or searches an automatic request is an ordinary answer.
+          mode:
+            r.mode !== "auto"
+              ? r.mode
+              : tools.length || searches.length
+                ? "auto"
+                : "ask",
+          tools: tools.length ? tools : undefined,
+          searches: searches.length ? searches : undefined,
+          onEvent: channel,
+        });
+      } finally {
+        if (inflight.current === attempt) inflight.current = null;
+      }
+      if (request.current !== r.id || !mounted.current) return;
+      if (toolCall !== "search_workspace") {
+        r.draft.searching = undefined;
+        return { output, toolCall, toolArguments };
+      }
+      let query = "";
+      try {
+        query = String(
+          (JSON.parse(toolArguments) as { query?: unknown }).query ?? "",
+        )
+          .trim()
+          .slice(0, 2000);
+      } catch {
+        query = "";
+      }
+      if (!query || !callId)
+        throw new Error("The search request was invalid. Please try again.");
+      r.draft.searching = query;
+      r.draft.content = "";
+      update([...turnsRef.current]);
+      setRetrievalStatus(`Searching workspace for “${query}”…`);
+      const fingerprint = getSession()?.topicVersion();
+      const found = await topicIndex().search(
+        query,
+        abort.signal,
+        getSession()?.topicOverlay(),
+      );
+      if (getSession()?.topicVersion() !== fingerprint)
+        throw Error(
+          "Notes changed during retrieval. Send again to search the current text.",
+        );
+      if (
+        abort.signal.aborted ||
+        request.current !== r.id ||
+        !mounted.current ||
+        !getWorkspaceSearchEnabled()
+      )
+        return;
+      // Excerpts continue the message's citation numbers.
+      const offset = lastCitation(r.payload.context, searches);
+      searches.push({
+        callId,
+        query,
+        evidence: JSON.stringify({
+          ...found,
+          citationSources: found.citationSources.map((source, index) => ({
+            ...source,
+            citation: `[S${offset + index + 1}]`,
+          })),
+        }),
+      });
+      r.request.searches = [...searches];
+      setRetrievalStatus(
+        found.coverage.failed
+          ? `Partial coverage: ${found.coverage.indexed} of ${found.coverage.total} sources indexed.`
+          : !found.coverage.semantic
+            ? "Keyword search only; semantic search is unavailable."
+            : "",
+      );
+      if (searches.length >= MAX_SEARCHES)
+        tools = tools.filter((tool) => tool !== "search_workspace");
+      attempt = crypto.randomUUID();
     }
   }
   /** Explicitly turns an answer into a note addition or canvas cards. */
@@ -1087,6 +1293,8 @@ function AskKnotPanel({
       inPlace?: boolean;
       /** Text to send instead of the message shown in the chat. */
       message?: string;
+      /** Answer only: Knot may still search, but not propose an edit. */
+      answerOnly?: boolean;
     },
   ) {
     const retry =
@@ -1124,7 +1332,13 @@ function AskKnotPanel({
         ? "legacy"
         : resolveScope(input, action);
     if (answers && !s && (resolved === "none" || resolved === "legacy")) {
-      await sendWorkspace(input, retryIndex, edited, resolved);
+      await sendWorkspace(
+        input,
+        retryIndex,
+        edited,
+        resolved,
+        action === "auto" ? (options ?? {}) : undefined,
+      );
       return;
     }
     if (resolved === "workspace") {
@@ -1215,8 +1429,9 @@ function AskKnotPanel({
               retryIndex - (retry?.role === "assistant" ? 1 : 0),
             );
       let history = outgoingSourceHistory(base, resolved);
-      // "Make it shorter" after a proposal: say what was proposed, never its content.
-      if (action === "auto" && !history.length) history = proposalHistory(base);
+      // Earlier messages, so follow-ups and search queries can refer back.
+      // Answers, proposals and sources are never repeated.
+      if (action === "auto" && !history.length) history = exchangeHistory(base);
       let inheritedContext: string | undefined;
       const inherit =
         !sourceChoicesChanged.current &&
@@ -1226,7 +1441,9 @@ function AskKnotPanel({
         !added.length &&
         !passages.length &&
         context?.label !== "Selection" &&
-        (lastScope === "current" || lastScope === "explicit")
+        // Automatic messages always read the open note afresh.
+        (lastScope === "explicit" ||
+          (action !== "auto" && lastScope === "current"))
           ? lastRequest
           : undefined;
       if (inherit) {
@@ -1375,19 +1592,25 @@ function AskKnotPanel({
       }
       const tools: AiTool[] =
         action === "auto"
-          ? automaticAiTools(abilities, {
-              selection:
-                resolved !== "none" &&
-                resolved !== "explicit" &&
-                sentRuns > 0 &&
-                sentRuns === editContext.ranges.length,
-              note: !!editContext.note,
-              canvas: !!editContext.canvas,
-              editable:
-                !s.doc.readonly &&
-                !editContext.pdf &&
-                editContext.instance === s.doc,
-            })
+          ? automaticAiTools(
+              options?.answerOnly
+                ? { ...abilities, editNote: false, canvasCards: false }
+                : abilities,
+              {
+                selection:
+                  resolved !== "none" &&
+                  resolved !== "explicit" &&
+                  sentRuns > 0 &&
+                  sentRuns === editContext.ranges.length,
+                note: !!editContext.note,
+                canvas: !!editContext.canvas,
+                editable:
+                  !s.doc.readonly &&
+                  !editContext.pdf &&
+                  editContext.instance === s.doc,
+                search: searchAvailable(),
+              },
+            )
           : [];
       const chosenModel =
         model === "auto"
@@ -1424,72 +1647,39 @@ function AskKnotPanel({
       setEditing(null);
       setCopied(null);
       if (!retry) setPrompt("");
-      let output = "";
-      let toolCall: AiTool | undefined;
-      let toolArguments = "";
-      let displayed = false;
-      const sentFrom = chatIdRef.current;
-      const channel = new Channel<{
-        delta: string;
-        cost?: AiCost;
-        call?: string;
-      }>();
-      channel.onmessage = ({ delta, cost, call }) => {
-        if (cost) return recordCost(draft!, cost, sentFrom);
-        if (request.current !== id || !mounted.current) return;
-        if (call) {
-          if (!toolCall) {
-            toolCall = call as AiTool;
-            draft!.preparing = true;
-            update([...turnsRef.current]);
-          }
-          toolArguments += delta;
-          return;
-        }
-        output += delta;
-        if (answers) {
-          draft!.content = output;
-          if (!displayed) {
-            displayed = true;
-            recordAiOutcome(id, "answer_displayed");
-          }
-          // Coalesce token bursts so parsing, rendering and localStorage writes
-          // leave the main thread available for scrolling. The draft always
-          // holds the latest text, including when stopped or unmounted.
-          streamTimer.current ??= setTimeout(() => {
-            streamTimer.current = undefined;
-            if (request.current === id && mounted.current)
-              update([...turnsRef.current]);
-          }, 80);
-        }
-      };
-      await invoke("ai_respond", {
+      const result = await streamWithSearch({
         id,
-        link: retry?.attemptId
-          ? {
-              parent: retry.attemptId,
-              kind:
-                edited !== undefined
-                  ? "edited_prompt"
-                  : retry.failed
-                    ? "retry"
-                    : "regeneration",
-            }
-          : undefined,
-        model: chosenModel,
-        // Without tools an automatic request is an ordinary answer.
-        mode: action === "auto" && !tools.length ? "ask" : action,
-        tools: tools.length ? tools : undefined,
-        messages: [...history, { role: user.role, content: outgoing }],
-        context: requestContext,
-        image: preparedImage?.pixels,
-        pdfInput,
-        onEvent: channel,
+        draft,
+        request: user.request!,
+        mode: action,
+        tools,
+        payload: {
+          model: chosenModel,
+          messages: [...history, { role: user.role, content: outgoing }],
+          context: requestContext,
+          image: preparedImage?.pixels,
+          pdfInput,
+          link: retry?.attemptId
+            ? {
+                parent: retry.attemptId,
+                kind:
+                  edited !== undefined
+                    ? "edited_prompt"
+                    : retry.failed
+                      ? "retry"
+                      : "regeneration",
+              }
+            : undefined,
+        },
+        sentFrom: chatIdRef.current,
       });
-      if (request.current !== id || !mounted.current) return;
+      if (!result || request.current !== id || !mounted.current) return;
+      const { output, toolCall, toolArguments } = result;
       const proposed =
         action === "auto"
-          ? toolCall && AI_TOOL_MODES[toolCall]
+          ? toolCall && toolCall !== "search_workspace"
+            ? AI_TOOL_MODES[toolCall]
+            : undefined
           : action === "ask"
             ? undefined
             : action;
@@ -1534,6 +1724,7 @@ function AskKnotPanel({
         draft.elapsedSeconds = responseElapsedSeconds(requestStartedAt.current);
         draft.failed = true;
         draft.preparing = undefined;
+        draft.searching = undefined;
         if (!draft.content) draft.content = "Response interrupted. Try again.";
         update([...turnsRef.current]);
       }
@@ -1541,7 +1732,11 @@ function AskKnotPanel({
       if (request.current === id) {
         clearStreamTimer();
         request.current = null;
-        if (mounted.current) setBusy(false);
+        automaticRequest.current = false;
+        if (mounted.current) {
+          setBusy(false);
+          setRetrievalStatus("");
+        }
       }
     }
   }
@@ -1934,7 +2129,9 @@ function AskKnotPanel({
                     {turn.role === "assistant" && (
                       <>
                         <WebCoverage context={turn.request?.context} />
-                        <WorkspaceCoverage context={turn.request?.context} />
+                        <WorkspaceCoverage
+                          context={shownContext(turn.request)}
+                        />
                       </>
                     )}
                     {turn.content ? (
@@ -1942,11 +2139,11 @@ function AskKnotPanel({
                         <>
                           <ChatText
                             text={turn.content}
-                            context={turn.request?.context}
+                            context={shownContext(turn.request)}
                           />
                           <CitationSources
                             text={turn.content}
-                            context={turn.request?.context}
+                            context={shownContext(turn.request)}
                             onSource={onSource}
                           />
                         </>
@@ -1955,12 +2152,14 @@ function AskKnotPanel({
                       )
                     ) : (
                       <span className="ask-thinking">
-                        {turn.preparing ||
-                        (turn.request &&
-                          turn.request.mode !== "ask" &&
-                          turn.request.mode !== "auto")
-                          ? "Preparing preview"
-                          : "Thinking"}
+                        {turn.searching !== undefined
+                          ? "Searching workspace"
+                          : turn.preparing ||
+                              (turn.request &&
+                                turn.request.mode !== "ask" &&
+                                turn.request.mode !== "auto")
+                            ? "Preparing preview"
+                            : "Thinking"}
                         <span>…</span>
                       </span>
                     )}
@@ -2080,8 +2279,8 @@ function AskKnotPanel({
                                   undefined,
                                   undefined,
                                   undefined,
-                                  "ask",
-                                  { inPlace: true },
+                                  undefined,
+                                  { inPlace: true, answerOnly: true },
                                 );
                               }}
                             >
@@ -2274,41 +2473,6 @@ function AskKnotPanel({
                 <small role="status">{retrievalStatus}</small>
               )}
               <div className="ask-context">
-                <ChoicePopover
-                  label="Source scope"
-                  className="ask-source-scope"
-                  placement="top"
-                  disabled={busy}
-                  value={
-                    resolvedScope === "none"
-                      ? "No note sources"
-                      : sourceScope === "current"
-                        ? "Current note"
-                        : "Automatic sources"
-                  }
-                  options={
-                    getSession()
-                      ? ["Automatic sources", "Current note", "No note sources"]
-                      : ["Automatic sources", "No note sources"]
-                  }
-                  onChange={(value) =>
-                    setSourceScope(
-                      value === "No note sources"
-                        ? "none"
-                        : value === "Current note"
-                          ? "current"
-                          : getWorkspaceSearchEnabled()
-                            ? "workspace"
-                            : "auto",
-                    )
-                  }
-                />
-                {resolvedScope === "workspace" && (
-                  <span className="ask-chip" aria-label="Workspace sources">
-                    <ShellIcon name="search" />
-                    Workspace
-                  </span>
-                )}
                 {sourceScope === "auto" &&
                   (resolvedScope === "explicit" ||
                     resolvedScope === "current") &&
@@ -2581,6 +2745,7 @@ function AskKnotPanel({
                       >
                         {(
                           [
+                            ["searchWorkspace", "Search my workspace"],
                             ["editNote", "Edit the current note"],
                             ["canvasCards", "Create cards on canvas"],
                           ] as const
@@ -2588,7 +2753,19 @@ function AskKnotPanel({
                           <button
                             key={key}
                             autoFocus={index === 0}
-                            aria-pressed={abilities[key]}
+                            disabled={
+                              key === "searchWorkspace" && !automaticSearch
+                            }
+                            title={
+                              key === "searchWorkspace" && !automaticSearch
+                                ? "Turned off in Settings → AI"
+                                : undefined
+                            }
+                            aria-pressed={
+                              key === "searchWorkspace" && !automaticSearch
+                                ? false
+                                : abilities[key]
+                            }
                             onClick={() => {
                               const next = {
                                 ...abilities,
@@ -2597,14 +2774,19 @@ function AskKnotPanel({
                               changeAbilities(
                                 next.editNote === defaultAbilities.editNote &&
                                   next.canvasCards ===
-                                    defaultAbilities.canvasCards
+                                    defaultAbilities.canvasCards &&
+                                  next.searchWorkspace ===
+                                    defaultAbilities.searchWorkspace
                                   ? undefined
                                   : next,
                               );
                             }}
                           >
                             <span>{label}</span>
-                            {abilities[key] && <ShellIcon name="check" />}
+                            {abilities[key] &&
+                              !(
+                                key === "searchWorkspace" && !automaticSearch
+                              ) && <ShellIcon name="check" />}
                           </button>
                         ))}
                       </div>
@@ -2655,7 +2837,10 @@ function AskKnotPanel({
                       const id = request.current;
                       request.current = null;
                       setBusy(false);
-                      if (id) void invoke("ai_cancel", { id });
+                      if (id)
+                        void invoke("ai_cancel", {
+                          id: inflight.current ?? id,
+                        });
                       const last = turnsRef.current.at(-1);
                       if (last?.role === "assistant" && last.attemptId === id) {
                         last.elapsedSeconds = responseElapsedSeconds(
@@ -2890,6 +3075,26 @@ const CitationSources = memo(function CitationSources({
 function WorkspaceCoverage({ context }: { context?: string }) {
   try {
     const data = JSON.parse(context ?? "{}");
+    if (data.workspaceSearch) {
+      const { queries, coverage } = data.workspaceSearch as {
+        queries: string[];
+        coverage: {
+          failed: number;
+          indexed: number;
+          total: number;
+          semantic: boolean;
+        };
+      };
+      return (
+        <small className="ask-model-notice">
+          Searched workspace for {queries.map((q) => `“${q}”`).join(", ")}
+          {coverage.failed
+            ? ` · Partial coverage (${coverage.indexed}/${coverage.total})`
+            : ""}
+          {!coverage.semantic ? " · Keyword search only" : ""}
+        </small>
+      );
+    }
     if (data.sourceMode !== "workspace") return null;
     return (
       <small className="ask-model-notice">
@@ -2903,6 +3108,53 @@ function WorkspaceCoverage({ context }: { context?: string }) {
   } catch {
     return null;
   }
+}
+/** A message's context with the excerpts its searches found, for citations. */
+function shownContext(request?: Turn["request"]): string | undefined {
+  if (!request?.searches?.length) return request?.context;
+  try {
+    const data = JSON.parse(request.context);
+    const found = request.searches.map((search) => JSON.parse(search.evidence));
+    return JSON.stringify({
+      ...data,
+      citationSources: [
+        ...(data.citationSources ?? []),
+        ...found.flatMap((evidence) => evidence.citationSources ?? []),
+      ],
+      workspaceSearch: {
+        queries: request.searches.map((search) => search.query),
+        coverage: found.at(-1)?.coverage,
+      },
+    });
+  } catch {
+    return request.context;
+  }
+}
+/** The highest citation number used so far, so new excerpts continue it. */
+function lastCitation(
+  context: string,
+  searches: { evidence: string }[],
+): number {
+  const numbers = [context, ...searches.map((search) => search.evidence)]
+    .flatMap((text) => readCitationSources(text))
+    .map((source) =>
+      Number(/^\[S(\d+)\]$/.exec(source.citation ?? "")?.[1] ?? 0),
+    );
+  return Math.max(0, ...numbers);
+}
+/** Adds one request's cost to a message that made several. */
+function addCost(a: AiCost, b: AiCost): AiCost {
+  const sum = (x: number | null, y: number | null) =>
+    x === null || y === null ? null : x + y;
+  return {
+    usd: sum(a.usd, b.usd),
+    input: sum(a.input, b.input),
+    cached: sum(a.cached, b.cached),
+    output: sum(a.output, b.output),
+    reasoning: sum(a.reasoning, b.reasoning),
+    tier: a.tier === b.tier ? a.tier : null,
+    pricing: b.pricing,
+  };
 }
 function citationIds(text: string) {
   return [

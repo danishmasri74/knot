@@ -135,9 +135,9 @@ export function AiSettings({
         <div>
           <strong id="ai-workspace-search-label">Search my workspace</strong>
           <p>
-            Find related notes automatically when you ask a question. Search
-            runs on this device; selected excerpts are sent to your configured
-            AI provider when you ask.
+            Let Knot search your other notes when a question needs them. Search
+            runs on this device; only the excerpts it finds are sent to your
+            configured AI provider.
           </p>
         </div>
         <button

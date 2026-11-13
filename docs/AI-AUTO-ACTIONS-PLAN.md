@@ -1,6 +1,18 @@
 # Ask Knot automatic actions (tool calling)
 
-Design · 13 November 2026 · Approved · Phase 1 implemented 13 November 2026
+Design · 13 November 2026 · Approved · Phases 1 and 2 implemented 13 November 2026
+
+## Phase 2 as built
+
+Chosen 13 November 2026: the model decides when to search, accepting about 1–2 seconds and some tokens more on workspace questions in exchange for model-written queries and no search on questions about the open note.
+
+- **The loop runs in the app**, because the query embedding is computed in the browser worker. Knot streams a `search_workspace` call with its `call_id`; the app runs `topicIndex().search(query)` and sends the next request with `searches` (call ID, query, evidence). `ai_respond` checks each evidence's sources against the workspace (`topic::validate`) and appends a `function_call` / `function_call_output` pair; the model receives only citation, title, text, attribution and coverage. At most two searches per message (`MAX_SEARCHES`); after the second the tool is no longer offered. Each round is its own request ID (`inflight` in `AskKnot.tsx`, so Stop cancels the round in flight); the message's cost is the sum of its rounds.
+- **Citations continue the message's numbers**: excerpts are renumbered after the note's `[Sn]` before they are sent, and stored on the message (`request.searches`). The answer shows "Searched workspace for “…”", partial-coverage and keyword-only notes, and the excerpts in its sources.
+- **Automatic messages always read what is open** (`resolveSourceMode` for `auto`): the open note, or nothing without one, plus attachments. The Source scope dropdown and the Workspace chip are gone; removing the note chip still sends no note context, and "Search my workspace" in the sparkles popover turns search off for one chat (Settings stays the master switch, which also controls indexing). `editIntent` now only steers automatic model choice.
+- **Follow-ups**: automatic messages carry the chat's last three exchanges as the user's own messages, each reply reduced to "(Answered in chat…)" or "(Proposed …)" (`exchangeHistory`), so the model can write "drawbacks of spaced repetition" for "what are its drawbacks?". Answers, proposals and excerpts are never replayed.
+- **Without an open note** an automatic message goes through the same loop with no note context (`sendWorkspace` with `auto`). Older chats' Ask messages and "Ask"-mode retries keep the search-first path.
+- **"Just answer instead"** is now an automatic message with the edit tools removed, so it can still search.
+- **Verification:** Rust tests for the search tool, result input and privacy of evidence fields; unit tests for resolution, history and tool selection; `tests/ask-auto-actions.browser.mjs` drives a search round trip; `chat-composer.browser.mjs` now covers the Abilities popover instead of the dropdown; routing cases 21–26 cover search.
 
 ## Phase 1 as built
 

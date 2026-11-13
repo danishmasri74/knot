@@ -14,7 +14,8 @@ free-running conversation drift. The synthetic PDF and diagram are committed und
 
 ## Routing suite
 
-`routing.v1.json` holds 20 synthetic automatic-routing cases (13 November 2026): each offers
+`routing.v1.json` holds 26 synthetic automatic-routing cases (13 November 2026; cases 21–26
+add workspace search): each offers
 a set of tools and names the expected route (`answer` or a tool). Run it with the same gate
 plus `KNOT_BENCHMARK_SUITE=routing`. Result rows add `route`, `expected_route` and
 `route_ok`. Phase 1 of [automatic actions](../../docs/AI-AUTO-ACTIONS-PLAN.md) should not
