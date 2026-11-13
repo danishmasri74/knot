@@ -379,6 +379,14 @@ try {
       await import("/src/services/ai-preferences.ts");
     setWebSearchEnabled(true);
   });
+  // Offering the tool costs tokens, so a question about the note doesn't get it.
+  call = await send("Who owns launch?");
+  assert.ok(
+    !call.tools.includes("web_search"),
+    "not offered for note questions",
+  );
+  await page.evaluate(() => window.emit([{ delta: "Mira owns launch." }]));
+  await page.getByText("Mira owns launch.").waitFor();
   call = await send("What changed in the latest release?");
   assert.ok(call.tools.includes("web_search"));
   const url = "https://example.com/news?utm_source=openai";
@@ -440,6 +448,10 @@ try {
   });
   call = await send("What does the diagram show?");
   assert.ok(call.tools.includes("view_images"));
+  assert.ok(
+    call.tools.includes("web_search"),
+    "offered right after an answer that searched the web",
+  );
   const beforeLook = await page.evaluate(() => window.calls.length);
   await page.evaluate(() =>
     window.emit([

@@ -38,6 +38,22 @@ export function resolveSourceMode(input: {
  * note or canvas (where the edit tools apply) instead of workspace search.
  * Questions like "What did I write about X?" are not edits.
  */
+/**
+ * True when a message looks like it needs the web: recent or changing facts
+ * ("latest", "today", "price", a recent year), news, a website or domain, or
+ * an explicit request to search online. Web search is offered only then (or
+ * right after an answer that searched the web), because merely offering it
+ * adds about 4,450 input tokens to a request.
+ */
+export function webIntent(prompt: string): boolean {
+  return (
+    /\b(latest|newest|current(ly)?|today|tonight|yesterday|tomorrow|this (week|month|year)|right now|recent(ly)?|up[- ]to[- ]date|news|headlines?|price[sd]?|pricing|costs? of|exchange rate|stock|weather|forecast|scores?|released|announced|launched|search (the )?(web|online|internet)|look (it |this |that )?up|online|on the (web|internet)|internet|google|website|web ?site|url)\b/i.test(
+      prompt,
+    ) ||
+    /\b20[2-9]\d\b/.test(prompt) ||
+    /\b[\w-]+\.(com|org|net|io|dev|ai|gov|edu|co|app)\b/i.test(prompt)
+  );
+}
 export function editIntent(prompt: string): boolean {
   return (
     /^\s*(please\s+|can you\s+|could you\s+)?(rewrite|rephrase|reword|shorten|lengthen|expand|condense|simplify|proofread|polish|improve|translate|fix|correct|edit|insert|add|append|draft|write|turn|convert|make|create|put|restructure|reorgani[sz]e)\b/i.test(

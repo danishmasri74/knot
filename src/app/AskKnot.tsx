@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { topicIndex } from "../services/workspace-topic";
 import {
   editIntent,
+  webIntent,
   resolveSourceMode,
   outgoingSourceHistory,
   exchangeHistory,
@@ -1050,7 +1051,7 @@ function AskKnotPanel({
           canvas: false,
           editable: false,
           search: searchAvailable(),
-          web: getAiEnabled() && getWebSearchEnabled(),
+          web: getAiEnabled() && getWebSearchEnabled() && wantsWeb(input, base),
         });
         const chosen =
           model === "auto"
@@ -1721,11 +1722,13 @@ function AskKnotPanel({
                   !editContext.pdf &&
                   editContext.instance === s.doc,
                 search: searchAvailable(),
-                // Captured websites have their own evidence rules.
+                // Captured websites have their own evidence rules, and the
+                // tool is offered only when the message seems to need it.
                 web:
                   getAiEnabled() &&
                   getWebSearchEnabled() &&
-                  !webSourcesRef.current.length,
+                  !webSourcesRef.current.length &&
+                  wantsWeb(input, base),
                 images: !!pictures.length,
               },
             )
@@ -3273,6 +3276,17 @@ function shownContext(request?: Turn["request"]): string | undefined {
   } catch {
     return request.context;
   }
+}
+/**
+ * Whether to offer web search: the message looks like it needs the web, or
+ * it follows an answer that searched the web ("and for Java?").
+ */
+function wantsWeb(input: string, turns: Turn[]) {
+  const previous = turns.at(-1);
+  return (
+    webIntent(input) ||
+    (previous?.role === "assistant" && !!previous.request?.webSearches)
+  );
 }
 /** A cited link without its scheme, for showing under its title. */
 function linkLabel(url: string) {

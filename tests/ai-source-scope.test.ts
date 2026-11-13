@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import {
+  webIntent,
   editIntent,
   exchangeHistory,
   resolveSourceMode,
@@ -100,4 +101,24 @@ test("follow-ups replay the user's messages, never answers or proposals", () => 
   expect(JSON.stringify(history)).not.toContain("PRIVATE");
   expect(exchangeHistory(turns, 1)).toEqual(history.slice(2));
   expect(exchangeHistory([])).toEqual([]);
+});
+test("web search is offered only when a message seems to need it", () => {
+  for (const prompt of [
+    "What is the latest stable release of Python?",
+    "What's the weather in Kuala Lumpur today?",
+    "Any news about the merger?",
+    "How much does an iPhone 17 cost of ownership in 2026?",
+    "Summarise the pricing page on stripe.com",
+    "Can you search the web for reviews?",
+    "Look it up online",
+  ])
+    expect(webIntent(prompt), prompt).toBe(true);
+  for (const prompt of [
+    "Who owns launch?",
+    "Summarise this note.",
+    "Make this shorter",
+    "What do my notes say about spaced repetition?",
+    "Explain how these steps depend on each other.",
+  ])
+    expect(webIntent(prompt), prompt).toBe(false);
 });
