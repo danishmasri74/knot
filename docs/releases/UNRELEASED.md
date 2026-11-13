@@ -6,3 +6,4 @@
 - Ask Knot searches your workspace only when a question needs it, writes its own search, and shows what it searched. The Source scope menu is gone; search can be turned off per chat from the sparkles button.
 - Open source in Ask Knot now opens the cited card in the view you use (canvas or page) and jumps to the cited words, instead of always switching to page view.
 - Ask Knot can search the web (off by default, about $0.01 per search; only for questions that look like they need it) and look at images in your note when a question needs them. Cited links become sources you can open.
+- Ask Knot in the sidebar opens as a panel beside the open note or canvas, so you keep your place, instead of replacing it with a page.

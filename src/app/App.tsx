@@ -2386,7 +2386,12 @@ export function App() {
               disabled={busy || navigating}
               aria-label="Ask Knot"
               aria-pressed={aiPlacement !== "hidden"}
-              onClick={() => showAi("page")}
+              // Beside an open document (a canvas you're panning, a note you're
+              // reading), Ask Knot opens as a panel so you keep your place; as a
+              // page only when there is nothing to keep, such as the Library.
+              onClick={() =>
+                showAi(session.current && !library ? "panel" : "page")
+              }
             >
               <ShellIcon name="sparkles" /> Ask Knot
             </button>
