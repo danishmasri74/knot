@@ -3241,6 +3241,7 @@ const CitationSources = memo(function CitationSources({
                               (a) => a.capture?.captureId === source.captureId,
                             )?.capture?.finalUrl ?? "",
                             sentence?.text ?? source.text,
+                            source.page,
                           ),
                         )
                       : onSource(

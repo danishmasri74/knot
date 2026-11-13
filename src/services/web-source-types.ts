@@ -18,6 +18,8 @@ export type WebSection = {
   headings: string[];
   kind: "text" | "list" | "code" | "table";
   text: string;
+  /** PDF page the passage is on (PDF sources only). */
+  page?: number;
 };
 export type WebCapture = {
   version: 1;
@@ -67,6 +69,7 @@ export type WebCitation = {
   citation?: string;
   headings?: string[];
   contentKind?: WebSection["kind"];
+  page?: number;
 };
 export type NoteCitation = {
   pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation;

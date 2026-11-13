@@ -18,6 +18,8 @@ use tokio::sync::Notify;
 const MAX_URLS: usize = 8;
 const CONCURRENCY: usize = 3;
 const MAX_BODY: usize = 4 * 1024 * 1024;
+/// PDFs are read as text on the device; they are larger than pages.
+const MAX_PDF: usize = 10 * 1024 * 1024;
 const MAX_BATCH: usize = 16 * 1024 * 1024;
 const SOURCE_SECONDS: u64 = 20;
 const BATCH_SECONDS: u64 = 60;
@@ -217,19 +219,19 @@ fn decode_body(
         "" | "identity" => decoded.extend_from_slice(raw),
         "gzip" => {
             flate2::read::GzDecoder::new(raw)
-                .take(MAX_BODY as u64 + 1)
+                .take(MAX_PDF as u64 + 1)
                 .read_to_end(&mut decoded)
                 .map_err(|_| fail("encoding", "The compressed response is invalid."))?;
         }
         "deflate" => {
             flate2::read::ZlibDecoder::new(raw)
-                .take(MAX_BODY as u64 + 1)
+                .take(MAX_PDF as u64 + 1)
                 .read_to_end(&mut decoded)
                 .map_err(|_| fail("encoding", "The compressed response is invalid."))?;
         }
         "br" => {
             brotli::Decompressor::new(raw, 4096)
-                .take(MAX_BODY as u64 + 1)
+                .take(MAX_PDF as u64 + 1)
                 .read_to_end(&mut decoded)
                 .map_err(|_| fail("encoding", "The compressed response is invalid."))?;
         }
@@ -240,8 +242,16 @@ fn decode_body(
             ))
         }
     }
-    if decoded.len() > MAX_BODY {
-        return Err(fail("size", "The decoded page exceeds the 4 MiB limit."));
+    let pdf = decoded.starts_with(b"%PDF-");
+    if decoded.len() > if pdf { MAX_PDF } else { MAX_BODY } {
+        return Err(fail(
+            "size",
+            if pdf {
+                "The PDF exceeds the 10 MiB limit. Download it and attach it in Knot."
+            } else {
+                "The decoded page exceeds the 4 MiB limit."
+            },
+        ));
     }
     if !matches!(encoding, "" | "identity") {
         charge(total, decoded.len())?;
@@ -253,10 +263,18 @@ fn decode_body(
         .unwrap_or_default()
         .trim()
         .to_lowercase();
-    if decoded.starts_with(b"%PDF-") || mime == "application/pdf" {
+    if pdf {
+        // The renderer extracts the text with pdf.js; bytes cross IPC as base64.
+        use base64::Engine;
+        return Ok((
+            base64::engine::general_purpose::STANDARD.encode(&decoded),
+            "application/pdf".into(),
+        ));
+    }
+    if mime == "application/pdf" {
         return Err(fail(
-            "pdf",
-            "Direct PDF URLs are not supported yet. Open/download the PDF, then attach it in Knot.",
+            "type",
+            "The website said this is a PDF, but the file is not a valid PDF.",
         ));
     }
     let html = sample
@@ -351,7 +369,7 @@ async fn fetch_once(
             .map_err(|_| fail("client", "Could not create the source client."))?;
         let mut response = client
             .get(url.clone())
-            .header(header::ACCEPT, "text/html,text/plain;q=0.9")
+            .header(header::ACCEPT, "text/html,text/plain;q=0.9,application/pdf;q=0.8")
             .header(header::ACCEPT_ENCODING, "gzip, deflate, br")
             .send()
             .await
@@ -411,17 +429,37 @@ async fn fetch_once(
             .and_then(|h| h.to_str().ok())
             .unwrap_or_default()
             .to_string();
+        let declared_pdf = content_type
+            .split(';')
+            .next()
+            .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/pdf"));
         if response
             .content_length()
-            .is_some_and(|n| n > MAX_BODY as u64)
+            .is_some_and(|n| n > if declared_pdf { MAX_PDF } else { MAX_BODY } as u64)
         {
-            return Err(fail("size", "The page exceeds the 4 MiB response limit."));
+            return Err(fail(
+                "size",
+                if declared_pdf {
+                    "The PDF exceeds the 10 MiB limit. Download it and attach it in Knot."
+                } else {
+                    "The page exceeds the 4 MiB response limit."
+                },
+            ));
         }
-        let mut raw = Vec::new();
+        let mut raw: Vec<u8> = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(network)? {
             charge(total, chunk.len())?;
-            if raw.len() + chunk.len() > MAX_BODY {
-                return Err(fail("size", "The page exceeds the 4 MiB streaming limit."));
+            let pdf = declared_pdf
+                || if raw.is_empty() { chunk.starts_with(b"%PDF-") } else { raw.starts_with(b"%PDF-") };
+            if raw.len() + chunk.len() > if pdf { MAX_PDF } else { MAX_BODY } {
+                return Err(fail(
+                    "size",
+                    if pdf {
+                        "The PDF exceeds the 10 MiB limit. Download it and attach it in Knot."
+                    } else {
+                        "The page exceeds the 4 MiB streaming limit."
+                    },
+                ));
             }
             raw.extend_from_slice(&chunk);
         }
@@ -615,10 +653,26 @@ mod tests {
     #[test]
     fn types_encoding_and_limits() {
         let total = AtomicUsize::new(0);
-        assert!(decode_body(b"%PDF-1.7", "", "text/plain", &total)
-            .unwrap_err()
-            .message
-            .contains("PDF"));
+        // PDFs come back as base64 whatever the declared type.
+        assert_eq!(
+            decode_body(b"%PDF-1.7", "", "text/plain", &total).unwrap(),
+            ("JVBERi0xLjc=".into(), "application/pdf".into())
+        );
+        assert_eq!(
+            decode_body(b"<html>", "", "application/pdf", &total)
+                .unwrap_err()
+                .code,
+            "type"
+        );
+        let big = [b"%PDF-".as_slice(), &vec![b' '; MAX_BODY]].concat();
+        assert!(decode_body(&big, "", "application/pdf", &total).is_ok());
+        let too_big = [b"%PDF-".as_slice(), &vec![b' '; MAX_PDF]].concat();
+        assert_eq!(
+            decode_body(&too_big, "", "application/pdf", &total)
+                .unwrap_err()
+                .code,
+            "size"
+        );
         assert!(decode_body(b"{\"x\":1}", "", "application/json", &total).is_err());
         assert_eq!(
             decode_body(b"caf\xe9", "", "text/plain; charset=windows-1252", &total)
@@ -718,12 +772,15 @@ mod tests {
         assert_eq!(result.body.unwrap(), "Hello");
         assert_eq!(result.final_url.unwrap(), "http://example.com/final");
         assert_eq!(count.load(Ordering::SeqCst), 2);
-        for (status, code) in [
-            ("404 Not Found", "http"),
-            ("403 Forbidden", "http"),
-            ("200 OK", "pdf"),
-        ] {
-            let body = if code == "pdf" { "%PDF-1.7" } else { "Denied" };
+        let (policy, _) = fixture(vec![(
+            Duration::ZERO,
+            http("200 OK", "Content-Type: application/pdf\r\n", "%PDF-1.7"),
+        )]);
+        let result = fetch_with_policy("http://example.com/a.pdf", &total, &policy).await;
+        assert_eq!(result.content_type.as_deref(), Some("application/pdf"));
+        assert_eq!(result.body.as_deref(), Some("JVBERi0xLjc="));
+        for (status, code) in [("404 Not Found", "http"), ("403 Forbidden", "http")] {
+            let body = "Denied";
             let (policy, count) = fixture(vec![(
                 Duration::ZERO,
                 http(status, "Content-Type: text/plain\r\n", body),

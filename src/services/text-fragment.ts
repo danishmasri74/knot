@@ -49,13 +49,22 @@ export function textDirective(passage: string): string | null {
 }
 
 /** Returns `url` with a text fragment for `passage`, or `url` unchanged. */
-export function passageUrl(url: string, passage: string | undefined): string {
+export function passageUrl(
+  url: string,
+  passage: string | undefined,
+  page?: number,
+): string {
   const directive = passage ? textDirective(passage) : null;
-  if (!url || !directive) return url;
+  if (!url || (!directive && !page)) return url;
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
       return url;
+    // PDF viewers don't support text fragments; they open "#page=N".
+    if (page && Number.isInteger(page) && page > 0) {
+      parsed.hash = `page=${page}`;
+      return parsed.href;
+    }
     // Keep an existing element anchor; replace any earlier directive.
     const anchor = parsed.hash.replace(/^#/, "").split(":~:")[0];
     parsed.hash = "";

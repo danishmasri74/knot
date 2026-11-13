@@ -338,6 +338,38 @@ export class WebSourceCoordinator {
           group.forEach((a) => update({ ...a, state: "extracting" }));
           const body = result.body;
           const contentType = result.contentType!;
+          if (contentType === "application/pdf") {
+            // PDF links: the body is the file as base64; read its text here.
+            try {
+              const { extractPdfSource } = await import("./web-pdf-extraction");
+              const extracted = await extractPdfSource(
+                body,
+                result.finalUrl!,
+                controller.signal,
+              );
+              if (!valid()) return;
+              await finish(
+                group,
+                {
+                  finalUrl: result.finalUrl!,
+                  contentType,
+                  fetchedAt: result.fetchedAt!,
+                },
+                extracted,
+                false,
+              );
+            } catch (error) {
+              if (valid())
+                group.forEach((a) =>
+                  report({
+                    ...a,
+                    state: "failed",
+                    reason: String(error).replace(/^(?:Error: )+/, ""),
+                  }),
+                );
+            }
+            return;
+          }
           let extracted: Awaited<ReturnType<typeof extractInWorker>>;
           try {
             extracted = await extractInWorker(

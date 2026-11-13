@@ -335,3 +335,43 @@ test("hash-route pages are captured through the hidden renderer", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+const pdfMock = vi.hoisted(() => ({ extract: vi.fn() }));
+vi.mock("../src/services/web-pdf-extraction", () => ({
+  extractPdfSource: pdfMock.extract,
+}));
+
+test("PDF links are read as text with page-tagged passages", async () => {
+  pdfMock.extract.mockResolvedValue({
+    title: "Attention Is All You Need",
+    author: null,
+    published: null,
+    method: "pdf-text-v1",
+    warnings: ["PDF text only: figures, images and scanned pages were not read."],
+    sections: [
+      { id: "section-1", kind: "text", headings: ["Page 4"], text: "Scaled dot-product attention.", page: 4 },
+    ],
+  });
+  mock.invoke.mockImplementation(async (command: string, args: { onEvent: { onmessage: (e: unknown) => void } }) => {
+    if (command !== "web_sources_fetch") throw new Error(`unexpected ${command}`);
+    const url = "https://arxiv.org/pdf/1706.03762";
+    args.onEvent.onmessage({ url, status: "fetching" });
+    args.onEvent.onmessage({
+      url,
+      status: "finished",
+      result: { url, finalUrl: url, body: "JVBERi0xLjc=", contentType: "application/pdf", fetchedAt: "1" },
+    });
+    args.onEvent.onmessage({ url: "", status: "complete" });
+  });
+  const updates: WebAttempt[] = [];
+  await new WebSourceCoordinator().capture(
+    "s",
+    [{ id: "a", url: "https://arxiv.org/pdf/1706.03762", state: "queued" }],
+    (a) => updates.push(a),
+  );
+  expect(pdfMock.extract).toHaveBeenCalledWith("JVBERi0xLjc=", "https://arxiv.org/pdf/1706.03762", expect.anything());
+  const last = updates.at(-1)!;
+  expect(last.state).toBe("partial");
+  expect(last.capture?.contentType).toBe("application/pdf");
+  expect(last.capture?.sections[0].page).toBe(4);
+});

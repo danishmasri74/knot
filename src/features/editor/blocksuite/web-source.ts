@@ -78,7 +78,11 @@ class WebSourceBlock extends BlockComponent<WebSourceModel> {
                 return html`<blockquote>${s.citation} ${text}</blockquote>
                   <a
                     class="knot-web-source-passage"
-                    href=${passageUrl(source.finalUrl, sentence?.text ?? s.text)}
+                    href=${passageUrl(
+                      source.finalUrl,
+                      sentence?.text ?? s.text,
+                      "page" in s ? s.page : undefined,
+                    )}
                     >Open passage</a
                   >`;
               })}`

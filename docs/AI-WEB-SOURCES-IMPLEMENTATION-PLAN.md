@@ -162,6 +162,8 @@ The first release stores selected evidence, not an offline mirror of complete we
 
 ### Follow-on A. Direct PDF URLs
 
+Implemented 13 November 2026 as on-device text capture into the website-source flow (see "PDF links" in [AI.md](AI.md)) rather than the visual PDF input, so several PDFs can share a batch and each passage cites its page. Visual analysis still needs a downloaded, attached PDF; no hidden workspace attachment is created.
+
 Core release identifies PDF responses and offers external open/download plus attach-in-Knot recovery. Then extend the native service with a bounded ephemeral download result and an explicit ownership path into existing PDF preparation.
 
 Reuse PDF text/page rendering and model inputs while preserving page numbers and PDF limits. The current API accepts one PDF input: multi-PDF batches need an intentional backend design, budget handling and tests. Do not silently analyze a PDF filename, first-page thumbnail or extracted text while claiming full visual PDF understanding. Unapplied temporary captures must not create hidden permanent workspace attachments. Commit needed assets through the normal verified attachment path and preserve references on Apply/backups.
