@@ -375,3 +375,86 @@ test("PDF links are read as text with page-tagged passages", async () => {
   expect(last.capture?.contentType).toBe("application/pdf");
   expect(last.capture?.sections[0].page).toBe(4);
 });
+
+test("full-text addresses resolve against the page and upgrade same-site http", async () => {
+  const { fullTextUrl } = await import("../src/services/web-sources");
+  expect(fullTextUrl("/pdf/1706.03762", "https://arxiv.org/abs/1706.03762")).toBe(
+    "https://arxiv.org/pdf/1706.03762",
+  );
+  expect(
+    fullTextUrl("http://repository.example/1/a.pdf", "https://repository.example/1/"),
+  ).toBe("https://repository.example/1/a.pdf");
+  expect(fullTextUrl("http://cdn.other/a.pdf", "https://site.example/")).toBe(
+    "http://cdn.other/a.pdf",
+  );
+  expect(fullTextUrl("javascript:alert(1)", "https://site.example/")).toBeNull();
+  expect(fullTextUrl(null, "https://site.example/")).toBeNull();
+});
+
+test("a landing page and its declared PDF become one source", async () => {
+  const landing = {
+    title: "Repository name",
+    docTitle: "The Paper",
+    fullText: "/1/paper.pdf",
+    author: "Suroto, Suroto",
+    published: null,
+    method: "readability-v1",
+    warnings: [],
+    sections: [{ id: "section-1", kind: "text" as const, headings: [], text: "Abstract of the paper." }],
+  };
+  pdfMock.extract.mockResolvedValue({
+    title: "The Paper (PDF)",
+    author: null,
+    published: null,
+    method: "pdf-text-v1",
+    warnings: ["PDF text only: figures, images and scanned pages were not read."],
+    sections: [{ id: "section-1", kind: "text", headings: ["Page 2"], text: "Methods in detail.", page: 2 }],
+  });
+  vi.stubGlobal(
+    "Worker",
+    class {
+      onmessage?: (event: { data: unknown }) => void;
+      terminate() {}
+      postMessage() {
+        queueMicrotask(() => this.onmessage?.({ data: { result: landing } }));
+      }
+    },
+  );
+  const page = "https://repo.example/51186/";
+  const pdf = "https://repo.example/1/paper.pdf";
+  const fetched: string[][] = [];
+  mock.invoke.mockImplementation(
+    async (command: string, args: { urls: string[]; onEvent: { onmessage: (e: unknown) => void } }) => {
+      if (command !== "web_sources_fetch") throw new Error(`unexpected ${command}`);
+      fetched.push(args.urls);
+      for (const url of args.urls)
+        args.onEvent.onmessage({
+          url,
+          status: "finished",
+          result:
+            url === pdf
+              ? { url, finalUrl: pdf, body: "JVBERi0xLjc=", contentType: "application/pdf", fetchedAt: "2" }
+              : { url, finalUrl: page, body: "<html><script></script></html>", contentType: "text/html", fetchedAt: "1" },
+        });
+      args.onEvent.onmessage({ url: "", status: "complete" });
+    },
+  );
+  try {
+    const updates: WebAttempt[] = [];
+    await new WebSourceCoordinator().capture("s", [{ id: "a", url: page, state: "queued" }], (a) =>
+      updates.push(a),
+    );
+    expect(fetched).toEqual([[page], [pdf]]);
+    const capture = updates.at(-1)!.capture!;
+    expect(capture.title).toBe("The Paper");
+    expect(capture.finalUrl).toBe(page);
+    expect(capture.method).toBe("readability-v1+pdf-text-v1");
+    expect(capture.sections.map((s) => [s.id, s.page, s.url])).toEqual([
+      ["section-1", undefined, undefined],
+      ["pdf-section-1", 2, pdf],
+    ]);
+    expect(capture.warnings).toContain(`Includes the full-text PDF this page links to (${pdf}).`);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

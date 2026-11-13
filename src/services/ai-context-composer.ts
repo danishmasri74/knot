@@ -164,6 +164,7 @@ export function composeAiContext(
         headings: item.section.headings,
         contentKind: item.section.kind,
         ...(item.section.page && { page: item.section.page }),
+        ...(item.section.url && { url: item.section.url }),
         ref: evidenceRef(evidence.captureId, item.section.id),
       };
       // Keep passage text only in citationSources; evidence sections record inclusion IDs below.

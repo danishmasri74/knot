@@ -72,6 +72,7 @@ export function webProvenance(context: string | undefined, refs: string[]) {
         headings: s.headings,
         kind: s.contentKind,
         ...(s.page && { page: s.page }),
+        ...(s.url && { url: s.url }),
       })),
     };
     if (

@@ -20,6 +20,9 @@ export type WebSection = {
   text: string;
   /** PDF page the passage is on (PDF sources only). */
   page?: number;
+  /** Address of the passage's own document when it differs from the
+   * source's (a landing page's full-text PDF). */
+  url?: string;
 };
 export type WebCapture = {
   version: 1;
@@ -70,6 +73,7 @@ export type WebCitation = {
   headings?: string[];
   contentKind?: WebSection["kind"];
   page?: number;
+  url?: string;
 };
 export type NoteCitation = {
   pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation;

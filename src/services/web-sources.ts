@@ -108,6 +108,76 @@ export function needsRenderedCapture(
 export function isHashRoute(url: string) {
   return /^#(?:!|\/)/.test(new URL(url).hash);
 }
+type Page = { finalUrl: string; contentType: string; fetchedAt: string };
+type Extracted = Omit<
+  ReturnType<typeof extractWebSource>,
+  "fullText" | "docTitle"
+> & { fullText?: string | null; docTitle?: string | null };
+
+/** The declared full-text address, resolved against the page; same-site
+ * http links are upgraded when the page itself was served over https. */
+export function fullTextUrl(
+  href: string | null | undefined,
+  base: string,
+): string | null {
+  if (!href) return null;
+  try {
+    const url = new URL(href, base);
+    const page = new URL(base);
+    if (
+      url.protocol === "http:" &&
+      page.protocol === "https:" &&
+      url.hostname === page.hostname
+    )
+      url.protocol = "https:";
+    return normalizeWebUrl(url.href);
+  } catch {
+    return null;
+  }
+}
+function withWarning(extracted: Extracted, warning: string): Extracted {
+  return { ...extracted, warnings: [...extracted.warnings, warning] };
+}
+/**
+ * A landing page plus the full-text PDF it declares, as one source: the
+ * page's passages first (citation, abstract, metadata), then the PDF's,
+ * which keep their page numbers and link to the PDF.
+ */
+export function mergeFullText(
+  landing: Extracted,
+  pdf: Extracted,
+  pdfUrl: string,
+): Extracted {
+  let chars = landing.sections.reduce((n, s) => n + s.text.length, 0);
+  const sections = [...landing.sections];
+  let truncated = false;
+  for (const section of pdf.sections) {
+    if (
+      sections.length >= WEB_LIMITS.sections ||
+      chars + section.text.length > WEB_LIMITS.extractedChars
+    ) {
+      truncated = true;
+      break;
+    }
+    sections.push({ ...section, id: `pdf-${section.id}`, url: pdfUrl });
+    chars += section.text.length;
+  }
+  return {
+    title: landing.docTitle ?? pdf.title ?? landing.title,
+    author: landing.author ?? pdf.author,
+    published: landing.published,
+    method: `${landing.method}+${pdf.method}`,
+    sections,
+    warnings: [
+      ...new Set([
+        ...landing.warnings,
+        ...pdf.warnings,
+        `Includes the full-text PDF this page links to (${pdfUrl}).`,
+        ...(truncated ? ["Extraction truncated at the content limit."] : []),
+      ]),
+    ],
+  };
+}
 type RenderedPage = {
   finalUrl: string;
   body: string;
@@ -214,8 +284,8 @@ export class WebSourceCoordinator {
     const valid = () => this.active?.id === id && !controller.signal.aborted;
     const finish = async (
       group: WebAttempt[],
-      page: { finalUrl: string; contentType: string; fetchedAt: string },
-      extracted: Awaited<ReturnType<typeof extractInWorker>>,
+      page: Page,
+      { fullText: _fullText, docTitle, ...extracted }: Extracted,
       rendered: boolean,
     ) => {
       const hash = Array.from(
@@ -244,7 +314,8 @@ export class WebSourceCoordinator {
           contentHash: hash,
           ...extracted,
           method: rendered ? `rendered-${extracted.method}` : extracted.method,
-          title: extracted.title || webSourceLabel(page.finalUrl),
+          // A scholarly page's own title beats the site name in <title>.
+          title: docTitle || extracted.title || webSourceLabel(page.finalUrl),
         };
         report({
           ...attempt,
@@ -253,6 +324,101 @@ export class WebSourceCoordinator {
           reason: undefined,
         });
       }
+    };
+    // Landing pages that declare a full-text PDF finish after the main batch,
+    // which reads those PDFs in a second fetch (one native batch at a time).
+    const followUps: {
+      group: WebAttempt[];
+      page: Page;
+      extracted: Extracted;
+      rendered: boolean;
+      pdf: string;
+    }[] = [];
+    const complete = async (
+      group: WebAttempt[],
+      page: Page,
+      extracted: Extracted,
+      rendered: boolean,
+    ) => {
+      const pdf = fullTextUrl(extracted.fullText, page.finalUrl);
+      if (
+        pdf &&
+        webFetchKey(pdf) !== webFetchKey(page.finalUrl) &&
+        !groups.has(webFetchKey(pdf))
+      ) {
+        followUps.push({ group, page, extracted, rendered, pdf });
+        group.forEach((a) => update({ ...a, state: "fetching" }));
+        return;
+      }
+      await finish(group, page, extracted, rendered);
+    };
+    const readFullTexts = async () => {
+      const handled = new Set<(typeof followUps)[number]>();
+      const work: Promise<void>[] = [];
+      try {
+        let done: () => void = () => {};
+        const finished = new Promise<void>((resolve) => (done = resolve));
+        const followChannel = new Channel<{
+          url: string;
+          status: string;
+          result?: NativeWebResult;
+        }>();
+        // Each PDF is read as soon as it arrives.
+        followChannel.onmessage = (event) => {
+          if (event.status === "complete") done();
+          else if (event.result)
+            for (const follow of followUps.filter((f) => f.pdf === event.url)) {
+              handled.add(follow);
+              work.push(readFullText(follow, event.result));
+            }
+        };
+        await Promise.all([
+          invoke("web_sources_fetch", {
+            id,
+            session,
+            urls: [...new Set(followUps.map((f) => f.pdf))],
+            onEvent: followChannel,
+          }),
+          finished,
+        ]);
+      } catch {
+        // Landing pages still finish below, with a warning.
+      }
+      for (const follow of followUps)
+        if (!handled.has(follow)) work.push(readFullText(follow, undefined));
+      await Promise.all(work);
+    };
+    const readFullText = async (
+      follow: (typeof followUps)[number],
+      result: NativeWebResult | undefined,
+    ) => {
+      if (!valid()) return;
+      let merged = withWarning(
+        follow.extracted,
+        `The full-text PDF this page links to could not be read (${follow.pdf}).`,
+      );
+      if (result?.body && result.contentType === "application/pdf") {
+        follow.group.forEach((a) => update({ ...a, state: "extracting" }));
+        try {
+          const { extractPdfSource } = await import("./web-pdf-extraction");
+          const pdf = await extractPdfSource(
+            result.body,
+            result.finalUrl!,
+            controller.signal,
+          );
+          merged = mergeFullText(follow.extracted, pdf, result.finalUrl!);
+        } catch (error) {
+          merged = withWarning(
+            follow.extracted,
+            `The full-text PDF this page links to could not be read: ${String(error).replace(/^(?:Error: )+/, "")}`,
+          );
+        }
+      } else if (result?.message)
+        merged = withWarning(
+          follow.extracted,
+          `The full-text PDF this page links to could not be read: ${result.message}`,
+        );
+      await finish(follow.group, follow.page, merged, follow.rendered);
     };
     // Rendering runs one page at a time, after the plain fetch showed the page
     // needs its scripts (or for hash routes, straight away).
@@ -278,7 +444,7 @@ export class WebSourceCoordinator {
             controller.signal,
           );
           if (!valid()) return;
-          await finish(group, page, extracted, true);
+          await complete(group, page, extracted, true);
         } catch (error) {
           if (valid()) await failed(error);
         }
@@ -404,9 +570,9 @@ export class WebSourceCoordinator {
           if (needsRenderedCapture(body, contentType, { textLength }))
             // Keep the plain capture when rendering fails.
             await render(event.url, group, () =>
-              finish(group, page, extracted, false),
+              complete(group, page, extracted, false),
             );
-          else await finish(group, page, extracted, false);
+          else await complete(group, page, extracted, false);
         })(),
       );
     };
@@ -425,6 +591,8 @@ export class WebSourceCoordinator {
           delivered,
         ]);
       await Promise.all(pending);
+      if (!valid()) throw new Error("Capture stopped");
+      if (followUps.length) await readFullTexts();
       if (!valid()) throw new Error("Capture stopped");
     } catch (error) {
       if (valid())

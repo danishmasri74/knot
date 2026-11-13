@@ -35,7 +35,11 @@ import {
   saveChatRecord,
   type ChatRecord,
 } from "../services/ai-chats";
-import { WebSourceCoordinator, detectWebUrls } from "../services/web-sources";
+import {
+  WebSourceCoordinator,
+  detectWebUrls,
+  normalizeWebUrl,
+} from "../services/web-sources";
 import { WEB_LIMITS, type WebAttempt } from "../services/web-source-types";
 import { passageUrl } from "../services/text-fragment";
 import { citedSentence, claimsFor } from "../services/cited-sentence";
@@ -3237,9 +3241,11 @@ const CitationSources = memo(function CitationSources({
                     : source.kind === "web"
                       ? browserApi.external(
                           passageUrl(
-                            retainedWebAttempts(context).find(
-                              (a) => a.capture?.captureId === source.captureId,
-                            )?.capture?.finalUrl ?? "",
+                            (source.url && normalizeWebUrl(source.url)) ||
+                              (retainedWebAttempts(context).find(
+                                (a) => a.capture?.captureId === source.captureId,
+                              )?.capture?.finalUrl ??
+                                ""),
                             sentence?.text ?? source.text,
                             source.page,
                           ),

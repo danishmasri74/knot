@@ -37,12 +37,68 @@ function flow(nodes: Node[], code = false): string {
 /** Code laid out with <br> inside a <div> (no <pre>), as on w3schools. */
 const CODE_DIV = /\b(?:w3-code|code|highlight|syntax)\b/i;
 
+/**
+ * The full-text PDF a scholarly landing page declares for itself: Google
+ * Scholar's citation_pdf_url (OJS, DSpace, arXiv, most journals), bepress,
+ * EPrints and Dublin Core identifiers that name a PDF, or an alternate link
+ * of type PDF. Only these declarations count; ordinary links are never
+ * followed.
+ */
+export function declaredFullText(doc: Document): {
+  pdf: string | null;
+  authors: string | null;
+  title: string | null;
+} {
+  const meta = (name: string) =>
+    Array.from(doc.querySelectorAll("meta"))
+      .filter(
+        (m) => m.getAttribute("name")?.toLowerCase() === name.toLowerCase(),
+      )
+      .map((m) => m.getAttribute("content")?.trim() ?? "")
+      .filter(Boolean);
+  const pdfPath = (href: string) => /\.pdf(?:$|[?#])|\/pdf\//i.test(href);
+  const pdf =
+    meta("citation_pdf_url")[0] ??
+    meta("bepress_citation_pdf_url")[0] ??
+    meta("eprints.document_url").find(pdfPath) ??
+    doc
+      .querySelector('link[rel~="alternate"][type="application/pdf"]')
+      ?.getAttribute("href")
+      ?.trim() ??
+    meta("DC.identifier").find((v) => /^https?:\/\//i.test(v) && pdfPath(v)) ??
+    null;
+  const title =
+    meta("citation_title")[0] ??
+    meta("eprints.title")[0] ??
+    meta("DC.title")[0] ??
+    null;
+  const names = [
+    ...new Set(
+      [
+        meta("citation_author"),
+        meta("eprints.creators_name"),
+        meta("DC.creator"),
+      ].find((list) => list.length) ?? [],
+    ),
+  ];
+  const authors = names.length
+    ? names.slice(0, 6).join("; ") + (names.length > 6 ? "; et al." : "")
+    : null;
+  return {
+    pdf: pdf || null,
+    title: title ? title.slice(0, 300) : null,
+    authors: authors ? authors.slice(0, 300) : null,
+  };
+}
+
 export function extractWebSource(body: string, contentType: string) {
   const warnings: string[] = [];
   let title = "",
     author: string | null = null,
     published: string | null = null;
   let method = "plain-text-v1";
+  let fullText: string | null = null,
+    docTitle: string | null = null;
   const sections: WebSection[] = [];
   let chars = 0;
   const add = (text: string, kind: WebSection["kind"], headings: string[]) => {
@@ -107,6 +163,10 @@ export function extractWebSource(body: string, contentType: string) {
         "This page exceeds the safe DOM limit. Try a smaller page.",
       );
     title = doc.querySelector("title")?.textContent?.trim() ?? "";
+    const declared = declaredFullText(doc as unknown as Document);
+    fullText = declared.pdf;
+    docTitle = declared.title;
+    const declaredAuthors = declared.authors;
     const visible = (doc.body?.textContent ?? "").slice(0, 20_000);
     // A password field marks a sign-in page only when the page has little
     // else to read; tutorials about forms include demo password inputs.
@@ -155,7 +215,8 @@ export function extractWebSource(body: string, contentType: string) {
       doc.cloneNode(true) as unknown as Document,
       { charThreshold: 0, maxElemsToParse: WEB_LIMITS.nodes },
     ).parse();
-    author = article?.byline ?? null;
+    // Scholarly author tags are exact; Readability's byline is a guess.
+    author = declaredAuthors ?? article?.byline ?? null;
     published = article?.publishedTime ?? null;
     if (!title) title = article?.title ?? "";
     if (root) method = "semantic-main-v1";
@@ -226,7 +287,8 @@ export function extractWebSource(body: string, contentType: string) {
             // An inline wrapper (such as a link) around blocks.
             flush();
             walk(child as Element);
-          } else if (child.nodeType === 1 || child.nodeType === 3) run.push(child);
+          } else if (child.nodeType === 1 || child.nodeType === 3)
+            run.push(child);
         }
         flush();
       }
@@ -244,5 +306,9 @@ export function extractWebSource(body: string, contentType: string) {
     method,
     sections,
     warnings,
+    /** Full-text PDF the page declares (unresolved href), if any. */
+    fullText,
+    /** The document's own title from scholarly metadata, if any. */
+    docTitle,
   };
 }

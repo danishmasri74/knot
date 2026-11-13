@@ -105,3 +105,31 @@ test("demo password fields don't make a tutorial look like a sign-in page", () =
   const login = `<html><head><title>Welcome</title></head><body><form><label>Email<input></label><label>Password<input type="password"></label></form></body></html>`;
   expect(() => extractWebSource(login, "text/html")).toThrow(/login/);
 });
+
+test("scholarly landing pages declare their full-text PDF, title and authors", () => {
+  const page = (head: string) =>
+    extractWebSource(
+      `<html><head><title>Repository name</title>${head}</head><body><main><h1>Paper</h1><p>Abstract text of the paper goes here.</p></main></body></html>`,
+      "text/html",
+    );
+  const eprints = page(
+    `<meta name="eprints.title" content="Evaluation of Presentation Skills"><meta name="eprints.creators_name" content="Suroto, Suroto"><meta name="eprints.creators_name" content="Sunyono, Sunyono"><meta name="eprints.document_url" content="http://repo.example/51186/1/paper.pdf"><meta name="DC.identifier" content="http://repo.example/51186/1/paper.pdf">`,
+  );
+  expect(eprints).toMatchObject({
+    fullText: "http://repo.example/51186/1/paper.pdf",
+    docTitle: "Evaluation of Presentation Skills",
+    author: "Suroto, Suroto; Sunyono, Sunyono",
+  });
+  expect(page(`<meta name="citation_pdf_url" content="/pdf/1706.03762">`).fullText).toBe("/pdf/1706.03762");
+  expect(page(`<link rel="alternate" type="application/pdf" href="full.pdf">`).fullText).toBe("full.pdf");
+  // A document URL that is not a PDF, and ordinary links, are not followed.
+  expect(
+    page(`<meta name="eprints.document_url" content="http://repo.example/1/paper.docx">`).fullText,
+  ).toBeNull();
+  expect(
+    extractWebSource(
+      `<html><body><main><p>Read the <a href="/paper.pdf">PDF</a>.</p></main></body></html>`,
+      "text/html",
+    ).fullText,
+  ).toBeNull();
+});

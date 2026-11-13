@@ -17,6 +17,7 @@ import {
   webProvenance,
 } from "../../../services/web-ai-evidence";
 import { passageUrl } from "../../../services/text-fragment";
+import { normalizeWebUrl } from "../../../services/web-sources";
 import { citedSentence } from "../../../services/cited-sentence";
 import {
   ExcerptHtmlAdapter,
@@ -79,7 +80,8 @@ class WebSourceBlock extends BlockComponent<WebSourceModel> {
                   <a
                     class="knot-web-source-passage"
                     href=${passageUrl(
-                      source.finalUrl,
+                      ("url" in s && s.url && normalizeWebUrl(s.url)) ||
+                        source.finalUrl,
                       sentence?.text ?? s.text,
                       "page" in s ? s.page : undefined,
                     )}
