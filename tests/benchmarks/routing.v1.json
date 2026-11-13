@@ -2681,6 +2681,115 @@
         "Follow the requested operation without claiming to save edits.",
         "Call search_workspace with a specific query."
       ]
+    },
+    {
+      "id": "knot-routing-27",
+      "category": "routing_search_result",
+      "mode": "auto",
+      "tools": [
+        "search_workspace",
+        "insert_blocks"
+      ],
+      "searches": [
+        {
+          "call_id": "call_synthetic_1",
+          "query": "spaced repetition",
+          "evidence": "{\"version\": 1, \"sourceMode\": \"workspace\", \"activation\": \"synthetic\", \"coverage\": {\"indexed\": 4, \"total\": 4, \"failed\": 0, \"semantic\": true}, \"citationSources\": [{\"document\": \"synthetic-study\", \"id\": \"p1\", \"revision\": \"r1\", \"title\": \"Study habits\", \"text\": \"Spaced repetition: review each card at growing intervals, such as 1, 3 and 7 days.\", \"citation\": \"[S7]\"}, {\"document\": \"synthetic-study\", \"id\": \"p2\", \"revision\": \"r1\", \"title\": \"Study habits\", \"text\": \"Exception: cards I fail go back to a one-day interval.\", \"citation\": \"[S8]\"}]}"
+        }
+      ],
+      "expected_route": "answer",
+      "context": {
+        "sourceMode": "current",
+        "scope": "Focused note",
+        "title": "Launch plan",
+        "text": "Launch plan\nMira owns launch and Jon owns support.\nWe ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.\nRun the security review\nUpdate the pricing page\nShip the beta",
+        "structure": [
+          {
+            "id": "b1",
+            "text": "Launch plan",
+            "type": "h1"
+          },
+          {
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "type": "paragraph"
+          },
+          {
+            "id": "b4",
+            "text": "Run the security review",
+            "type": "bulleted"
+          },
+          {
+            "id": "b5",
+            "text": "Update the pricing page",
+            "type": "bulleted"
+          },
+          {
+            "id": "b6",
+            "text": "Ship the beta",
+            "type": "bulleted"
+          }
+        ],
+        "citationSources": [
+          {
+            "document": "synthetic-note",
+            "id": "b1",
+            "text": "Launch plan",
+            "citation": "[S1]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b2",
+            "text": "Mira owns launch and Jon owns support.",
+            "citation": "[S2]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b3",
+            "text": "We ship the beta in March, after the security review is complete and the pricing page is updated by the marketing team.",
+            "citation": "[S3]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b4",
+            "text": "Run the security review",
+            "citation": "[S4]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b5",
+            "text": "Update the pricing page",
+            "citation": "[S5]"
+          },
+          {
+            "document": "synthetic-note",
+            "id": "b6",
+            "text": "Ship the beta",
+            "citation": "[S6]"
+          }
+        ],
+        "runs": [],
+        "surroundingReadOnly": [],
+        "addedNotes": [],
+        "mode": "auto"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "What do my notes say about spaced repetition?"
+        }
+      ],
+      "expected": "Answer from the returned excerpts with [S7] and [S8], keeping the exception; no further search.",
+      "rubric": [
+        "Choose the expected route: answer.",
+        "Use the search result as evidence without claiming to save edits.",
+        "Answer from the returned excerpts with [S7] and [S8], keeping the exception; no further search."
+      ]
     }
   ]
 }
