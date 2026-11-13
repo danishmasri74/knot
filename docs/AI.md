@@ -16,7 +16,9 @@ Ask, summarize, or explain the captured selection, focused note, Page, or readab
 
 
 
-Choose **Rewrite selection** to preview replacements while retaining text-run formatting, links, references, and block identity. Choose **Insert content** to append paragraphs, headings, bullets, numbered lists, or checklists to the current note. When several notes are visible, open a specific note first. Apply creates one normal editor undo step and uses existing autosave. Dismiss leaves the document untouched. Undo edit refuses to skip over newer edits; normal editor Undo remains available.
+**Automatic actions (13 November 2026).** There is no mode to choose. Knot answers in chat, or proposes one edit when the message asks for one: a rewrite of the selection, an addition to the note, or cards on the canvas. Each possible edit is a tool offered to the model only when Settings → AI → Abilities (or the chat's sparkles popover) allows it and the target is open and editable; a tool that isn't offered can't be called. Design and phases: [AI-AUTO-ACTIONS-PLAN.md](AI-AUTO-ACTIONS-PLAN.md). "Just answer instead" on the latest proposal reruns the message without tools; the note and board buttons on an answer turn it into an addition or canvas cards.
+
+A rewrite previews replacements while retaining text-run formatting, links, references, and block identity. An addition appends paragraphs, headings, bullets, numbered lists, or checklists to the current note. When several notes are visible, open a specific note first. Apply creates one normal editor undo step and uses existing autosave. Dismiss leaves the document untouched. Undo edit refuses to skip over newer edits; normal editor Undo remains available.
 
 
 
@@ -100,7 +102,7 @@ Ask responses can cite supplied structured blocks using [S1] markers. Expand the
 
 
 
-Create on canvas generates a reviewable batch of up to 20 note cards and 40 labeled connectors. Cards are placed left to right beside existing objects. The preview lists card text and numbered connections; Apply requires a captured Canvas context and unchanged document revision. All objects use native editor models and one undo step. Existing cards are not modified. This first version does not interpret existing canvas relationships or offer tree/grid layout. Run `node tests/ai-canvas.browser.mjs` against the development server to verify card creation, attached connector labels, and grouped undo.
+A canvas proposal generates a reviewable batch of up to 20 note cards and 40 labeled connectors. Cards are placed left to right beside existing objects. The preview lists card text and numbered connections; Apply requires a captured Canvas context and unchanged document revision. All objects use native editor models and one undo step. Existing cards are not modified. This first version does not interpret existing canvas relationships or offer tree/grid layout. Run `node tests/ai-canvas.browser.mjs` against the development server to verify card creation, attached connector labels, and grouped undo.
 
 
 

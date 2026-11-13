@@ -38,10 +38,16 @@ fn live_quality_benchmark() {
         Some("default"),
     )
     .unwrap();
-    let suite: Value =
-        serde_json::from_str(include_str!("../../tests/benchmarks/cases.v1.json")).unwrap();
+    // KNOT_BENCHMARK_SUITE=routing runs the automatic-routing cases instead.
+    let routing = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("routing");
+    let suite: Value = serde_json::from_str(if routing {
+        include_str!("../../tests/benchmarks/routing.v1.json")
+    } else {
+        include_str!("../../tests/benchmarks/cases.v1.json")
+    })
+    .unwrap();
     let cases = suite["cases"].as_array().unwrap();
-    assert_eq!(cases.len(), 60);
+    assert_eq!(cases.len(), if routing { 20 } else { 60 });
     assert!(
         reserve * cases.len() as f64 <= budget,
         "Budget is below the conservative full-suite reservation; no calls made"
@@ -89,7 +95,7 @@ fn live_quality_benchmark() {
         .open(&result_path)
         .unwrap();
     if resume.is_none() {
-        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*60.0,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":INPUT_RESERVE})).unwrap();
+        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserve*cases.len() as f64,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":INPUT_RESERVE})).unwrap();
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -110,12 +116,15 @@ fn live_quality_benchmark() {
             });
             let image = asset("image_asset"); let pdf = asset("pdf_asset");
             let mode = case["mode"].as_str().unwrap();
-            let body = request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref());
+            let tools: Vec<String> = serde_json::from_value(case["tools"].clone()).unwrap_or_default();
+            let body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
             assert!(context.len() + messages.iter().map(|m|m.content.len()).sum::<usize>() < 100_000);
             let output = Arc::new(Mutex::new(String::new())); let copy = output.clone();
+            let route = Arc::new(Mutex::new(String::from("answer"))); let called = route.clone();
             let channel = Channel::new(move |body| {
                 if let tauri::ipc::InvokeResponseBody::Json(s) = body {
                     let v: Value = serde_json::from_str(&s).unwrap();
+                    if let Some(name) = v["call"].as_str() { name.clone_into(&mut called.lock().unwrap()); }
                     if let Some(delta) = v["delta"].as_str() { copy.lock().unwrap().push_str(delta); }
                 } Ok(())
             });
@@ -126,13 +135,13 @@ fn live_quality_benchmark() {
             let result = async {
                 let response = client()?.post("https://api.openai.com/v1/responses").bearer_auth(key()?).json(&body).send().await.map_err(|_|"Connection failed".to_string())?;
                 if !response.status().is_success() { return Err(status_error(response.status())); }
-                consume_response(response,channel,&mut measurement).await
+                consume_response(response,channel,&mut measurement,&tools).await
             }.await;
             let cost = estimate(&model,&measurement.attempt.usage,measurement.attempt.service_tier.as_deref());
             // Unknown pricing consumes the full reservation. Continue only when
             // reported standard-tier input/output proves it is within that bound.
             spent += cost.unwrap_or(reserve);
-            writeln!(file,"{}",json!({"case":case["id"],"category":case["category"],"model":model,"output":*output.lock().unwrap(),"usage":measurement.attempt.usage,"service_tier":measurement.attempt.service_tier,"cost_usd":cost,"elapsed_ms":start.elapsed().as_millis(),"success":result.is_ok(),"failure":result.as_ref().err(),"spent_or_reserved_usd":spent,"rubric":case["rubric"],"scores":null})).unwrap();
+            writeln!(file,"{}",json!({"case":case["id"],"category":case["category"],"model":model,"output":*output.lock().unwrap(),"usage":measurement.attempt.usage,"service_tier":measurement.attempt.service_tier,"cost_usd":cost,"elapsed_ms":start.elapsed().as_millis(),"success":result.is_ok(),"failure":result.as_ref().err(),"spent_or_reserved_usd":spent,"rubric":case["rubric"],"scores":null,"route":*route.lock().unwrap(),"expected_route":case["expected_route"],"route_ok":case.get("expected_route").map(|e| e == &json!(*route.lock().unwrap()))})).unwrap();
             file.flush().unwrap();
             println!("{}: success={}, accounted USD {:.6}/{:.2}",case["id"],result.is_ok(),spent,budget);
             let bounded = matches!(measurement.attempt.service_tier.as_deref(), Some("default" | "standard"))

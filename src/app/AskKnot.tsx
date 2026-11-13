@@ -6,15 +6,23 @@ import { useCallback } from "react";
 import { ChoicePopover } from "./ChoicePopover";
 import { topicIndex } from "../services/workspace-topic";
 import {
+  editIntent,
   resolveSourceMode,
   outgoingSourceHistory,
+  proposalHistory,
   type SourceMode,
 } from "../services/ai-source-scope";
 import {
+  AI_ABILITIES_CHANGED,
   AI_MODELS_CHANGED,
+  AI_TOOL_MODES,
+  automaticAiTools,
+  getAiAbilities,
   getAiEnabled,
   getWorkspaceSearchEnabled,
   WORKSPACE_SEARCH_CHANGED,
+  type AiAbilities,
+  type AiTool,
 } from "../services/ai-preferences";
 import { recordAiOutcome } from "../services/ai-diagnostics";
 import {
@@ -31,7 +39,7 @@ import {
 } from "../services/ai-context-composer";
 import { WebSourceList, WebCoverage } from "./WebSourceList";
 import { AttachmentImage, ContextAttachments } from "./ContextAttachments";
-import { ShellMenu } from "./ShellMenu";
+import { Popover } from "./Collections";
 import { browserApi } from "../services/browser";
 import {
   cardActions,
@@ -83,8 +91,11 @@ type Turn = {
   autoModel?: string;
   elapsedSeconds?: number;
   request?: {
-    mode: "ask" | "rewrite" | "insert" | "canvas";
+    /** "auto" lets Knot answer or propose one edit with the offered tools. */
+    mode: "auto" | "ask" | "rewrite" | "insert" | "canvas";
     context: string;
+    /** Text sent to the model when it differs from the message shown. */
+    message?: string;
     sourceMode?: SourceMode;
     pdfSource?: AiPdfSource;
     image?: { key: string; name: string };
@@ -95,6 +106,8 @@ type Turn = {
   proposal?: AiProposal;
   context?: AiContext;
   mode?: "rewrite" | "insert" | "canvas";
+  /** While streaming: the model is preparing a proposal (not persisted). */
+  preparing?: boolean;
   status?: "applied" | "dismissed";
   undo?: () => void;
   cost?: AiCost;
@@ -119,6 +132,8 @@ type Chat = {
   turns: Turn[];
   evidence?: Record<string, NonNullable<Turn["request"]>>;
   spent?: Spent;
+  /** This chat's abilities when they differ from the Settings defaults. */
+  abilities?: AiAbilities;
 };
 function hydrateChat(record: ChatRecord): Chat {
   const chat = record as unknown as Chat;
@@ -133,15 +148,18 @@ function hydrateChat(record: ChatRecord): Chat {
 }
 function serializeChat(chat: Chat): string {
   const evidence: NonNullable<Chat["evidence"]> = {};
-  const storedTurns = chat.turns.map(({ context, undo, ...turn }) => {
-    void context;
-    void undo;
-    if (turn.request?.sourceMode === "workspace" && turn.attemptId) {
-      evidence[turn.attemptId] = turn.request;
-      return { ...turn, evidenceId: turn.attemptId, request: undefined };
-    }
-    return turn;
-  });
+  const storedTurns = chat.turns.map(
+    ({ context, undo, preparing, ...turn }) => {
+      void context;
+      void undo;
+      void preparing;
+      if (turn.request?.sourceMode === "workspace" && turn.attemptId) {
+        evidence[turn.attemptId] = turn.request;
+        return { ...turn, evidenceId: turn.attemptId, request: undefined };
+      }
+      return turn;
+    },
+  );
   return JSON.stringify({ ...chat, evidence, turns: storedTurns });
 }
 const noSpend: Spent = { usd: 0, priced: 0, unpriced: 0 };
@@ -385,9 +403,22 @@ function AskKnotPanel({
       },
     );
   }
-  const [mode, setMode] = useState<"ask" | "rewrite" | "insert" | "canvas">(
-    "ask",
+  const [defaultAbilities, setDefaultAbilities] = useState(getAiAbilities);
+  const [chatAbilities, setChatAbilities] = useState<AiAbilities | undefined>(
+    () => chats.find((c) => c.id === chatId)?.abilities,
   );
+  const chatAbilitiesRef = useRef(chatAbilities);
+  const abilities = chatAbilities ?? defaultAbilities;
+  useEffect(() => {
+    const changed = () => setDefaultAbilities(getAiAbilities());
+    window.addEventListener(AI_ABILITIES_CHANGED, changed);
+    return () => window.removeEventListener(AI_ABILITIES_CHANGED, changed);
+  }, []);
+  function changeAbilities(next: AiAbilities | undefined) {
+    chatAbilitiesRef.current = next;
+    setChatAbilities(next);
+    if (turnsRef.current.length) update([...turnsRef.current]);
+  }
   const [model, setModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const providerModels = useRef<string[]>([]);
@@ -490,7 +521,10 @@ function AskKnotPanel({
   const automaticRequest = useRef(false);
   const lastRequest = turns.filter((t) => t.role === "user").at(-1)?.request;
   const lastScope = lastRequest?.sourceMode;
-  function resolveScope(input: string, action = mode): SourceMode {
+  function resolveScope(
+    input: string,
+    action: NonNullable<Turn["request"]>["mode"] = "auto",
+  ): SourceMode {
     return resolveSourceMode({
       scope: sourceScope,
       mode: action,
@@ -546,7 +580,7 @@ function AskKnotPanel({
     resolvedScope !== "explicit" &&
     usesNoteSources(
       sourceScope,
-      mode,
+      "ask",
       prompt,
       context?.label === "Selection" || context?.label === "Focused note",
       !!(added.length || passages.length || context?.pdf),
@@ -597,6 +631,7 @@ function AskKnotPanel({
       updated: Date.now(),
       turns: value,
       spent: spentRef.current,
+      abilities: chatAbilitiesRef.current,
     };
     if (value.length)
       saveChatRecord(workspace, chat.id, serializeChat(chat)).then(
@@ -657,7 +692,8 @@ function AskKnotPanel({
     setAdded([]);
     setPassages([]);
     setImage(chat?.turns.at(-1)?.request?.image);
-    setMode("ask");
+    chatAbilitiesRef.current = chat?.abilities;
+    setChatAbilities(chat?.abilities);
     setHistoryOpen(false);
   }
   async function copyTurn(turn: Turn, index: number) {
@@ -847,7 +883,6 @@ function AskKnotPanel({
     if (busy || request.current) return;
     const input = cardActions[suggestion.action].prompt;
     setContext(current);
-    setMode("canvas");
     setSourceScope("current");
     if (!connected || !model || !models.length) {
       setPrompt(input);
@@ -855,7 +890,6 @@ function AskKnotPanel({
       return;
     }
     openChat();
-    setMode("canvas");
     void send(undefined, input, current);
   }, [suggestion, modelStatus, connected, model, models.length]);
   async function sendWorkspace(
@@ -1026,11 +1060,34 @@ function AskKnotPanel({
       }
     }
   }
+  /** Explicitly turns an answer into a note addition or canvas cards. */
+  function sendAnswerTo(turn: Turn, action: "insert" | "canvas") {
+    void send(
+      undefined,
+      action === "insert"
+        ? "Insert this answer into the note"
+        : "Make canvas cards from this answer",
+      undefined,
+      undefined,
+      action,
+      {
+        message: `${action === "insert" ? "Add the following answer to my note" : "Turn the following answer into canvas content"}. Keep its facts and do not add new ones.\n\n${turn.content}`,
+      },
+    );
+  }
   async function send(
     retryIndex?: number,
     edited?: string,
     cardContext?: AiContext,
     starterContext?: AiContext,
+    /** An explicit action; otherwise Knot answers or proposes on its own. */
+    forced?: "ask" | "rewrite" | "insert" | "canvas",
+    options?: {
+      /** Replace the retried answer in this chat instead of branching. */
+      inPlace?: boolean;
+      /** Text to send instead of the message shown in the chat. */
+      message?: string;
+    },
   ) {
     const retry =
       retryIndex === undefined ? undefined : turnsRef.current[retryIndex];
@@ -1042,7 +1099,16 @@ function AskKnotPanel({
             .reverse()
             .find((t) => t.role === "user");
     const input = edited?.trim() ?? retryUser?.content ?? prompt.trim();
-    const action = cardContext ? "canvas" : (retry?.request?.mode ?? mode);
+    const outgoing =
+      options?.message ??
+      (retryIndex !== undefined && edited === undefined
+        ? retryUser?.request?.message
+        : undefined) ??
+      input;
+    const action = cardContext
+      ? "canvas"
+      : (forced ?? retry?.request?.mode ?? "auto");
+    const answers = action === "ask" || action === "auto";
     const s = getSession();
     if (attaching || (uploadScope && !image)) {
       setError(
@@ -1057,11 +1123,7 @@ function AskKnotPanel({
       : retry && !retry.request?.sourceMode && sourceScope === "auto"
         ? "legacy"
         : resolveScope(input, action);
-    if (
-      action === "ask" &&
-      !s &&
-      (resolved === "none" || resolved === "legacy")
-    ) {
+    if (answers && !s && (resolved === "none" || resolved === "legacy")) {
       await sendWorkspace(input, retryIndex, edited, resolved);
       return;
     }
@@ -1114,7 +1176,7 @@ function AskKnotPanel({
           resolved !== "none" &&
           usesNoteSources(
             sourceScope,
-            action,
+            answers ? "ask" : action,
             input,
             current.label === "Selection" || current.label === "Focused note",
             !!(added.length || passages.length || current.pdf),
@@ -1152,11 +1214,13 @@ function AskKnotPanel({
               0,
               retryIndex - (retry?.role === "assistant" ? 1 : 0),
             );
-      const history = outgoingSourceHistory(base, resolved);
+      let history = outgoingSourceHistory(base, resolved);
+      // "Make it shorter" after a proposal: say what was proposed, never its content.
+      if (action === "auto" && !history.length) history = proposalHistory(base);
       let inheritedContext: string | undefined;
       const inherit =
         !sourceChoicesChanged.current &&
-        action === "ask" &&
+        answers &&
         sourceScope === "auto" &&
         !retry &&
         !added.length &&
@@ -1244,12 +1308,10 @@ function AskKnotPanel({
               structure: !useSources ? [] : current.structure,
               surroundingReadOnly: !useSources ? [] : current.surrounding,
               mode: action,
-              runs: (!useSources && action === "ask" ? [] : current.ranges).map(
-                (r) => ({
-                  text: r.text,
-                  protected: !!(r.attributes.reference || r.attributes.link),
-                }),
-              ),
+              runs: (!useSources && answers ? [] : current.ranges).map((r) => ({
+                text: r.text,
+                protected: !!(r.attributes.reference || r.attributes.link),
+              })),
               ...(preparedImage && {
                 attachedImage: {
                   name: selectedImage?.name,
@@ -1269,7 +1331,7 @@ function AskKnotPanel({
         );
       if (
         history.length + 1 > 30 ||
-        bytes(history.map((t) => t.content).join("")) + bytes(input) > 120000
+        bytes(history.map((t) => t.content).join("")) + bytes(outgoing) > 120000
       )
         throw new Error(
           "This conversation exceeds the request limit. Start a new chat. Your message has not been sent.",
@@ -1293,15 +1355,49 @@ function AskKnotPanel({
           mode: action,
           sourceMode: resolved,
           context: requestContext,
+          message: outgoing === input ? undefined : outgoing,
           image: selectedImage,
           pdfSource,
         },
       };
+      // The context a proposal applies to: the retried one, or this capture.
+      const editContext: AiContext = retry?.context ?? {
+        ...current,
+        webContext: requestContext,
+      };
+      let sentRuns = 0;
+      try {
+        sentRuns =
+          (JSON.parse(requestContext) as { runs?: unknown[] }).runs?.length ??
+          0;
+      } catch {
+        sentRuns = 0;
+      }
+      const tools: AiTool[] =
+        action === "auto"
+          ? automaticAiTools(abilities, {
+              selection:
+                resolved !== "none" &&
+                resolved !== "explicit" &&
+                sentRuns > 0 &&
+                sentRuns === editContext.ranges.length,
+              note: !!editContext.note,
+              canvas: !!editContext.canvas,
+              editable:
+                !s.doc.readonly &&
+                !editContext.pdf &&
+                editContext.instance === s.doc,
+            })
+          : [];
       const chosenModel =
         model === "auto"
           ? automaticAiModel(
               models,
-              action,
+              action === "auto"
+                ? tools.length && editIntent(input)
+                  ? "rewrite"
+                  : "ask"
+                : action,
               input,
               !!(selectedImage || pdfSource),
               requestContext.length,
@@ -1315,7 +1411,7 @@ function AskKnotPanel({
         failed: true,
         request: user.request,
       };
-      if (retry && edited === undefined) {
+      if (retry && edited === undefined && !options?.inPlace) {
         const branch = crypto.randomUUID();
         chatIdRef.current = branch;
         setChatId(branch);
@@ -1329,14 +1425,29 @@ function AskKnotPanel({
       setCopied(null);
       if (!retry) setPrompt("");
       let output = "";
+      let toolCall: AiTool | undefined;
+      let toolArguments = "";
       let displayed = false;
       const sentFrom = chatIdRef.current;
-      const channel = new Channel<{ delta: string; cost?: AiCost }>();
-      channel.onmessage = ({ delta, cost }) => {
+      const channel = new Channel<{
+        delta: string;
+        cost?: AiCost;
+        call?: string;
+      }>();
+      channel.onmessage = ({ delta, cost, call }) => {
         if (cost) return recordCost(draft!, cost, sentFrom);
         if (request.current !== id || !mounted.current) return;
+        if (call) {
+          if (!toolCall) {
+            toolCall = call as AiTool;
+            draft!.preparing = true;
+            update([...turnsRef.current]);
+          }
+          toolArguments += delta;
+          return;
+        }
         output += delta;
-        if (action === "ask") {
+        if (answers) {
           draft!.content = output;
           if (!displayed) {
             displayed = true;
@@ -1366,32 +1477,51 @@ function AskKnotPanel({
             }
           : undefined,
         model: chosenModel,
-        mode: action,
-        messages: [...history, user].map((t) => ({
-          role: t.role,
-          content: t.content,
-        })),
+        // Without tools an automatic request is an ordinary answer.
+        mode: action === "auto" && !tools.length ? "ask" : action,
+        tools: tools.length ? tools : undefined,
+        messages: [...history, { role: user.role, content: outgoing }],
         context: requestContext,
         image: preparedImage?.pixels,
         pdfInput,
         onEvent: channel,
       });
       if (request.current !== id || !mounted.current) return;
-      if (action !== "ask") {
+      const proposed =
+        action === "auto"
+          ? toolCall && AI_TOOL_MODES[toolCall]
+          : action === "ask"
+            ? undefined
+            : action;
+      if (proposed) {
         try {
-          draft.proposal = validateProposal(JSON.parse(output), requestContext);
+          draft.proposal = validateProposal(
+            JSON.parse(action === "auto" ? toolArguments : output),
+            requestContext,
+          );
+          if (
+            action === "auto" &&
+            proposed === "rewrite" &&
+            draft.proposal.replacements.length !== editContext.ranges.length
+          )
+            throw new Error("The edit response is invalid. Please try again.");
           recordAiOutcome(id, "proposal_valid");
         } catch (error) {
           recordAiOutcome(id, "proposal_invalid");
           throw error;
         }
-        draft.context = retry
-          ? retry.context
-          : { ...current, webContext: requestContext };
-        draft.mode = action;
-        draft.content =
-          action === "rewrite" ? "Suggested rewrite" : "Suggested addition";
+        draft.context =
+          action === "auto"
+            ? editContext
+            : retry
+              ? retry.context
+              : { ...current, webContext: requestContext };
+        draft.mode = proposed;
+        const label =
+          proposed === "rewrite" ? "Suggested rewrite" : "Suggested addition";
+        draft.content = action === "auto" ? output.trim() || label : label;
       }
+      draft.preparing = undefined;
       draft.elapsedSeconds = responseElapsedSeconds(requestStartedAt.current);
       draft.failed = false;
       update([...turnsRef.current]);
@@ -1400,6 +1530,7 @@ function AskKnotPanel({
       if (draft && request.current === id) {
         draft.elapsedSeconds = responseElapsedSeconds(requestStartedAt.current);
         draft.failed = true;
+        draft.preparing = undefined;
         if (!draft.content) draft.content = "Response interrupted. Try again.";
         update([...turnsRef.current]);
       }
@@ -1652,8 +1783,8 @@ function AskKnotPanel({
                   Your key is stored in Windows Credential Manager. Context
                   shown here is sent when you ask. If AI suggestions are
                   enabled, current note excerpts are also sent when you open an
-                  empty chat. Chats are saved in this workspace and included
-                  in its backups.
+                  empty chat. Chats are saved in this workspace and included in
+                  its backups.
                 </p>
               </details>
             </section>
@@ -1690,7 +1821,6 @@ function AskKnotPanel({
                     models.length > 0 &&
                     !busy &&
                     !prompt &&
-                    mode === "ask" &&
                     sourceScope !== "none" &&
                     sourceScope !== "workspace" &&
                     !passages.length &&
@@ -1721,10 +1851,7 @@ function AskKnotPanel({
                             ? "search"
                             : "sparkles"
                       }
-                      onClick={() => {
-                        setMode("ask");
-                        setPrompt(text);
-                      }}
+                      onClick={() => setPrompt(text)}
                     />
                   ))}
                 </div>
@@ -1825,8 +1952,18 @@ function AskKnotPanel({
                       )
                     ) : (
                       <span className="ask-thinking">
-                        {mode === "ask" ? "Thinking" : "Preparing preview"}
+                        {turn.preparing ||
+                        (turn.request &&
+                          turn.request.mode !== "ask" &&
+                          turn.request.mode !== "auto")
+                          ? "Preparing preview"
+                          : "Thinking"}
                         <span>…</span>
+                      </span>
+                    )}
+                    {turn.preparing && turn.content && (
+                      <span className="ask-thinking">
+                        Preparing preview<span>…</span>
                       </span>
                     )}
                   </div>
@@ -1928,6 +2065,26 @@ function AskKnotPanel({
                         >
                           Dismiss
                         </button>
+                        {turn.request?.mode === "auto" &&
+                          i === turns.length - 1 && (
+                            <button
+                              className="ask-answer-instead"
+                              disabled={busy || !connected || !models.length}
+                              onClick={() => {
+                                recordAiOutcome(turn.attemptId, "dismiss");
+                                void send(
+                                  i,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  "ask",
+                                  { inPlace: true },
+                                );
+                              }}
+                            >
+                              Just answer instead
+                            </button>
+                          )}
                       </div>
                     ) : (
                       <div className="ask-proposal-actions">
@@ -1997,6 +2154,34 @@ function AskKnotPanel({
                         )}
                       </button>
                     )}
+                    {turn.role === "assistant" &&
+                      !turn.proposal &&
+                      !turn.failed &&
+                      !!turn.content &&
+                      !!getSession() &&
+                      !getSession()?.doc.readonly &&
+                      !context?.pdf &&
+                      (context?.canvas ? (
+                        <button
+                          aria-label="Make canvas cards"
+                          data-tooltip="Make canvas cards"
+                          disabled={busy || !connected || !models.length}
+                          onClick={() => sendAnswerTo(turn, "canvas")}
+                        >
+                          <ShellIcon name="board" />
+                        </button>
+                      ) : (
+                        context?.note && (
+                          <button
+                            aria-label="Insert into note"
+                            data-tooltip="Insert into note"
+                            disabled={busy || !connected || !models.length}
+                            onClick={() => sendAnswerTo(turn, "insert")}
+                          >
+                            <ShellIcon name="note" />
+                          </button>
+                        )
+                      ))}
                     <button
                       aria-label={
                         turn.role === "assistant"
@@ -2086,41 +2271,35 @@ function AskKnotPanel({
                 <small role="status">{retrievalStatus}</small>
               )}
               <div className="ask-context">
-                {mode === "ask" && (
-                  <ChoicePopover
-                    label="Source scope"
-                    className="ask-source-scope"
-                    placement="top"
-                    disabled={busy}
-                    value={
-                      resolvedScope === "none"
-                        ? "No note sources"
-                        : sourceScope === "current"
-                          ? "Current note"
-                          : "Automatic sources"
-                    }
-                    options={
-                      getSession()
-                        ? [
-                            "Automatic sources",
-                            "Current note",
-                            "No note sources",
-                          ]
-                        : ["Automatic sources", "No note sources"]
-                    }
-                    onChange={(value) =>
-                      setSourceScope(
-                        value === "No note sources"
-                          ? "none"
-                          : value === "Current note"
-                            ? "current"
-                            : getWorkspaceSearchEnabled()
-                              ? "workspace"
-                              : "auto",
-                      )
-                    }
-                  />
-                )}
+                <ChoicePopover
+                  label="Source scope"
+                  className="ask-source-scope"
+                  placement="top"
+                  disabled={busy}
+                  value={
+                    resolvedScope === "none"
+                      ? "No note sources"
+                      : sourceScope === "current"
+                        ? "Current note"
+                        : "Automatic sources"
+                  }
+                  options={
+                    getSession()
+                      ? ["Automatic sources", "Current note", "No note sources"]
+                      : ["Automatic sources", "No note sources"]
+                  }
+                  onChange={(value) =>
+                    setSourceScope(
+                      value === "No note sources"
+                        ? "none"
+                        : value === "Current note"
+                          ? "current"
+                          : getWorkspaceSearchEnabled()
+                            ? "workspace"
+                            : "auto",
+                    )
+                  }
+                />
                 {resolvedScope === "workspace" && (
                   <span className="ask-chip" aria-label="Workspace sources">
                     <ShellIcon name="search" />
@@ -2140,7 +2319,7 @@ function AskKnotPanel({
                   <button
                     type="button"
                     className="ask-chip"
-                    disabled={busy || mode === "rewrite"}
+                    disabled={busy}
                     aria-pressed={includeSources}
                     aria-label={
                       !includeSources
@@ -2276,13 +2455,9 @@ function AskKnotPanel({
               <textarea
                 aria-label="Ask Knot message"
                 placeholder={
-                  mode === "rewrite"
-                    ? "How would you like to rewrite this?"
-                    : mode === "insert"
-                      ? "What would you like to add?"
-                      : image
-                        ? "Ask about colors, objects, or what the image conveys…"
-                        : "Ask, write, or explore an idea…"
+                  image
+                    ? "Ask about colors, objects, or what the image conveys…"
+                    : "Ask, write, or edit…"
                 }
                 value={prompt}
                 disabled={busy || editing !== null}
@@ -2360,39 +2535,84 @@ function AskKnotPanel({
                     setSourceScope("current");
                   }}
                 />
-                <ShellMenu
-                  label="Writing actions"
-                  icon={<ShellIcon name="sparkles" />}
-                  className="ask-context-menu"
+                <Popover
+                  label="Abilities"
+                  placement="top"
+                  className="ask-abilities-button"
+                  trigger={
+                    <>
+                      <ShellIcon name="sparkles" />
+                      {chatAbilities && (
+                        <span
+                          className="ask-abilities-dot"
+                          aria-label="Changed for this chat"
+                        />
+                      )}
+                    </>
+                  }
                 >
-                  {(["ask", "rewrite", "insert", "canvas"] as const).map(
-                    (action) => (
-                      <button
-                        key={action}
-                        disabled={busy || !!context?.pdf}
-                        onClick={() => {
-                          setMode(action);
-                          if (action !== "ask" && sourceScope === "workspace")
-                            setSourceScope("auto");
+                  {() => (
+                    <div className="ask-abilities">
+                      <p>What Knot may suggest on its own in this chat</p>
+                      <div
+                        role="group"
+                        aria-label="Abilities"
+                        className="library-filter-options"
+                        onKeyDown={(event) => {
+                          if (!["ArrowDown", "ArrowUp"].includes(event.key))
+                            return;
+                          const buttons = Array.from(
+                            event.currentTarget.querySelectorAll("button"),
+                          );
+                          const index = buttons.indexOf(
+                            document.activeElement as HTMLButtonElement,
+                          );
+                          event.preventDefault();
+                          buttons[
+                            (index +
+                              (event.key === "ArrowDown" ? 1 : -1) +
+                              buttons.length) %
+                              buttons.length
+                          ]?.focus();
                         }}
                       >
-                        {
-                          {
-                            ask: "Ask",
-                            rewrite: "Rewrite selection",
-                            insert: "Insert content",
-                            canvas: "Create on canvas",
-                          }[action]
-                        }
-                      </button>
-                    ),
+                        {(
+                          [
+                            ["editNote", "Edit the current note"],
+                            ["canvasCards", "Create cards on canvas"],
+                          ] as const
+                        ).map(([key, label], index) => (
+                          <button
+                            key={key}
+                            autoFocus={index === 0}
+                            aria-pressed={abilities[key]}
+                            onClick={() => {
+                              const next = {
+                                ...abilities,
+                                [key]: !abilities[key],
+                              };
+                              changeAbilities(
+                                next.editNote === defaultAbilities.editNote &&
+                                  next.canvasCards ===
+                                    defaultAbilities.canvasCards
+                                  ? undefined
+                                  : next,
+                              );
+                            }}
+                          >
+                            <span>{label}</span>
+                            {abilities[key] && <ShellIcon name="check" />}
+                          </button>
+                        ))}
+                      </div>
+                      <small>
+                        {chatAbilities
+                          ? "Changed for this chat. Defaults are in Settings → AI."
+                          : "Defaults from Settings → AI."}
+                      </small>
+                    </div>
                   )}
-                </ShellMenu>
-                {mode !== "ask" && (
-                  <button className="ask-chip" onClick={() => setMode("ask")}>
-                    {mode} x
-                  </button>
-                )}
+                </Popover>
 
                 <select
                   aria-label="AI model"

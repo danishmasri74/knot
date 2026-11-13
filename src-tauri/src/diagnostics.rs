@@ -172,7 +172,7 @@ impl Measurement {
                 } else {
                     "unknown".into()
                 },
-                operation: if ["ask", "rewrite", "insert", "canvas"].contains(&operation) {
+                operation: if ["ask", "auto", "rewrite", "insert", "canvas"].contains(&operation) {
                     operation.into()
                 } else {
                     "unknown".into()

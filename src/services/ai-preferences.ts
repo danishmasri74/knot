@@ -157,3 +157,66 @@ export function setAiSuggestionsEnabled(enabled: boolean) {
   localStorage.setItem("knot.ai-suggestions", String(enabled));
   window.dispatchEvent(new Event(AI_SUGGESTIONS_CHANGED));
 }
+
+/**
+ * What Ask Knot may propose without being asked for a specific action.
+ * Settings holds the defaults; a chat can override them. Every proposal is
+ * still previewed before it changes anything.
+ */
+export type AiAbilities = { editNote: boolean; canvasCards: boolean };
+export const AI_ABILITIES_CHANGED = "knot-ai-abilities-changed";
+const abilitiesKey = "knot.ai-abilities.v1";
+export function normalizeAiAbilities(value: unknown): AiAbilities {
+  const saved = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  return {
+    editNote: saved.editNote !== false,
+    canvasCards: saved.canvasCards !== false,
+  };
+}
+export function getAiAbilities(): AiAbilities {
+  try {
+    return normalizeAiAbilities(
+      JSON.parse(localStorage.getItem(abilitiesKey) ?? "null"),
+    );
+  } catch {
+    return normalizeAiAbilities(null);
+  }
+}
+export function setAiAbilities(abilities: AiAbilities) {
+  localStorage.setItem(
+    abilitiesKey,
+    JSON.stringify(normalizeAiAbilities(abilities)),
+  );
+  window.dispatchEvent(new Event(AI_ABILITIES_CHANGED));
+}
+
+/** Write tools an automatic request can offer, and the edit each proposes. */
+export const AI_TOOL_MODES = {
+  rewrite_selection: "rewrite",
+  insert_blocks: "insert",
+  create_on_canvas: "canvas",
+} as const;
+export type AiTool = keyof typeof AI_TOOL_MODES;
+/**
+ * Tools to offer for one request: allowed by the abilities and possible for
+ * what is open. A tool that is not offered cannot be called.
+ */
+export function automaticAiTools(
+  abilities: AiAbilities,
+  target: {
+    selection: boolean;
+    note: boolean;
+    canvas: boolean;
+    editable: boolean;
+  },
+): AiTool[] {
+  if (!target.editable) return [];
+  const tools: AiTool[] = [];
+  if (abilities.editNote && target.selection) tools.push("rewrite_selection");
+  if (abilities.editNote && target.note) tools.push("insert_blocks");
+  if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
+  return tools;
+}

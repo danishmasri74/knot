@@ -12,6 +12,14 @@ Follow-ups replay fixed prior turns for reproducibility; they do not measure cum
 free-running conversation drift. The synthetic PDF and diagram are committed under
 `assets`; regenerate with `node tests/benchmarks/generate-assets.mjs`.
 
+## Routing suite
+
+`routing.v1.json` holds 20 synthetic automatic-routing cases (13 November 2026): each offers
+a set of tools and names the expected route (`answer` or a tool). Run it with the same gate
+plus `KNOT_BENCHMARK_SUITE=routing`. Result rows add `route`, `expected_route` and
+`route_ok`. Phase 1 of [automatic actions](../../docs/AI-AUTO-ACTIONS-PLAN.md) should not
+ship to a release before a routing run is reviewed.
+
 ## Paid execution gate
 
 The initial run was explicitly authorized for GPT-6 Luna and US$5 total. New runs

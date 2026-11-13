@@ -11,6 +11,8 @@ import {
   type AiConnectorShape,
   getWorkspaceSearchEnabled,
   setWorkspaceSearchEnabled,
+  getAiAbilities,
+  setAiAbilities,
   getAiModels,
   setAiModels,
   setAiEnabled,
@@ -27,6 +29,7 @@ export function AiSettings({
     getWorkspaceSearchEnabled,
   );
   const [suggestions, setSuggestions] = useState(getAiSuggestionsEnabled);
+  const [abilities, setAbilities] = useState(getAiAbilities);
   const [confirm, setConfirm] = useState(false);
   const [models, setModels] = useState(getAiModels);
   const [connectorShape, setConnectorShape] = useState(getAiConnectorShape);
@@ -50,35 +53,6 @@ export function AiSettings({
           aria-labelledby="ai-enabled-label"
           aria-checked={enabled}
           onClick={() => setConfirm(true)}
-        >
-          <span />
-        </button>
-      </div>
-      <div className="settings-row">
-        <div>
-          <strong id="ai-workspace-search-label">
-            Search workspace automatically
-          </strong>
-          <p>
-            Search runs on this device. Selected excerpts are sent to your
-            configured AI provider when you ask. AI features must be enabled.
-          </p>
-        </div>
-        <button
-          className="settings-toggle"
-          role="switch"
-          aria-labelledby="ai-workspace-search-label"
-          aria-checked={workspaceSearch}
-          disabled={!enabled}
-          onClick={() => {
-            try {
-              setWorkspaceSearchEnabled(!workspaceSearch);
-              setWorkspaceSearch(!workspaceSearch);
-              setSaveError("");
-            } catch {
-              setSaveError("Could not save workspace search preference.");
-            }
-          }}
         >
           <span />
         </button>
@@ -151,6 +125,91 @@ export function AiSettings({
             </label>
           ))}
         </div>
+      </div>
+      <h3 className="settings-section-title">Abilities</h3>
+      <p className="settings-description">
+        What Ask Knot can do on its own when you send a message. You review
+        every change before it is applied.
+      </p>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-workspace-search-label">Search my workspace</strong>
+          <p>
+            Find related notes automatically when you ask a question. Search
+            runs on this device; selected excerpts are sent to your configured
+            AI provider when you ask.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-workspace-search-label"
+          aria-checked={workspaceSearch}
+          disabled={!enabled}
+          onClick={() => {
+            try {
+              setWorkspaceSearchEnabled(!workspaceSearch);
+              setWorkspaceSearch(!workspaceSearch);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save workspace search preference.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-edit-note-label">Edit the current note</strong>
+          <p>
+            Suggest rewrites of selected text and additions to the open note.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-edit-note-label"
+          aria-checked={abilities.editNote}
+          disabled={!enabled}
+          onClick={() => {
+            const next = { ...abilities, editNote: !abilities.editNote };
+            try {
+              setAiAbilities(next);
+              setAbilities(next);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save AI abilities.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-canvas-cards-label">Create cards on canvas</strong>
+          <p>Suggest cards, arrows and mind maps for the open canvas.</p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-canvas-cards-label"
+          aria-checked={abilities.canvasCards}
+          disabled={!enabled}
+          onClick={() => {
+            const next = { ...abilities, canvasCards: !abilities.canvasCards };
+            try {
+              setAiAbilities(next);
+              setAbilities(next);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save AI abilities.");
+            }
+          }}
+        >
+          <span />
+        </button>
       </div>
       <h3 className="settings-section-title">Model list</h3>
       <p id="ai-models-description" className="settings-description">

@@ -5844,9 +5844,6 @@ main:has(.workspace-content[data-single-content="true"])
 .web-source-input textarea { display: block; width: 100%; min-height: 72px; }
 .web-source-input { padding: 8px 0; }
 .web-source-input ~ .web-source-list { max-height: 80px; }
-.ask-context-menu > summary { list-style: none; padding: 3px 5px; font-size: 11px; }
-.ask-context-menu > summary::-webkit-details-marker { display: none; }
-.ask-context-menu .shell-menu-content { top: auto; bottom: calc(100% + 6px); max-width: calc(100vw - 32px); }
 .web-coverage { margin-bottom: 8px; }
 knot-web-source { display: block; margin-block: 8px; }
 .knot-web-source small { display: block; }
@@ -5939,9 +5936,13 @@ knot-web-source { display: block; margin-block: 8px; }
 .ask-composer-box .web-source-item { flex: 0 0 auto; max-width: 230px; padding: 4px 6px; font-size: 11px; }
 .ask-composer-box .web-source-item[open] { max-width: 100%; flex-shrink: 1; }
 .collection-popover:has(.ask-attachment-picker) { width: min(360px, calc(100vw - 16px)); }
-.ask-compose-actions > .ask-context-menu summary { display: flex; align-items: center; padding: 5px; }
-.ask-compose-actions > .ask-context-menu .shell-icon { width: 16px; height: 16px; }
-.ask-compose-actions .ask-context-menu button { margin-left: 0; }
+/* Abilities: what Knot may suggest on its own in this chat. */
+.ask-compose-actions > .ask-abilities-button { position: relative; display: flex; align-items: center; padding: 5px; }
+.ask-compose-actions > .ask-abilities-button .shell-icon { width: 16px; height: 16px; }
+.ask-abilities-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--shell-accent); }
+.collection-popover:has(.ask-abilities) { width: min(260px, calc(100vw - 16px)); }
+.ask-abilities > p, .ask-abilities > small { display: block; margin: 4px var(--dropdown-row-padding); color: var(--shell-muted); font-size: 11px; line-height: 16px; }
+.ask-proposal-actions .ask-answer-instead { margin-left: auto; color: var(--ask-muted); }
 .ask-composer-box .web-source-item { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; flex: 0 0 auto; }
 .ask-composer-box .web-source-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ask-composer-box .web-source-item > button { flex: 0 0 auto; padding: 0 4px; min-width: 24px; min-height: 24px; }

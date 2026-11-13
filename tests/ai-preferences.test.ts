@@ -3,6 +3,8 @@ import { describe, it, expect } from "vitest";
 import {
   AI_MODELS,
   automaticAiModel,
+  automaticAiTools,
+  normalizeAiAbilities,
   aiModelName,
   normalizeAiModels,
   visibleAiModels,
@@ -55,4 +57,29 @@ it("routes automatic requests only among enabled and available models", () => {
   expect(
     automaticAiModel(["gpt-5.4-mini"], "ask", "Compare these", true, 100),
   ).toBe("gpt-5.4-mini");
+});
+
+it("defaults abilities on and offers only possible, allowed tools", () => {
+  expect(normalizeAiAbilities(null)).toEqual({
+    editNote: true,
+    canvasCards: true,
+  });
+  expect(normalizeAiAbilities({ editNote: false, junk: 1 })).toEqual({
+    editNote: false,
+    canvasCards: true,
+  });
+  const all = { editNote: true, canvasCards: true };
+  const open = { selection: true, note: true, canvas: true, editable: true };
+  expect(automaticAiTools(all, open)).toEqual([
+    "rewrite_selection",
+    "insert_blocks",
+    "create_on_canvas",
+  ]);
+  expect(automaticAiTools(all, { ...open, editable: false })).toEqual([]);
+  expect(
+    automaticAiTools({ editNote: false, canvasCards: true }, open),
+  ).toEqual(["create_on_canvas"]);
+  expect(
+    automaticAiTools(all, { ...open, selection: false, canvas: false }),
+  ).toEqual(["insert_blocks"]);
 });
