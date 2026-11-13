@@ -172,6 +172,8 @@ export type AiAbilities = {
   searchWeb: boolean;
   /** Look at images in the open note or canvas when a question needs them. */
   viewImages: boolean;
+  /** Propose a whole new note in the open notebook. Off unless turned on. */
+  createNotes: boolean;
 };
 export const AI_ABILITIES_CHANGED = "knot-ai-abilities-changed";
 const abilitiesKey = "knot.ai-abilities.v1";
@@ -186,6 +188,7 @@ export function normalizeAiAbilities(value: unknown): AiAbilities {
     searchWorkspace: saved.searchWorkspace !== false,
     searchWeb: saved.searchWeb !== false,
     viewImages: saved.viewImages !== false,
+    createNotes: saved.createNotes === true,
   };
 }
 export function getAiAbilities(): AiAbilities {
@@ -210,6 +213,7 @@ export const AI_TOOL_MODES = {
   rewrite_selection: "rewrite",
   insert_blocks: "insert",
   create_on_canvas: "canvas",
+  create_note: "note",
 } as const;
 /** Searches the workspace on this device; results go back to the model. */
 export type AiTool =
@@ -236,6 +240,8 @@ export function automaticAiTools(
     web?: boolean;
     /** The open note or canvas has images. */
     images?: boolean;
+    /** A notebook is open that a new note can be added to. */
+    notebook?: boolean;
   },
 ): AiTool[] {
   const tools: AiTool[] = [];
@@ -247,6 +253,7 @@ export function automaticAiTools(
   if (abilities.editNote && target.selection) tools.push("rewrite_selection");
   if (abilities.editNote && target.note) tools.push("insert_blocks");
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
+  if (abilities.createNotes && target.notebook) tools.push("create_note");
   return tools;
 }
 

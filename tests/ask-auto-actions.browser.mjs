@@ -474,6 +474,45 @@ try {
     window.emit([{ delta: "The diagram shows the launch flow." }]),
   );
   await page.getByText("Looked at 1 image").waitFor();
+
+  // New notes: off by default; once on for the chat, Knot can propose one.
+  assert.ok(
+    !call.tools.includes("create_note"),
+    "new notes are off by default",
+  );
+  await abilities.click();
+  await page.getByRole("switch", { name: "Create new notes" }).click();
+  await page.keyboard.press("Escape");
+  call = await send("Draft a new note with an onboarding checklist");
+  assert.ok(call.tools.includes("create_note"));
+  await page.evaluate(() =>
+    window.emit([
+      { delta: "", call: "create_note", call_id: "call_note" },
+      {
+        delta: JSON.stringify({
+          blocks: [
+            {
+              type: "h1",
+              text: "Onboarding",
+              columns: [],
+              rows: [],
+              children: [],
+            },
+            {
+              type: "todo",
+              text: "Set up the laptop",
+              columns: [],
+              rows: [],
+              children: [],
+            },
+          ],
+        }),
+        call: "create_note",
+      },
+    ]),
+  );
+  await page.getByText("Create note in this notebook").waitFor();
+  await page.getByText("Suggested note").waitFor();
   assert.deepEqual(errors, []);
   console.log("ask auto actions: ok");
 } finally {

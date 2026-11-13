@@ -1,5 +1,8 @@
 import * as Y from "yjs";
-import { cleanAiBlock, cleanAiProposal } from "../../../services/ai-generated-content";
+import {
+  cleanAiBlock,
+  cleanAiProposal,
+} from "../../../services/ai-generated-content";
 import { ConnectorMode } from "@blocksuite/blocks";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
 import {
@@ -499,8 +502,8 @@ export function applyAiProposal(
   workspace: string,
   context: AiContext,
   input: AiProposal,
-  mode: "rewrite" | "insert" | "canvas",
-) {
+  mode: "rewrite" | "insert" | "canvas" | "note",
+): (() => void) & { noteId?: string } {
   const proposal = validateProposal(input, context.webContext);
   const allRefs = [
     ...new Set([
@@ -549,7 +552,13 @@ export function applyAiProposal(
         );
     }
   } else if (
+    mode === "note" &&
+    (!doc.root || !proposal.blocks.length || proposal.replacements.length)
+  ) {
+    throw new Error("Open a notebook to add the new note.");
+  } else if (
     mode !== "canvas" &&
+    mode !== "note" &&
     (!context.note ||
       doc.getBlock(context.note)?.model.flavour !== "affine:note" ||
       !proposal.blocks.length ||
@@ -586,9 +595,44 @@ export function applyAiProposal(
           right = Math.max(right, b[0] + b[2] + 80);
       }
     }
+  let noteId: string | undefined;
   doc.captureSync();
   doc.transact(() => {
-    if (mode === "canvas") {
+    if (mode === "note") {
+      // After the last note, where "Add note" puts one from Page view.
+      const right = Math.max(
+        0,
+        ...doc.getBlocksByFlavour("affine:note").map(({ model }) => {
+          const b = JSON.parse(String((model as { xywh?: string }).xywh));
+          return Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)
+            ? b[0] + b[2] + 40
+            : 0;
+        }),
+      );
+      noteId = doc.addBlock(
+        "affine:note",
+        { xywh: `[${right},0,448,200]` },
+        doc.root!,
+      );
+      for (const block of proposal.blocks) {
+        appendAiBlock(doc, noteId, block);
+        appendWebProvenance(
+          doc,
+          noteId,
+          context.webContext,
+          block.sourceRefs ?? [],
+          block.text,
+        );
+        for (const child of block.children ?? [])
+          appendWebProvenance(
+            doc,
+            noteId,
+            context.webContext,
+            child.sourceRefs ?? [],
+            child.text,
+          );
+      }
+    } else if (mode === "canvas") {
       const bounds = layoutAiCards(
         proposal.blocks.map(aiBlockText),
         connections,
@@ -710,7 +754,7 @@ export function applyAiProposal(
   // BlockSuite lays out newly created mind maps in a microtask.
   if (proposal.mindmap?.length) queueMicrotask(finishCapture);
   else finishCapture();
-  return () => {
+  const undo = () => {
     if (
       version(doc) !== appliedVersion ||
       doc.history.undoStack.at(-1) !== item
@@ -720,4 +764,5 @@ export function applyAiProposal(
       );
     doc.undo();
   };
+  return Object.assign(undo, { noteId });
 }

@@ -270,6 +270,34 @@ export function AiSettings({
           <span />
         </button>
       </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-create-notes-label">Create new notes</strong>
+          <p>
+            Suggest a whole new note in the open notebook when you ask for
+            one. You review it before it is added.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-create-notes-label"
+          aria-checked={abilities.createNotes}
+          disabled={!enabled}
+          onClick={() => {
+            const next = { ...abilities, createNotes: !abilities.createNotes };
+            try {
+              setAiAbilities(next);
+              setAbilities(next);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save AI abilities.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
       <h3 className="settings-section-title">Model list</h3>
       <p id="ai-models-description" className="settings-description">
         Choose which models appear in Ask Knot on this device. Keep at least one

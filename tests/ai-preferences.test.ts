@@ -66,6 +66,7 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     searchWorkspace: true,
     searchWeb: true,
     viewImages: true,
+    createNotes: false,
   });
   expect(normalizeAiAbilities({ editNote: false, junk: 1 })).toEqual({
     editNote: false,
@@ -73,6 +74,7 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     searchWorkspace: true,
     searchWeb: true,
     viewImages: true,
+    createNotes: false,
   });
   const all = normalizeAiAbilities(null);
   const open = { selection: true, note: true, canvas: true, editable: true };
@@ -117,4 +119,20 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     ),
   ).toEqual([]);
   expect(automaticAiTools(all, { ...open, editable: false })).toEqual([]);
+  // New notes are off until turned on, and need an editable notebook.
+  expect(automaticAiTools(all, { ...open, notebook: true })).not.toContain(
+    "create_note",
+  );
+  expect(
+    automaticAiTools(
+      { ...all, createNotes: true },
+      { ...open, notebook: true },
+    ),
+  ).toContain("create_note");
+  expect(
+    automaticAiTools(
+      { ...all, createNotes: true },
+      { ...open, notebook: true, editable: false },
+    ),
+  ).not.toContain("create_note");
 });

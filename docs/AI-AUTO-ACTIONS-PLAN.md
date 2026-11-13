@@ -1,6 +1,13 @@
 # Ask Knot automatic actions (tool calling)
 
-Design · 13 November 2026 · Approved · Phases 1–3 implemented 13 November 2026
+Design · 13 November 2026 · Approved · Phases 1–4 implemented 13 November 2026
+
+## Phase 4 as built
+
+- **A note lives in a notebook.** In Knot a note is an `affine:note` block in a notebook document (a page in Page view, a card on the canvas), and "Add note" always targets a notebook, so there is no Library-only fallback: `create_note` is offered only with an editable notebook open, and the note is added to it.
+- **Tool:** `create_note` (edit mode `note`), offered when Settings → AI → Create new notes is on (off by default; also per chat in the popover). Its parameters are `blocks` only, like `insert_blocks`; the rules say to use it only for a new, separate note and to start with a short h1 title, since a note's title is its first line.
+- **Apply** (`applyAiProposal` mode `note`) adds one note after the existing notes, where "Add note" puts one from Page view, with the proposal's blocks and any web provenance, in one undo step; it returns the new note's ID. You stay where you are; the applied proposal gets **Open note**, which uses the Open source path (the note's first block), so it opens in the view you are using and highlights it. Undo removes the note.
+- **Verification:** a Rust test for the tool and its rules; unit tests for the ability and tool selection; `tests/ai-create-note.browser.mjs` applies a proposal in a real notebook (titled note after the others, existing note untouched, empty proposal refused, Undo removes it); `ask-auto-actions.browser.mjs` checks the tool is off by default and a proposal previews as "Create note in this notebook"; routing cases 33–34 (new note vs. addition).
 
 ## Phase 3 as built
 

@@ -449,10 +449,12 @@ fn edit_schema(mode: &str, web: bool) -> Value {
 }
 /// Write tools an automatic request may offer, with the edit mode each one
 /// proposes. Forced edit modes keep their response-format path.
-pub(crate) const TOOLS: [(&str, &str); 3] = [
+pub(crate) const TOOLS: [(&str, &str); 4] = [
     ("rewrite_selection", "rewrite"),
     ("insert_blocks", "insert"),
     ("create_on_canvas", "canvas"),
+    // One new note in the open notebook; off unless the user turns it on.
+    ("create_note", "note"),
 ];
 pub(crate) fn tool_mode(name: &str) -> Option<&'static str> {
     TOOLS.iter().find(|(tool, _)| *tool == name).map(|(_, mode)| *mode)
@@ -465,6 +467,7 @@ fn tool_rules(name: &str) -> String {
     match name {
         "rewrite_selection" => format!("rewrite_selection replaces the supplied runs, which are the user's selected text; use it to rewrite, shorten, expand, fix, restyle or translate the selection. {BASE_REWRITE}"),
         "insert_blocks" => format!("insert_blocks appends new content to the current note; use it to add, draft or insert content into the note. {BASE_INSERT}"),
+        "create_note" => format!("create_note adds one new note to the open notebook. Use it only when the user asks for a new, separate or standalone note, for example draft a note about a topic or make a new note summarising this; to add to the current note use insert_blocks instead. The first block is an h1 holding a short title (under 60 characters); the content follows. {BASE_INSERT}"),
         _ => format!("create_on_canvas adds cards, arrows and/or a native mind map to the open canvas; use it when the user asks to put content on the canvas or to make cards, a mind map or a diagram. {CANVAS_RULES} {CANVAS_CLOSE}"),
     }
 }
@@ -486,6 +489,7 @@ fn tool_description(name: &str) -> &'static str {
     match name {
         "rewrite_selection" => "Propose replacement text for the user's selected text.",
         "insert_blocks" => "Propose new content to append to the current note.",
+        "create_note" => "Propose one new note for the open notebook: an h1 title block, then its content.",
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
 }
@@ -1191,6 +1195,24 @@ mod tests {
         let plain = br#"data: {"type":"response.completed","response":{"service_tier":"default","output":[],"usage":{"input_tokens":1000,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0},"output_tokens":100}}}"#;
         let cost = crate::diagnostics::cost_from_frame("gpt-6-luna", plain).unwrap();
         assert!(serde_json::to_value(&cost).unwrap().get("web_searches").is_none());
+    }
+    #[test]
+    fn create_note_offers_content_only_and_its_own_rules() {
+        let messages = vec![Message { role: "user".into(), content: "Draft a new note about onboarding".into() }];
+        let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[]}"#;
+        let tools: Vec<String> = vec!["insert_blocks".into(), "create_note".into()];
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &[], &[], None, None);
+        assert_eq!(tool_mode("create_note"), Some("note"));
+        let note = &body["tools"][1];
+        assert_eq!(note["name"], "create_note");
+        assert_eq!(note["strict"], true);
+        assert_eq!(note["parameters"]["required"], json!(["blocks"]), "content only, like insert_blocks");
+        let instructions = body["instructions"].as_str().unwrap();
+        assert!(instructions.contains("create_note adds one new note") && instructions.contains("h1 holding a short title"));
+        assert!(instructions.contains("to add to the current note use insert_blocks"));
+        // Not offered, not described.
+        let without = tool_request_body(MODELS[0], &messages, context, &["insert_blocks".into()], &[], &[], None, None);
+        assert!(!without["instructions"].as_str().unwrap().contains("create_note"));
     }
     /// Serves one SSE body and returns the result, delivered events and operation.
     fn stream(body: String, tools: &[String]) -> (Result<(), String>, Vec<Value>, String) {

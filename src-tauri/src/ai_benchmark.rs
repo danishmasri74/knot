@@ -54,7 +54,7 @@ fn live_quality_benchmark() {
     })
     .unwrap();
     let cases = suite["cases"].as_array().unwrap();
-    assert_eq!(cases.len(), if routing { 32 } else { 60 });
+    assert_eq!(cases.len(), if routing { 34 } else { 60 });
     let reserved = cases.iter().map(|case| limits(case).2).sum::<f64>();
     let largest = cases.iter().map(|case| limits(case).2).fold(0.0, f64::max);
     assert!(

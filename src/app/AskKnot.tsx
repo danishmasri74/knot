@@ -118,7 +118,9 @@ type Turn = {
   failed?: boolean;
   proposal?: AiProposal;
   context?: AiContext;
-  mode?: "rewrite" | "insert" | "canvas";
+  mode?: "rewrite" | "insert" | "canvas" | "note";
+  /** The note an applied create_note made: its first block, for Open note. */
+  createdNote?: { block: string; text: string };
   /** While streaming: the model is preparing a proposal (not persisted). */
   preparing?: boolean;
   /** While streaming: what Knot is doing, e.g. "Searching the web" (not persisted). */
@@ -1730,6 +1732,7 @@ function AskKnotPanel({
                   !webSourcesRef.current.length &&
                   wantsWeb(input, base),
                 images: !!pictures.length,
+                notebook: true,
               },
             )
           : [];
@@ -1833,7 +1836,11 @@ function AskKnotPanel({
               : { ...current, webContext: requestContext };
         draft.mode = proposed;
         const label =
-          proposed === "rewrite" ? "Suggested rewrite" : "Suggested addition";
+          proposed === "rewrite"
+            ? "Suggested rewrite"
+            : proposed === "note"
+              ? "Suggested note"
+              : "Suggested addition";
         draft.content = action === "auto" ? output.trim() || label : label;
       }
       draft.preparing = undefined;
@@ -2307,7 +2314,9 @@ function AskKnotPanel({
                             !turn.proposal.blocks.length
                             ? "Create mind map"
                             : "Create on canvas"
-                          : "Append to note"}
+                          : turn.mode === "note"
+                            ? "Create note in this notebook"
+                            : "Append to note"}
                     </span>
                     <AiProposalPreview>
                       {turn.mode === "rewrite" && (
@@ -2361,13 +2370,24 @@ function AskKnotPanel({
                             try {
                               const s = getSession();
                               if (!s) throw Error("Document closed");
-                              turn.undo = applyAiProposal(
+                              const undo = applyAiProposal(
                                 s.doc,
                                 workspace,
                                 turn.context!,
                                 turn.proposal!,
                                 turn.mode!,
                               );
+                              turn.undo = undo;
+                              // A new note stays where it was put; Open note
+                              // goes to it without leaving your view.
+                              const first = undo.noteId
+                                ? s.doc.getBlock(undo.noteId)?.model.children[0]
+                                : undefined;
+                              if (first)
+                                turn.createdNote = {
+                                  block: first.id,
+                                  text: first.text?.toString() ?? "",
+                                };
                               recordAiOutcome(turn.attemptId, "apply");
                               turn.status = "applied";
                               update([...turns]);
@@ -2415,6 +2435,22 @@ function AskKnotPanel({
                         <small>
                           {turn.status === "applied" ? "Applied" : "Dismissed"}
                         </small>
+                        {turn.status === "applied" &&
+                          turn.createdNote &&
+                          turn.context && (
+                            <button
+                              onClick={() => {
+                                setError("");
+                                void onSource(
+                                  turn.context!.document,
+                                  turn.createdNote!.block,
+                                  turn.createdNote!.text,
+                                ).catch((e) => setError(String(e)));
+                              }}
+                            >
+                              Open note
+                            </button>
+                          )}
                         {turn.undo && (
                           <button
                             onClick={() => {
@@ -2428,6 +2464,7 @@ function AskKnotPanel({
                                 turn.undo!();
                                 recordAiOutcome(turn.attemptId, "undo");
                                 turn.undo = undefined;
+                                turn.createdNote = undefined;
                                 turn.status = "dismissed";
                                 update([...turns]);
                               } catch (e) {
@@ -2874,6 +2911,7 @@ function AskKnotPanel({
                             ["viewImages", "Look at images"],
                             ["editNote", "Edit the current note"],
                             ["canvasCards", "Create cards on canvas"],
+                            ["createNotes", "Create new notes"],
                           ] as const
                         ).map(([key, label], index) => (
                           <button

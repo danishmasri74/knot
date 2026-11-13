@@ -14,7 +14,7 @@ free-running conversation drift. The synthetic PDF and diagram are committed und
 
 ## Routing suite
 
-`routing.v1.json` holds 32 synthetic automatic-routing cases (13 November 2026; cases 21–26 add workspace search, case 27 sends a completed search back, cases 28–31 add web search and images, case 32 sends images back; web search cases cost about $0.01 each per search): each offers
+`routing.v1.json` holds 34 synthetic automatic-routing cases (13 November 2026; cases 21–26 add workspace search, case 27 sends a completed search back, cases 28–31 add web search and images, case 32 sends images back, cases 33–34 tell a new note from an addition; web search cases cost about $0.01 each per search): each offers
 a set of tools and names the expected route (`answer` or a tool). Run it with the same gate
 plus `KNOT_BENCHMARK_SUITE=routing`. Result rows add `route`, `expected_route` and
 `route_ok`. Phase 1 of [automatic actions](../../docs/AI-AUTO-ACTIONS-PLAN.md) should not
