@@ -36,6 +36,8 @@ import {
 import { observeNotePaneToolbar } from "../features/editor/blocksuite/note-pane-toolbar";
 import { waitForEditorView } from "./view-readiness";
 import { BrowserPanel } from "./BrowserPanel";
+import { CardEditDialog } from "./CardEditDialog";
+import type { CardEditRequest } from "../features/editor/blocksuite/card-embed";
 import { VideoResume } from "./ResumeCard";
 import {
   browserApi,
@@ -575,6 +577,18 @@ export function App() {
       setSurface((current) => (current === kind ? null : current));
   }
   const [showSearch, setShowSearch] = useState(false);
+  const searchInsertion = useRef<McqInsertionTarget | undefined>(undefined);
+  // A card shown inside a note, open for editing ("Edit card").
+  const [cardEdit, setCardEdit] = useState<string | null>(null);
+  useEffect(() => {
+    const edit = (event: Event) => {
+      const { cardId } = (event as CustomEvent<CardEditRequest>).detail;
+      const card = session.current?.cardDeck.data[cardId];
+      if (card && !card.deleted) setCardEdit(cardId);
+    };
+    window.addEventListener("knot-edit-card", edit);
+    return () => window.removeEventListener("knot-edit-card", edit);
+  }, []);
   async function scanSearch(searchQuery: string, signal: AbortSignal) {
     await session.current?.flush();
     const deck = JSON.parse(await repository.loadCardDeck()) as DeckData;
@@ -1374,6 +1388,24 @@ export function App() {
     if (!completed) throw Error("Could not open this card. Please try again.");
     return found;
   }
+  /** Ctrl+K: reuse a matching note's card on the open canvas or note. */
+  async function reuseSearchCard(cardId: string, where: "canvas" | "note") {
+    let completed = false;
+    await run(async () => {
+      const current = session.current;
+      if (!current) throw Error("Open a notebook first.");
+      setShowSearch(false);
+      if (where === "canvas") {
+        const placement = current.placeCard(cardId);
+        if (!placement) throw Error("This card is no longer available.");
+        await current.focusCanvasCard(placement);
+      } else current.insertCard(cardId, searchInsertion.current);
+      searchInsertion.current = undefined;
+      await current.flush();
+      completed = true;
+    }, true);
+    if (!completed) throw Error("Could not add this card. Please try again.");
+  }
   async function placeLibraryCard(
     id: string,
     notebook?: KnowledgeObject,
@@ -2031,7 +2063,12 @@ export function App() {
         if (document.querySelector("dialog[open]") && !showSearch) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!busy) setShowSearch((open) => !open);
+        if (!busy) {
+          // Before search takes focus: where a reused card goes in Page view.
+          if (!showSearch)
+            searchInsertion.current = session.current?.captureInsertionTarget();
+          setShowSearch((open) => !open);
+        }
       }
     };
     window.addEventListener("keydown", handler, true);
@@ -2618,8 +2655,49 @@ export function App() {
           await session.current?.quizProgress?.reset();
           setQuizReset(false);
         }} />}
+      {cardEdit && session.current && (
+        <CardEditDialog
+          key={cardEdit}
+          cardId={cardEdit}
+          title={
+            cardPreview(
+              session.current.cardDeck.data[cardEdit] ?? { id: cardEdit, nodes: [] },
+              "",
+            )
+              .split(/\r?\n/)[0]
+              .trim()
+              .slice(0, 120) || "Untitled card"
+          }
+          create={(id, host) => {
+            const current = session.current;
+            if (!current) throw Error("The notebook is closed.");
+            return current.createCardPageView(id, host);
+          }}
+          onClose={async () => {
+            await session.current?.flush();
+            setCardEdit(null);
+          }}
+        />
+      )}
       {showSearch && (
         <GlobalSearch
+          reuse={
+            !library && session.current && active
+              ? session.current.editor.mode === "edgeless"
+                ? {
+                    label: "Add to this canvas",
+                    // A note from this notebook is already on its canvas.
+                    available: (result) =>
+                      result.source.id !== session.current?.doc.id,
+                    run: (result) => reuseSearchCard(result.cardId!, "canvas"),
+                  }
+                : {
+                    label: "Insert into this note",
+                    available: () => true,
+                    run: (result) => reuseSearchCard(result.cardId!, "note"),
+                  }
+              : undefined
+          }
           preferredView={noteView}
           isResultOnCurrentPage={({ source, noteId }) =>
             !library &&

@@ -152,7 +152,12 @@ export function restoreMcqTarget(target: McqInsertionTarget) {
 }
 
 /** Resolve again immediately before mutation. Retain rich-text deltas across the split. */
-export function prepareMcqInsertion(target: McqInsertionTarget) {
+export function prepareMcqInsertion(
+  target: McqInsertionTarget,
+  /** The block to insert for a card; a question reference by default. */
+  block: (cardId: string) => { flavour: string; props: Record<string, unknown> } =
+    (cardId) => ({ flavour: mcqReferenceFlavour, props: { cardId } }),
+) {
   const resolved = resolveTarget(target);
   if (!resolved)
     throw Error(
@@ -170,14 +175,15 @@ export function prepareMcqInsertion(target: McqInsertionTarget) {
       const anchorIndex = note.children.findIndex(
         (child) => child.id === paragraph.id,
       );
+      const { flavour, props } = block(cardId);
       if (index === 0 && (paragraph.text.length || target.before)) {
-        doc.addBlock(mcqReferenceFlavour, { cardId }, note, anchorIndex);
+        doc.addBlock(flavour as never, props, note, anchorIndex);
         next = paragraph.id;
         return;
       }
       const after = anchorIndex + 1;
       const tail = paragraph.text.split(index);
-      doc.addBlock(mcqReferenceFlavour, { cardId }, note, after);
+      doc.addBlock(flavour as never, props, note, after);
       next = doc.addBlock("affine:paragraph", { text: tail }, note, after + 1);
     });
     doc.captureSync();

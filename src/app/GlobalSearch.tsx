@@ -15,7 +15,15 @@ export function GlobalSearch({
   onOpenOcr,
   preferredView,
   isResultOnCurrentPage,
+  reuse,
 }: {
+  /** Reuse a matching note's card here (Ctrl+Enter): add it to the open
+   * canvas, or insert it into the open note. */
+  reuse?: {
+    label: string;
+    available: (result: Result) => boolean;
+    run: (result: Result) => Promise<void>;
+  };
   search: (query: string, signal: AbortSignal) => Promise<SearchReport>;
   recent: () => Promise<KnowledgeObject[]>;
   onClose: () => void;
@@ -107,6 +115,19 @@ export function GlobalSearch({
   };
   const selectedView = results[selected] && isResultOnCurrentPage?.(results[selected])
     ? "page" : preferredView;
+  const reusable = (result?: Result) =>
+    !!result?.cardId && !!reuse && reuse.available(result);
+  const reuseCard = async (result: Result) => {
+    if (opening || !reuse) return;
+    setOpening(true);
+    try {
+      await reuse.run(result);
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setOpening(false);
+    }
+  };
   return (
     <dialog
       ref={dialog}
@@ -160,7 +181,9 @@ export function GlobalSearch({
               );
             } else if (event.key === "Enter" && results[selected] && !loading) {
               event.preventDefault();
-              void open(results[selected]);
+              if (event.ctrlKey || event.metaKey) {
+                if (reusable(results[selected])) void reuseCard(results[selected]);
+              } else void open(results[selected]);
             }
           }}
         />
@@ -239,6 +262,14 @@ export function GlobalSearch({
         </div>
       </div>
       <footer>
+        {reusable(results[selected]) && !loading && (
+          <button
+            disabled={opening}
+            onClick={() => void reuseCard(results[selected])}
+          >
+            {reuse!.label} <kbd>Ctrl</kbd> <kbd>Enter</kbd>
+          </button>
+        )}
         {results[selected]?.noteId && !loading && (
           <button
             disabled={opening}

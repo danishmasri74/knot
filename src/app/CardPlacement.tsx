@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cardQuestionReferences, type CardDeck, type DeckData } from "../features/editor/blocksuite/card-deck";
+import { cardEmbedReferences, cardQuestionReferences, type CardDeck, type DeckData } from "../features/editor/blocksuite/card-deck";
 import {
   liveCardPlacements,
   savedCardPlacements,
@@ -44,6 +44,9 @@ export function useCardPlacements(
           if (!data || !card || card.deleted) continue;
           for (const questionId of cardQuestionReferences(card.nodes))
             if (data[questionId] && !data[questionId].deleted) used.add(questionId);
+          // Cards shown inside this card are in use wherever it is.
+          for (const shown of cardEmbedReferences(card.nodes))
+            if (data[shown] && !data[shown].deleted) used.add(shown);
         }
         return used;
       };

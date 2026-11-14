@@ -8,7 +8,8 @@ export const SEARCH_BYTES = 1024 * 1024;
 export const SEARCH_TOTAL_BYTES = 16 * SEARCH_BYTES;
 export interface SearchContent {
   text: string;
-  notes: { id: string; title: string; text: string }[];
+  /** `cardId`: the Card Deck card the note shows, for reusing it. */
+  notes: { id: string; title: string; text: string; cardId?: string }[];
 }
 export interface SearchReport {
   results: {
@@ -16,6 +17,8 @@ export interface SearchReport {
     excerpt: string;
     noteId?: string;
     noteTitle?: string;
+    /** The Card Deck card a matching note shows. */
+    cardId?: string;
     /** A match in text OCR read from an image (docs/WORKSPACE-OCR-PLAN.md). */
     image?: import("../../../services/topic-types").ImageLocation;
     /** A match in text OCR read from a scanned PDF page. */
@@ -41,13 +44,13 @@ export function savedSearchContent(
   snapshot: Snapshot,
   deck?: DeckData,
 ): SearchContent {
-  const { text, blocks } = readSavedSearch(id, snapshot, deck);
+  const { text, blocks, links } = readSavedSearch(id, snapshot, deck);
   const notes = new Map<string, SearchContent["notes"][number]>();
   for (const block of blocks) {
     if (!block.note || !SEARCH_FLAVOURS.includes(block.flavour)) continue;
     let note = notes.get(block.note);
     if (!note) {
-      note = { id: block.note, title: "", text: "" };
+      note = { id: block.note, title: "", text: "", cardId: links[block.note] };
       notes.set(block.note, note);
     }
     if (!note.title && block.text.trim())
@@ -112,7 +115,8 @@ function readSavedSearch(id: string, snapshot: Snapshot, deck?: DeckData) {
       if (block.flavour === "knot:mcq" || block.flavour === mcqReferenceFlavour)
         append(block.text);
     }
-    return { text: parts.join("\n"), blocks: content };
+    const links = Object.fromEntries(body.getMap<string>("knot:card-links"));
+    return { text: parts.join("\n"), blocks: content, links };
   } finally {
     envelope.destroy();
     body.destroy();
@@ -183,6 +187,7 @@ export async function searchSavedDocuments(
         source,
         noteId: note.id,
         noteTitle: note.title || "Untitled note",
+        ...(note.cardId ? { cardId: note.cardId } : {}),
         excerpt: `${start ? "…" : ""}${note.text.slice(start, start + 220)}${note.text.length > start + 220 ? "…" : ""}`,
       });
     }

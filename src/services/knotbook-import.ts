@@ -141,12 +141,37 @@ function rewriteEnvelope(doc: Y.Doc, from: string, to: string, title: string) {
 function cardIds(document: number[]) {
   const doc = decode(document);
   try {
-    return [...doc.getMap<string>("knot:card-links").values()].filter(
+    const ids = [...doc.getMap<string>("knot:card-links").values()];
+    // Cards shown inside notes (card embeds).
+    for (const block of doc.getMap("blocks").values())
+      if (block instanceof Y.Map && block.get("sys:flavour") === "knot:card-embed")
+        ids.push(block.get("prop:cardId") as string);
+    return [...new Set(ids)].filter(
       (id): id is string => typeof id === "string" && !!id,
     );
   } finally {
     doc.destroy();
   }
+}
+
+/** Point card embeds at renamed cards, in saved card content. */
+function renameEmbeds(value: unknown, renamed: Map<string, string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => renameEmbeds(item, renamed));
+  if (!value || typeof value !== "object") return value;
+  const entries = Object.entries(value as Record<string, unknown>).map(
+    ([key, item]) => [key, renameEmbeds(item, renamed)] as const,
+  );
+  const result = Object.fromEntries(entries) as Record<string, unknown>;
+  const props = result.props as Record<string, { type?: string; value?: unknown }> | undefined;
+  const flavour = props?.["sys:flavour"];
+  const card = props?.["prop:cardId"];
+  if (
+    flavour?.value === "knot:card-embed" &&
+    typeof card?.value === "string" &&
+    renamed.has(card.value)
+  )
+    result.props = { ...props, "prop:cardId": { ...card, value: renamed.get(card.value) } };
+  return result;
 }
 
 /**
@@ -205,6 +230,9 @@ export function buildImport(
   const changedCards = new Map(
     [...cardMap].filter(([from, to]) => from !== to),
   );
+  if (changedCards.size)
+    for (const id of Object.keys(cards))
+      cards[id] = renameEmbeds(cards[id], changedCards);
 
   const items = plans.map(({ n, target, title, mode }) => {
     const envelope = decode(n.collection);
@@ -231,6 +259,15 @@ export function buildImport(
             links.set(instance, changedCards.get(card)!);
             edited = true;
           }
+        for (const block of body.getMap("blocks").values()) {
+          if (!(block instanceof Y.Map) || block.get("sys:flavour") !== "knot:card-embed")
+            continue;
+          const card = block.get("prop:cardId");
+          if (typeof card === "string" && changedCards.has(card)) {
+            block.set("prop:cardId", changedCards.get(card)!);
+            edited = true;
+          }
+        }
       }
       return {
         sourceId: n.id,

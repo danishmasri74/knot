@@ -62,6 +62,8 @@ Deleting a placement retains its card. Explicit deck deletion removes live place
 
 When the last note showing a blank or very short note card (at most 20 characters of plain text) is deleted, the card goes to Trash with `autoTrashed` set instead of staying unplaced. Its generation is not bumped, so a live note that still shows it (Undo, or a notebook that wasn't open) restores it rather than being removed. The deck lists neither blank cards nor cards whose only placements are in notebooks in Trash.
 
+A note can show another note card with a `knot:card-embed` block, a child of `affine:note` whose only property is `cardId`. It renders the card's current deck content read-only and edits it through a temporary card editor, so every note and canvas showing the card stays in sync. Reusing a question inserts the existing `knot:mcq-reference`; reusing a video, link, file or image inserts a plain copy of that block. A card shown in an embed counts as in use (it is neither unplaced nor trashed with leftovers). `.knotbook` sharing includes cards shown in embeds, and import renames them together with the embeds that show them. Clipboard pastes into another workspace clear the ID; Markdown export writes the card's text as paragraphs.
+
 Empty Trash also empties deleted cards: each becomes a content-free tombstone (`deleted` and `purged`, `nodes: []`) that keeps its ID and generation, so notebooks that still link to it drop the placement on open instead of failing. Its attachments are released by the same purge.
 
 ## UI preferences

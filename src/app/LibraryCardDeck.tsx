@@ -49,7 +49,7 @@ function matchesType(card: DeckCard, type: string) {
   return !!media && (typeKinds[type] ?? []).includes(media.kind);
 }
 
-type CreateCardEditor = (
+export type CreateCardEditor = (
   id: string,
   host: HTMLElement,
 ) => ReturnType<EditorSession["createCardPageView"]>;
@@ -638,7 +638,7 @@ function MediaCardView({ card }: { card: DeckCard }) {
   );
 }
 
-function CardEditor({
+export function CardEditor({
   cardId,
   create,
 }: {

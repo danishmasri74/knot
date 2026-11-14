@@ -1,14 +1,15 @@
 import { observeMcqMenu } from "./mcq-menu";
-import { McqEditConflict, PendingMcqSave, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
+import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
 import { getNoteView } from "../../../services/note-navigation";
 import { createSearchReveal } from "./search-reveal";
 import { createNotePageView } from "./note-page-view";
 import { waitForEditorView } from "../../../app/view-readiness";
 import { openCardMenu } from "./card-menu";
-import { CardDeck, cardMcq, cardMedia, cardQuestionReferences, mcqReferenceFlavour, resolveDeckMcq, standaloneMedia, type DeckData } from "./card-deck";
+import { CardDeck, cardEmbedFlavour, cardInsertion, cardMcq, cardMedia, cardQuestionReferences, mcqReferenceFlavour, resolveDeckMcq, standaloneMedia, type DeckData } from "./card-deck";
 import { mediaSize } from "./media-cards";
 import { McqReferenceSchema, McqSchema, McqSpec, mcqContexts, mcqDecks } from "./mcq-block";
+import { CardEmbedSchema, CardEmbedSpec } from "./card-embed";
 import { NotebookQuizProgress } from "../../quiz/progress";
 import { publishMcq, type McqDefinition, type McqMutation } from "../../quiz/mcq";
 import { exportCitedExcerpts, exportDecks } from "./cited-excerpt-adapters";
@@ -162,6 +163,7 @@ export async function openEditor(
                   "knot:web-source",
                   "knot:mcq",
                   mcqReferenceFlavour,
+                  cardEmbedFlavour,
                 ],
               },
             }
@@ -171,6 +173,7 @@ export async function openEditor(
       WebSourceSchema,
       McqSchema,
       McqReferenceSchema,
+      CardEmbedSchema,
     ]),
     blobSources: { main: source },
   });
@@ -500,6 +503,42 @@ export async function openEditor(
       });
       return placement;
     };
+    /** Reuse a card inside a note: at a captured cursor, after a block, or
+     * at the end of the note Page view shows. */
+    const insertCard = (
+      id: string,
+      at?: McqInsertionTarget | { after: string },
+    ) => {
+      const card = cardDeck.data[id];
+      const insertion = cardInsertion(card);
+      if (!insertion) throw Error("This card is no longer available.");
+      const links = doc.spaceDoc.getMap<string>("knot:card-links");
+      const noteOf = (blockId: string) => doc.getParent(blockId)?.id;
+      if (at && "after" in at) {
+        const note = doc.getParent(at.after);
+        if (!note || note.flavour !== "affine:note")
+          throw Error("Drop the card inside a note.");
+        if (insertion.flavour === cardEmbedFlavour && links.get(note.id) === id)
+          throw Error("A card can't be shown inside itself.");
+        const index = note.children.findIndex((child) => child.id === at.after);
+        doc.captureSync();
+        doc.addBlock(insertion.flavour as never, insertion.props, note, index + 1);
+        doc.captureSync();
+        return;
+      }
+      const target =
+        at ??
+        captureMcqTarget(editor) ??
+        (revealedNoteId ? captureNoteMcqTarget(editor, revealedNoteId) : undefined);
+      if (!target) throw Error("Put the cursor in a note's paragraph first.");
+      if (
+        insertion.flavour === cardEmbedFlavour &&
+        links.get(noteOf(target.anchorId) ?? "") === id
+      )
+        throw Error("A card can't be shown inside itself.");
+      const insert = prepareMcqInsertion(target, () => insertion);
+      insert(id).focus();
+    };
     const dragOver = (event: DragEvent) => {
       if (event.dataTransfer?.types.includes("application/x-knot-card")) {
         event.preventDefault();
@@ -512,6 +551,24 @@ export async function openEditor(
       if (id) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (editor.mode === "page") {
+          // Into the note, after the block it was dropped on.
+          const element = event
+            .composedPath()
+            .find(
+              (node): node is HTMLElement =>
+                node instanceof HTMLElement &&
+                !!node.dataset.blockId &&
+                doc.getParent(node.dataset.blockId)?.flavour === "affine:note",
+            );
+          const model = element && doc.getBlock(element.dataset.blockId!)?.model;
+          try {
+            insertCard(id, model ? { after: model.id } : undefined);
+          } catch (e) {
+            onStatus("failed", e);
+          }
+          return;
+        }
         placeCard(id, { x: event.clientX, y: event.clientY });
       }
     };
@@ -596,6 +653,7 @@ export async function openEditor(
       ...CitedExcerptSpec,
       ...WebSourceSpec,
       ...McqSpec,
+      ...CardEmbedSpec,
       refExtension,
     ];
     editor.edgelessSpecs = [
@@ -605,6 +663,7 @@ export async function openEditor(
       ...CitedExcerptSpec,
       ...WebSourceSpec,
       ...McqSpec,
+      ...CardEmbedSpec,
       refExtension,
     ];
     editor.mode = deckOnly
@@ -947,6 +1006,10 @@ export async function openEditor(
       },
       cardCanvas: doc.spaceDoc.guid,
       placeCard,
+      insertCard,
+      /** Where the cursor is in Page view, kept for inserting a card later. */
+      captureInsertionTarget: () =>
+        editor.mode === "page" ? captureMcqTarget(editor) : undefined,
       doc,
       collection,
       catalog,

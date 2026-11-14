@@ -6,7 +6,7 @@ import type {
   FromSliceSnapshotPayload,
 } from "@blocksuite/store";
 import { parsePdfSourceUrl, pdfSourceLabel } from "./pdf-highlights";
-import { mcqReferenceFlavour, resolveDeckMcq, unavailableMcq, type CardDeck } from "./card-deck";
+import { cardEmbedFlavour, cardPreview, mcqReferenceFlavour, resolveDeckMcq, unavailableMcq, type CardDeck } from "./card-deck";
 import { mcqText, readMcq } from "../../quiz/mcq";
 import { readDurableWebSource } from "../../../services/web-ai-evidence";
 
@@ -18,7 +18,8 @@ export const guardMcqClipboard: JobMiddleware = ({ collection, slots }) => {
   slots.beforeImport.on((payload) => {
     if (payload.type !== "slice" || payload.snapshot.workspaceId === collection.id) return;
     const check = (block: BlockSnapshot) => {
-      if (block.flavour === mcqReferenceFlavour)
+      // Card IDs mean nothing in another workspace.
+      if (block.flavour === mcqReferenceFlavour || block.flavour === cardEmbedFlavour)
         block.props = { ...block.props, cardId: "" };
       block.children.forEach(check);
     };
@@ -40,6 +41,22 @@ export function exportCitedExcerpts(block: BlockSnapshot, deck?: CardDeck) {
         id: child.id + "-" + index,
         flavour: "affine:paragraph",
         version: 1,
+        props: { type: "text", text: { "$blocksuite:internal:text$": true, delta: [{ insert: line }] } },
+      }));
+    }
+    if (child.flavour === cardEmbedFlavour) {
+      // The card's text, as plain paragraphs.
+      const card = deck?.data[String(child.props.cardId)];
+      const lines =
+        card && !card.deleted
+          ? cardPreview(card, "Empty card", deck?.data).split(/\r?\n/)
+          : ["Card unavailable"];
+      return lines.map((line, index) => ({
+        ...child,
+        id: child.id + "-" + index,
+        flavour: "affine:paragraph",
+        version: 1,
+        children: [],
         props: { type: "text", text: { "$blocksuite:internal:text$": true, delta: [{ insert: line }] } },
       }));
     }

@@ -493,3 +493,135 @@ knot-mcq-reference {
 .note-page-insert > button {
   padding: 4px 8px;
 }
+
+/* A Card Deck card shown inside a note (knot:card-embed). */
+knot-card-embed {
+  display: block;
+}
+.edgeless-note-container:has(knot-card-embed):not(
+    :has([data-knot-note-live][style*="pointer-events: none"])
+  )
+  > edgeless-note-mask
+  .affine-note-mask {
+  pointer-events: none !important;
+}
+.knot-card-embed {
+  margin: 6px 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--affine-border-color, light-dark(#e5e5e5, #333));
+  border-radius: 6px;
+  color: var(--affine-text-primary-color, inherit);
+  font-size: 15px;
+  line-height: 1.5;
+  user-select: text;
+}
+.knot-card-embed header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.card-embed-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--affine-text-secondary-color, light-dark(#626262, #979797));
+  font-size: 11px;
+}
+.card-embed-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.knot-card-embed:hover .card-embed-actions,
+.knot-card-embed:focus-within .card-embed-actions {
+  opacity: 1;
+}
+.card-embed-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--affine-text-secondary-color, light-dark(#626262, #979797));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.card-embed-action:hover {
+  background: var(--affine-hover-color, light-dark(#ededed, #2c2c2c));
+  color: var(--affine-text-primary-color, inherit);
+}
+.card-embed-body > * {
+  margin: 0;
+}
+.card-embed-body > * + * {
+  margin-top: 4px;
+}
+.card-embed-body p,
+.card-embed-body blockquote,
+.card-embed-body figure {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.card-embed-body blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--affine-border-color, light-dark(#e5e5e5, #333));
+}
+.card-embed-heading {
+  font-weight: 700;
+  line-height: 1.3;
+}
+.card-embed-heading[data-level="h1"] {
+  font-size: 1.5em;
+}
+.card-embed-heading[data-level="h2"] {
+  font-size: 1.3em;
+}
+.card-embed-heading[data-level="h3"] {
+  font-size: 1.15em;
+}
+.card-embed-list {
+  display: flex;
+  gap: 8px;
+}
+.card-embed-children {
+  padding-left: 20px;
+}
+.card-embed-body pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: 4px;
+  background: var(--affine-hover-color, light-dark(#f4f4f4, #262626));
+  font-size: 13px;
+}
+.card-embed-body img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 4px;
+}
+.card-embed-body figcaption,
+.card-embed-missing {
+  color: var(--affine-text-secondary-color, light-dark(#626262, #979797));
+  font-size: 12px;
+}
+.card-embed-loading {
+  display: block;
+  height: 80px;
+  border-radius: 4px;
+  background: var(--affine-hover-color, light-dark(#ededed, #2c2c2c));
+}
+.card-embed-object {
+  color: var(--affine-text-secondary-color, light-dark(#626262, #979797));
+}
+.card-embed-body a {
+  color: inherit;
+  text-decoration: underline;
+}

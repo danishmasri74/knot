@@ -125,6 +125,40 @@ export function cardMcq(card: DeckCard | undefined) {
   return definition?.type === "json" ? readMcq(definition.value) : undefined;
 }
 export const mcqReferenceFlavour = "knot:mcq-reference";
+/** A note card shown inside another note, by ID (see card-embed.ts). */
+export const cardEmbedFlavour = "knot:card-embed";
+
+/** Cards shown inside these nodes through card embeds. */
+export function* cardEmbedReferences(nodes: CardNode[]): Generator<string> {
+  for (const node of nodes) {
+    const flavour = node.props["sys:flavour"];
+    const id = node.props["prop:cardId"];
+    if (flavour?.type === "json" && flavour.value === cardEmbedFlavour &&
+        id?.type === "json" && typeof id.value === "string" && id.value)
+      yield id.value;
+    yield* cardEmbedReferences(node.children);
+  }
+}
+
+/** What reusing a card inside a note adds: a question reference, a copy of
+ * a video, link, file or image, or an embed that shows a note card. */
+export function cardInsertion(card: DeckCard | undefined):
+  | { flavour: string; props: Record<string, unknown> }
+  | undefined {
+  if (!card || card.deleted) return;
+  if (isMcqCard(card)) return { flavour: mcqReferenceFlavour, props: { cardId: card.id } };
+  if (card.media) {
+    const node = card.nodes[0];
+    const flavour = node?.props["sys:flavour"];
+    if (flavour?.type !== "json" || typeof flavour.value !== "string") return;
+    const props: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(node.props))
+      if (key.startsWith("prop:") && value.type === "json")
+        props[key.slice(5)] = value.value;
+    return { flavour: flavour.value, props };
+  }
+  return { flavour: cardEmbedFlavour, props: { cardId: card.id } };
+}
 export const unavailableMcq = "Multiple-choice question unavailable";
 
 export function resolveDeckMcq(deck: DeckData, cardId: unknown) {
@@ -288,9 +322,13 @@ export class CardDeck {
       if (flavour === "affine:note" || standalone.has(instance)) ids.add(shared);
     }
     for (const block of doc.getMap<Y.Map<unknown>>("blocks").values()) {
-      if (block.get("sys:flavour") !== mcqReferenceFlavour) continue;
+      const flavour = block.get("sys:flavour");
       const id = block.get("prop:cardId");
-      if (typeof id === "string" && resolveDeckMcq(this.data, id)) ids.add(id);
+      if (typeof id !== "string") continue;
+      if (flavour === mcqReferenceFlavour && resolveDeckMcq(this.data, id)) ids.add(id);
+      // A card shown inside a note is in use there.
+      if (flavour === cardEmbedFlavour && this.data[id] && !this.data[id].deleted)
+        ids.add(id);
     }
     return ids;
   }

@@ -43,6 +43,13 @@ export function savedShareInfo(id: string, snapshot: Snapshot): SavedShareInfo {
     const cards = new Set<string>();
     for (const card of body.getMap<string>("knot:card-links").values())
       if (typeof card === "string" && card) cards.add(card);
+    // Cards shown inside notes travel with the notebook too.
+    for (const block of body.getMap("blocks").values()) {
+      if (!(block instanceof Y.Map) || block.get("sys:flavour") !== "knot:card-embed")
+        continue;
+      const card = block.get("prop:cardId");
+      if (typeof card === "string" && card) cards.add(card);
+    }
     return { refs, cards };
   } finally {
     envelope.destroy();
