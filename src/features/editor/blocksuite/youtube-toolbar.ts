@@ -8,8 +8,8 @@ import { observeToolbarMounts } from "./toolbar-observer";
 // "Open in side panel" on YouTube cards (docs/YOUTUBE-TRANSCRIPT-PLAN.md).
 // Page: BlockSuite's `affine-embed-card-toolbar` widget shows for a selected
 // card and renders its buttons in its shadow root. Canvas: the element
-// toolbar's `edgeless-change-embed-card-button`. Clicking the card itself is
-// unchanged; only this button opens the panel.
+// toolbar's `edgeless-change-embed-card-button`. Double-clicking the card
+// also opens the panel (see `claimYoutubeOpen`).
 
 type YoutubeModel = BlockModel & {
   url: string;
@@ -84,6 +84,34 @@ function createButton(
  * `isOpen` marks the button pressed when the panel shows that video;
  * `toggle` opens it (or closes it when it's already open).
  */
+// Double-clicking a YouTube card (or its link) makes BlockSuite open the
+// video's address. The card pressed last is remembered briefly so the link
+// router can open the Video panel for it instead of the browser.
+let pressed: { source: VideoSource; at: number } | undefined;
+const pressWindowMs = 1500;
+
+function rememberPress(event: Event) {
+  const card = event
+    .composedPath()
+    .find(
+      (node): node is HTMLElement & { model?: BlockModel } =>
+        node instanceof HTMLElement &&
+        (node as HTMLElement & { model?: BlockModel }).model?.flavour ===
+          "affine:embed-youtube",
+    );
+  const source = card ? videoSource(card.model) : null;
+  pressed = source ? { source, at: Date.now() } : undefined;
+}
+
+/** The card just pressed, if `url` is its video: open it in the panel. */
+export function claimYoutubeOpen(url: string): VideoSource | null {
+  const press = pressed;
+  if (!press || Date.now() - press.at > pressWindowMs) return null;
+  if (youtubeVideoId(url) !== press.source.videoId) return null;
+  pressed = undefined;
+  return press.source;
+}
+
 export function installYoutubeToolbars(
   toggle: (source: VideoSource) => void,
   isOpen: (videoId: string) => boolean,
@@ -193,11 +221,14 @@ export function installYoutubeToolbars(
     schedule,
   );
   refresh();
+  document.addEventListener("pointerdown", rememberPress, true);
   return {
     /** Update pressed states after the panel opens or closes. */
     refresh: schedule,
     dispose() {
       stopped = true;
+      document.removeEventListener("pointerdown", rememberPress, true);
+      pressed = undefined;
       stopMounts();
       observer.disconnect();
       for (const root of roots)

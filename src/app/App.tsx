@@ -51,7 +51,7 @@ import {
   type LinkPreference,
 } from "../services/web-links";
 import { parsePdfSourceUrl } from "../features/editor/blocksuite/pdf-highlights";
-import { installYoutubeToolbars } from "../features/editor/blocksuite/youtube-toolbar";
+import { claimYoutubeOpen, installYoutubeToolbars } from "../features/editor/blocksuite/youtube-toolbar";
 import type {
   VideoLocation,
   VideoSource,
@@ -531,9 +531,15 @@ export function App() {
           } catch (e) {
             report(e);
           }
-        } else if (getLinkPreference() === "external")
-          void browserApi.external(url).catch(report);
-        else navigateBrowser(url);
+        } else {
+          // A YouTube card was double-clicked: play it in the Video panel.
+          const video = claimYoutubeOpen(url);
+          if (video) {
+            if (!videoShown(video.videoId)) toggleVideo.current(video);
+          } else if (getLinkPreference() === "external")
+            void browserApi.external(url).catch(report);
+          else navigateBrowser(url);
+        }
       }),
     [],
   );
