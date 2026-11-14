@@ -100,8 +100,13 @@ export function installYoutubeToolbars(
     current: () => VideoSource | null,
     withSeparator: boolean,
   ) {
-    let wrapper = container.querySelector<HTMLElement>(
-      ":scope > .knot-video-panel-wrapper",
+    // Direct children only. Not `:scope >`: inside a ShadowRoot `:scope`
+    // matches nothing, so the wrapper was never found and was re-added on
+    // every mutation, freezing the canvas.
+    let wrapper = [...container.children].find(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement &&
+        child.classList.contains("knot-video-panel-wrapper"),
     );
     if (!source) {
       wrapper?.remove();
@@ -169,9 +174,11 @@ export function installYoutubeToolbars(
     }
   }
   function schedule() {
+    // At most once per frame: a refresh that causes a mutation can never
+    // become a microtask loop that blocks the page.
     if (!queued) {
       queued = true;
-      queueMicrotask(refresh);
+      requestAnimationFrame(refresh);
     }
   }
   const stopMounts = observeToolbarMounts(
