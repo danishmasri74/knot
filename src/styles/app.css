@@ -3413,6 +3413,54 @@ main:has(.settings-modal) > .editor-area {
   padding: 10px 13px;
   max-width: 92%;
 }
+/* What was sent with a message: chips above its bubble, right-aligned. */
+.ask-sent-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 92%;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.ask-sent-attachments > li {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.ask-knot .ask-sent-attachments .ask-chip {
+  max-width: 230px;
+  min-height: 28px;
+  padding: 0 9px;
+  gap: 6px;
+  border: 1px solid var(--shell-border);
+  border-radius: 7px;
+  background: var(--shell-surface);
+  color: var(--shell-text);
+  font-size: 12px;
+}
+.ask-knot .ask-sent-attachments button.ask-chip:hover {
+  background: var(--ask-hover);
+}
+.ask-knot .ask-sent-attachments button.ask-chip:focus-visible {
+  outline: 2px solid var(--control-accent);
+  outline-offset: 1px;
+}
+.ask-sent-attachments .ask-chip .shell-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--ask-muted);
+}
+.ask-sent-detail {
+  flex-shrink: 0;
+  color: var(--ask-muted);
+  white-space: nowrap;
+}
+.ask-knot .ask-sent-attachments .ask-sent-more {
+  font-weight: 500;
+  color: var(--ask-muted);
+}
 .ask-prose p {
   margin: 0 0 12px;
 }

@@ -3997,7 +3997,10 @@ export function App() {
                           { id: document, title: "", revision: "" },
                           snapshot,
                         ).pdfs.some(
-                          (ref) => ref.key === pdf.key && ref.blockId === block,
+                          // A sent-attachment chip names only the PDF, not its block.
+                          (ref) =>
+                            ref.key === pdf.key &&
+                            (!block || ref.blockId === block),
                         )
                       )
                         throw Error(

@@ -54,6 +54,11 @@ import {
 } from "../services/ai-context-composer";
 import { WebSourceList, WebCoverage } from "./WebSourceList";
 import { AttachmentImage, ContextAttachments } from "./ContextAttachments";
+import { SentAttachments } from "./SentAttachments";
+import {
+  sentAttachments,
+  type SentAttachment,
+} from "../services/sent-attachments";
 import { Popover } from "./Collections";
 import { browserApi } from "../services/browser";
 import {
@@ -129,6 +134,8 @@ type Turn = {
     sourceMode?: SourceMode;
     pdfSource?: AiPdfSource;
     image?: { key: string; name: string };
+    /** What the user sent with the message, shown as chips above it. */
+    attachments?: SentAttachment[];
   };
   role: "user" | "assistant";
   content: string;
@@ -837,6 +844,35 @@ function AskKnotPanel({
     } catch {
       setError("Could not copy this message. Please try again.");
     }
+  }
+  /** Opens what a sent message's chip points at. */
+  function openAttachment(item: SentAttachment) {
+    setError("");
+    const opened = item.video
+      ? onSource(
+          item.video.documentId,
+          item.video.blockId,
+          "",
+          undefined,
+          item.video,
+        )
+      : item.url
+        ? browserApi.external(item.url)
+        : item.document
+          ? onSource(
+              item.document,
+              item.block ?? "",
+              item.text ?? "",
+              item.pdf && {
+                key: item.pdf.key,
+                name: item.label,
+                documentId: item.document,
+                page: item.pdf.page ?? 1,
+                rects: [],
+              },
+            )
+          : Promise.resolve();
+    void Promise.resolve(opened).catch((e) => setError(String(e)));
   }
   function addTurnAsCard(turn: Turn, index: number) {
     try {
@@ -1782,6 +1818,62 @@ function AskKnotPanel({
           ).preparePdfInput(pdfSource)
         : undefined;
       if (request.current !== id || !mounted.current) return;
+      // A retried or edited message keeps the chips it was first sent with.
+      const attachments =
+        retryUser?.request?.attachments ??
+        sentAttachments({
+          context:
+            useSources &&
+            !cardContext &&
+            !inheritedContext &&
+            !current.selectedImageKey
+              ? {
+                  label: current.selectionLabel ?? current.label,
+                  title: current.pdf ? undefined : s.doc.meta?.title,
+                  document: current.document,
+                  first: current.structure[0],
+                  pdf: current.pdf ? pdfSource : undefined,
+                  selectionKind: current.selectionKind,
+                  canvas: current.canvas,
+                }
+              : undefined,
+          passages: extra
+            .filter(
+              (item) =>
+                item.structure.length === 1 &&
+                passages.some(
+                  (p) =>
+                    p.source.id === item.document &&
+                    p.block.id === item.structure[0].id,
+                ),
+            )
+            .map((item) => ({
+              document: item.document,
+              title: item.title,
+              block: item.structure[0],
+            })),
+          notes: extra
+            .filter((item) => added.some((note) => note.id === item.document))
+            .map((item) => ({
+              document: item.document,
+              title: item.title,
+              first: item.structure[0],
+            })),
+          image: selectedImage,
+          web: cardContext
+            ? []
+            : webSourcesRef.current.flatMap((attempt) =>
+                attempt.capture
+                  ? [
+                      {
+                        url: attempt.capture.finalUrl || attempt.url,
+                        title: attempt.capture.title,
+                      },
+                    ]
+                  : [],
+              ),
+          videos: videos.map((video) => ({ ...video.location, start: 0 })),
+        });
       const user: Turn = {
         attemptId: id,
         role: "user",
@@ -1793,6 +1885,7 @@ function AskKnotPanel({
           message: outgoing === input ? undefined : outgoing,
           image: selectedImage,
           pdfSource,
+          attachments,
         },
       };
       // Images view_images may show: the focused note's, else the document's.
@@ -2324,6 +2417,12 @@ function AskKnotPanel({
                 )}
                 {turn.role === "user" && turn.request?.image && (
                   <AttachmentImage image={turn.request.image} />
+                )}
+                {turn.role === "user" && turn.request && editing !== i && (
+                  <SentAttachments
+                    request={turn.request}
+                    onOpen={openAttachment}
+                  />
                 )}
                 {editing === i ? (
                   <div className="ask-edit-message">
