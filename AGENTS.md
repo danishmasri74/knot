@@ -4,6 +4,10 @@
 
 Use the shared `ShellIcon` consistently throughout Knot: `note` (page) for individual notes, `notebook` (bound book) for notebooks, and `folder` for collections. Apply this to navigation, creation actions, lists, search, Favorites, Trash, and any new surfaces. Do not use notebook icons for workspace or backup settings.
 
+## AI sparkle icon
+
+Every AI sparkle in Knot is the same filled blue, `--ai-accent` (defined in `src/styles/app.css`). Use `ShellIcon name="sparkles"` for it; the shared `.shell-icon[data-icon="sparkles"]` rule enforces the color with `!important`. Surfaces may size the icon but must never recolor, mute, grey out, outline, or restyle it. Icons drawn outside React (editor toolbars and other integrations) must use the same path, `fill="currentColor"`, and `color: var(--ai-accent)`. Do not use the sparkle for non-AI actions.
+
 ## Dropdowns and menus
 
 All dropdowns throughout Knot must follow the Library sort dropdown reference: a neutral theme-aware surface, a thin border, a 6px outer radius, 5px inset padding, rounded rows, a quiet hover/selected background, and a right-aligned checkmark for the current choice. Use the shared tokens and rules in `src/styles/dropdowns.css`; do not add per-screen menu skins, raw menu colors, different shadows, or different row spacing.

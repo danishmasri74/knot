@@ -3,11 +3,12 @@ import type { AffineEditorContainer } from "@blocksuite/presets";
 import { html, type TemplateResult } from "lit";
 import { observeToolbarMounts } from "./toolbar-observer";
 
+/** Same filled sparkle and --ai-accent blue as ShellIcon "sparkles". */
 function askIcon() {
   const span = document.createElement("span");
   span.style.display = "flex";
   span.innerHTML =
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3l2.4 6.6L19 12l-6.6 2.4L10 21l-2.4-6.6L1 12l6.6-2.4L10 3z M20 2v6 M17 5h6"/></svg>';
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--ai-accent)"><path d="M10 3l2.4 6.6L19 12l-6.6 2.4L10 21l-2.4-6.6L1 12l6.6-2.4L10 3z M20 2v6 M17 5h6"/></svg>';
   span.addEventListener("pointerdown", (event) => event.preventDefault());
   return span;
 }

@@ -131,10 +131,6 @@
   color: var(--shell-text);
   font-weight: 550;
 }
-/* The sparkles are blue wherever Ask Knot appears, as in its header. */
-.sidebar > button.sidebar-ask .shell-icon {
-  color: var(--control-accent);
-}
 /* Unavailable actions are not pending network requests. */
 .sidebar-ask:disabled {
   cursor: default;

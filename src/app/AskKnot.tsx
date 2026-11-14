@@ -1464,7 +1464,7 @@ function AskKnotPanel({
       undefined,
       action === "insert"
         ? "Insert this answer into the note"
-        : "Make canvas cards from this answer",
+        : "Split this answer into canvas cards",
       undefined,
       undefined,
       action,
@@ -2601,9 +2601,11 @@ function AskKnotPanel({
                     </button>
                     {turn.role === "assistant" && (
                       <button
-                        aria-label="Add as a card"
+                        aria-label="Add reply as one card"
                         data-tooltip={
-                          cardAdded === i ? "Card added" : "Add as a card"
+                          cardAdded === i
+                            ? "Card added"
+                            : "Add reply as one card"
                         }
                         disabled={
                           !turn.content ||
@@ -2630,8 +2632,8 @@ function AskKnotPanel({
                       !context?.pdf &&
                       (context?.canvas ? (
                         <button
-                          aria-label="Make canvas cards"
-                          data-tooltip="Make canvas cards"
+                          aria-label="Split into cards with AI"
+                          data-tooltip="Split into cards with AI"
                           disabled={busy || !connected || !models.length}
                           onClick={() => sendAnswerTo(turn, "canvas")}
                         >
@@ -3426,7 +3428,11 @@ const CitationSources = memo(function CitationSources({
                   source.kind === "link"
                     ? browserApi.external(
                         excerpt
-                          ? passageUrl(excerpt.url, excerpt.excerpt, excerpt.page)
+                          ? passageUrl(
+                              excerpt.url,
+                              excerpt.excerpt,
+                              excerpt.page,
+                            )
                           : source.url,
                       )
                     : source.kind === "web"
@@ -3434,7 +3440,8 @@ const CitationSources = memo(function CitationSources({
                           passageUrl(
                             (source.url && normalizeWebUrl(source.url)) ||
                               (retainedWebAttempts(context).find(
-                                (a) => a.capture?.captureId === source.captureId,
+                                (a) =>
+                                  a.capture?.captureId === source.captureId,
                               )?.capture?.finalUrl ??
                                 ""),
                             sentence?.text ?? source.text,

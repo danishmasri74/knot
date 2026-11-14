@@ -86,8 +86,10 @@ try {
       invoke: async (cmd, args) => {
         // Chats live in the workspace; the browser-stored seed is moved there.
         if (cmd === "ai_chats_list") return [...window.chatStore.values()];
-        if (cmd === "ai_chat_save") return void window.chatStore.set(args.id, args.data);
-        if (cmd === "ai_chat_delete") return void window.chatStore.delete(args.id);
+        if (cmd === "ai_chat_save")
+          return void window.chatStore.set(args.id, args.data);
+        if (cmd === "ai_chat_delete")
+          return void window.chatStore.delete(args.id);
         return cmd === "ai_connected"
           ? true
           : cmd === "ai_models"
@@ -112,7 +114,7 @@ try {
     );
   });
   const buttons = page.getByRole("button", {
-    name: "Add as a card",
+    name: "Add reply as one card",
     exact: true,
   });
   await buttons.first().waitFor();
@@ -120,7 +122,7 @@ try {
   assert.equal(
     await page
       .locator(".ask-user")
-      .getByRole("button", { name: "Add as a card" })
+      .getByRole("button", { name: "Add reply as one card" })
       .count(),
     0,
   );
@@ -198,7 +200,7 @@ try {
     3,
   );
   console.log(
-    "Chat Add as a card: saved replies, one-card creation, Card Deck, layout, Undo, structured previews, rewrite, and unavailable-document guard passed.",
+    "Chat Add reply as one card: saved replies, one-card creation, Card Deck, layout, Undo, structured previews, rewrite, and unavailable-document guard passed.",
   );
 } finally {
   await browser.close();

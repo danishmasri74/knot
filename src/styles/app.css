@@ -26,6 +26,8 @@
   --affine-background-primary-color: light-dark(#fff, #1f1f1f);
   --affine-primary-color: light-dark(#6c6c6c, #909090);
   --control-accent: light-dark(#3978b9, #528dcc);
+  /* The one color for every AI sparkle (see AGENTS.md). */
+  --ai-accent: var(--control-accent);
 }
 * {
   box-sizing: border-box;
@@ -2988,9 +2990,11 @@ main:has(.settings-modal) > .editor-area {
     animation: none;
   }
 }
+/* Every AI sparkle is the same filled blue. Surfaces may size it, never
+   recolor, mute or outline it, so this rule wins over any container rule. */
 .shell-icon[data-icon="sparkles"] {
-  color: var(--control-accent);
-  fill: currentColor;
+  color: var(--ai-accent) !important;
+  fill: currentColor !important;
 }
 
 .notebook-title {
@@ -3150,7 +3154,6 @@ main:has(.settings-modal) > .editor-area {
   letter-spacing: -0.2px;
 }
 .ask-header h2 .shell-icon {
-  color: var(--control-accent);
   width: 18px;
   height: 18px;
 }
@@ -3368,7 +3371,6 @@ main:has(.settings-modal) > .editor-area {
 .ask-author .shell-icon {
   width: 16px;
   height: 16px;
-  color: var(--ask-muted);
 }
 .ask-response-timer {
   margin-inline-start: auto;
