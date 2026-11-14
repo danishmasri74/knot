@@ -79,7 +79,7 @@ export function VideoReader({
     try {
       const next = await fetchTranscript(workspace, source.videoId, track);
       // Workspace search indexes transcripts with the card's document.
-      void refreshTopicSource(source.documentId);
+      void refreshTopicSource(source.documentId, source.cardId);
       if (token === request.current) setTranscript(next);
     } catch (e) {
       if (token === request.current) setError(message(e));

@@ -38,6 +38,9 @@ export type VideoSource = {
   url: string;
   documentId: string;
   blockId: string;
+  /** The Card Deck card holding it, when its note is a card. Workspace
+   * search indexes card content as `deck:<cardId>`. */
+  cardId?: string;
 };
 
 const isTrack = (v: unknown): v is TranscriptTrack => {

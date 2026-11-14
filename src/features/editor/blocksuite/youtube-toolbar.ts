@@ -26,12 +26,18 @@ export function videoSource(model?: BlockModel): VideoSource | null {
   const card = model as YoutubeModel;
   const videoId = card.videoId || youtubeVideoId(card.url);
   if (!videoId || !/^[\w-]{11}$/.test(videoId)) return null;
+  let note: BlockModel | null = model;
+  while (note && note.flavour !== "affine:note") note = note.parent;
+  const cardId = note
+    ? card.doc.spaceDoc.getMap<string>("knot:card-links").get(note.id)
+    : undefined;
   return {
     videoId,
     title: card.title || "YouTube video",
     url: card.url,
     documentId: card.doc.id,
     blockId: card.id,
+    ...(cardId && { cardId }),
   };
 }
 

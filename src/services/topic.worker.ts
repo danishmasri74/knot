@@ -80,8 +80,7 @@ self.onmessage = (
         const extracted = m.card
           ? extractDeckPassages(m.source!, m.card, m.questions)
           : extractTopicContent(m.source!, m.snapshot!);
-        const { passages, pdfs } = extracted;
-        const videos = "videos" in extracted ? extracted.videos : [];
+        const { passages, pdfs, videos } = extracted;
         // Keyword coverage remains available if model initialization fails.
         let semantic = true;
         let result = passages;

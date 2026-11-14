@@ -178,3 +178,54 @@ test("explicit and loading attachment intent takes precedence over automatic wor
     resolveSourceMode({ ...base, scope: "workspace", selected: true }),
   ).toBe("current");
 });
+
+test("YouTube cards are reported so their saved transcripts are indexed", async () => {
+  const { extractTopicContent } = await import("../src/services/topic-extract");
+  const envelope = new Y.Doc(),
+    body = new Y.Doc();
+  envelope.getMap("meta").set("pages", [{ id: "doc" }]);
+  const blocks = body.getMap("blocks");
+  const add = (id: string, flavour: string, children: string[], props: Record<string, string> = {}) => {
+    const b = new Y.Map();
+    b.set("sys:flavour", flavour);
+    const c = new Y.Array();
+    c.push(children);
+    b.set("sys:children", c);
+    for (const [k, v] of Object.entries(props)) b.set(`prop:${k}`, v);
+    blocks.set(id, b);
+  };
+  add("root", "affine:page", ["note", "surface"]);
+  add("note", "affine:note", ["yt", "yt2"]);
+  add("yt", "affine:embed-youtube", [], { videoId: "aircAruvnKk", url: "https://www.youtube.com/watch?v=aircAruvnKk", title: "NN" });
+  add("yt2", "affine:embed-youtube", [], { url: "https://youtu.be/jNQXAC9IVRw" });
+  add("surface", "affine:surface", ["yt3"]);
+  add("yt3", "affine:embed-youtube", [], { videoId: "bad" });
+  const snap = {
+    collection: Array.from(Y.encodeStateAsUpdate(envelope)),
+    document: Array.from(Y.encodeStateAsUpdate(body)),
+  };
+  const { videos } = extractTopicContent({ id: "doc", title: "Doc", revision: "r" }, snap);
+  expect(videos).toEqual([
+    { videoId: "aircAruvnKk", blockId: "yt", title: "NN" },
+    { videoId: "jNQXAC9IVRw", blockId: "yt2", title: "YouTube video" },
+  ]);
+});
+
+test("YouTube cards inside Card Deck cards are reported too", async () => {
+  const { extractDeckPassages } = await import("../src/services/topic-extract");
+  const json = (value: string) => ({ type: "json" as const, value });
+  const node = (props: Record<string, string>, children: never[] = []) => ({
+    props: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, json(v)])),
+    children,
+  });
+  const { videos } = extractDeckPassages(
+    { id: "deck:c1", title: "Card", revision: "r" },
+    {
+      id: "c1",
+      nodes: [
+        node({ "sys:flavour": "affine:embed-youtube", "prop:url": "https://www.youtube.com/watch?v=aircAruvnKk", "prop:title": "NN" }),
+      ],
+    } as never,
+  );
+  expect(videos).toEqual([{ videoId: "aircAruvnKk", blockId: "0", title: "NN" }]);
+});

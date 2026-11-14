@@ -100,6 +100,7 @@ export class TopicIndexer {
       const retryFailures = this.firstReconcile;
       this.firstReconcile = false;
       let after: string | undefined;
+      let workspaceName: string | undefined;
       for (;;) {
         const sources = await invoke<TopicSource[]>("topic_pending", {
           activation,
@@ -161,10 +162,16 @@ export class TopicIndexer {
                 if (this.stopped) return;
                 if (seen.has(video.videoId)) continue;
                 seen.add(video.videoId);
-                const transcript = await loadTranscript(
-                  this.catalog!.workspace,
-                  video.videoId,
-                ).catch(() => null);
+                // Transcripts are read by workspace name; the catalog's
+                // `workspace` is the index identity, not the name.
+                workspaceName ??= await invoke<{ active: string | null }>(
+                  "workspace_catalog",
+                ).then((c) => c.active ?? "", () => "");
+                const transcript = workspaceName
+                  ? await loadTranscript(workspaceName, video.videoId).catch(
+                      () => null,
+                    )
+                  : null;
                 if (!transcript) continue;
                 let selected: TopicPassage[] = transcriptPassages(
                   transcript,
@@ -348,10 +355,11 @@ export function startTopicIndex() {
 }
 /** Re-index one document soon, for example after a transcript of one of its
  * YouTube cards was saved. The index is a disposable cache. */
-export async function refreshTopicSource(documentId: string) {
+export async function refreshTopicSource(documentId: string, cardId?: string) {
   const activation = active?.catalog?.activation;
   if (!activation || !isTauri()) return;
-  await invoke("topic_stale", { activation, id: documentId }).catch(() => {});
+  for (const id of [documentId, ...(cardId ? [`deck:${cardId}`] : [])])
+    await invoke("topic_stale", { activation, id }).catch(() => {});
   window.dispatchEvent(new Event("knot-topic-sources-changed"));
 }
 export function topicIndex() {

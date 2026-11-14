@@ -37,11 +37,12 @@ export function extractDeckPassages(
   source: TopicSource,
   card: DeckCard,
   deck?: DeckData,
-): { passages: TopicPassage[]; pdfs: TopicPdf[] } {
+): { passages: TopicPassage[]; pdfs: TopicPdf[]; videos: TopicVideo[] } {
   if (card.deleted || source.id !== `deck:${card.id}`)
-    return { passages: [], pdfs: [] };
+    return { passages: [], pdfs: [], videos: [] };
   const texts: string[] = [],
     pdfs: TopicPdf[] = [],
+    videos: TopicVideo[] = [],
     segments: { text: string; attribution?: string }[] = [];
   const walk = (nodes: CardNode[]) =>
     nodes.forEach((node, index) => {
@@ -79,6 +80,17 @@ export function extractDeckPassages(
           name: prop("prop:name") || "PDF",
           blockId: String(index),
         });
+      // Most notes are Card Deck cards: their YouTube cards are indexed here.
+      if (flavour === "affine:embed-youtube") {
+        const videoId =
+          prop("prop:videoId") || youtubeVideoId(prop("prop:url")) || "";
+        if (/^[\w-]{11}$/.test(videoId) && videos.length < 20)
+          videos.push({
+            videoId,
+            blockId: String(index),
+            title: prop("prop:title") || "YouTube video",
+          });
+      }
       walk(node.children);
     });
   walk(card.nodes);
@@ -95,7 +107,7 @@ export function extractDeckPassages(
         ...(segment.attribution ? { attribution: segment.attribution } : {}),
       })),
   );
-  return { passages, pdfs };
+  return { passages, pdfs, videos };
 }
 /** Isolated decoding: follow only reachable blocks, never instantiate an editor. */
 export function extractTopicContent(
