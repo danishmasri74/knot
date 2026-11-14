@@ -156,3 +156,28 @@ describe("youtubeVideoId", () => {
     expect(youtubeVideoId("not a url")).toBeNull();
   });
 });
+
+describe("transcriptPassages", () => {
+  it("groups lines into about 45-second passages led by their time", async () => {
+    const { transcriptPassages } = await import("../src/services/youtube-transcript");
+    const segments = Array.from({ length: 12 }, (_, i) => seg(i * 10_000, `Sentence ${i}.`));
+    const passages = transcriptPassages({ segments, chapters: [] });
+    expect(passages.map((p) => p.start)).toEqual([0, 50_000, 100_000]);
+    expect(passages[0].text.startsWith("[0:00] Sentence 0.")).toBe(true);
+  });
+  it("starts a new passage at a chapter and caps its length", async () => {
+    const { transcriptPassages } = await import("../src/services/youtube-transcript");
+    const chapters = [
+      { start: 0, title: "A" },
+      { start: 20_000, title: "B" },
+    ];
+    const passages = transcriptPassages({ segments: [seg(0, "a."), seg(20_000, "b.")], chapters });
+    expect(passages.map((p) => p.start)).toEqual([0, 20_000]);
+    const long = transcriptPassages(
+      { segments: [seg(0, "x".repeat(200) + "."), seg(6000, "y".repeat(200) + ".")], chapters: [] },
+      45_000,
+      300,
+    );
+    expect(long).toHaveLength(2);
+  });
+});

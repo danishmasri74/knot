@@ -231,3 +231,82 @@ export function youtubeVideoId(url: string) {
     return null;
   }
 }
+
+/** Where a cited transcript passage is: which card, which video, which moment. */
+export type VideoLocation = {
+  videoId: string;
+  documentId: string;
+  blockId: string;
+  /** Milliseconds. */
+  start: number;
+  title: string;
+};
+export type TranscriptPassage = { start: number; text: string };
+
+/** Transcript passages for Ask Knot and workspace search: about 45 seconds
+ * each (at most `maxChars`), never spanning a chapter start, each led by its
+ * timestamp so the model and a reader see the moment. */
+export function transcriptPassages(
+  transcript: Pick<Transcript, "segments" | "chapters">,
+  windowMs = 45_000,
+  maxChars = 900,
+): TranscriptPassage[] {
+  const lines = transcriptLines(transcript.segments, transcript.chapters);
+  const chapterStarts = transcript.chapters.map((c) => c.start);
+  const passages: TranscriptPassage[] = [];
+  let current: { start: number; parts: string[]; length: number } | null = null;
+  const flush = () => {
+    if (current)
+      passages.push({
+        start: current.start,
+        text: `[${formatTimestamp(current.start)}] ${current.parts.join(" ")}`,
+      });
+    current = null;
+  };
+  for (const line of lines) {
+    const chapterBreak =
+      !!current &&
+      chapterStarts.some((s) => s > current!.start && s <= line.start);
+    if (
+      current &&
+      (chapterBreak ||
+        line.start - current.start >= windowMs ||
+        current.length + line.text.length + 1 > maxChars)
+    )
+      flush();
+    if (!current) current = { start: line.start, parts: [], length: 0 };
+    current.parts.push(line.text);
+    current.length += line.text.length + 1;
+  }
+  flush();
+  return passages;
+}
+
+/** Label for a transcript source in Ask Knot and search results. */
+export const transcriptTitle = (title: string) => `${title} · YouTube transcript`;
+
+/** Saved transcripts for these cards (one per video, at most `limit`).
+ * Cards without a saved transcript are skipped; nothing is fetched. */
+export async function savedTranscripts(
+  workspace: string,
+  cards: VideoSource[],
+  limit = 6,
+) {
+  const unique = [...new Map(cards.map((c) => [c.videoId, c])).values()].slice(
+    0,
+    limit,
+  );
+  const loaded = await Promise.all(
+    unique.map(async (card) => {
+      try {
+        const transcript = await loadTranscript(workspace, card.videoId);
+        return transcript && { card, transcript };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return loaded.filter(
+    (entry): entry is { card: VideoSource; transcript: Transcript } => !!entry,
+  );
+}

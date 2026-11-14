@@ -45,7 +45,10 @@ import {
 } from "../services/web-links";
 import { parsePdfSourceUrl } from "../features/editor/blocksuite/pdf-highlights";
 import { installYoutubeToolbars } from "../features/editor/blocksuite/youtube-toolbar";
-import type { VideoSource } from "../services/youtube-transcript";
+import type {
+  VideoLocation,
+  VideoSource,
+} from "../services/youtube-transcript";
 import { ViewTransition } from "./ViewTransition";
 import { CanvasSuggestions } from "./CanvasSuggestions";
 import {
@@ -610,6 +613,23 @@ export function App() {
   // The YouTube side panel (docs/YOUTUBE-TRANSCRIPT-PLAN.md): one video at a
   // time, opened from a card's toolbar. Pressing the button again closes it.
   const [videoReader, setVideoReader] = useState<VideoSource | null>(null);
+  const [videoSeek, setVideoSeek] = useState<{ ms: number; nonce: number }>();
+  /** Open a cited transcript moment: that video, playing from `start`. */
+  function openVideoAt(location: VideoLocation) {
+    setVideoReader((current) =>
+      current?.videoId === location.videoId
+        ? current
+        : {
+            videoId: location.videoId,
+            title: location.title,
+            url: `https://www.youtube.com/watch?v=${location.videoId}`,
+            documentId: location.documentId,
+            blockId: location.blockId,
+          },
+    );
+    setVideoSeek({ ms: location.start, nonce: Date.now() });
+    openSurface("video");
+  }
   const videoState = useRef(videoReader);
   videoState.current = videoReader;
   // Read the layout at call time; `layout` is declared further down.
@@ -630,6 +650,7 @@ export function App() {
       return;
     }
     setVideoReader(source);
+    setVideoSeek(undefined);
     openSurface("video");
   });
   const youtubeToolbars = useRef<ReturnType<
@@ -3823,7 +3844,12 @@ export function App() {
                 }
                 onSuggestionHandled={() => setSuggestion(null)}
                 onBusy={setAiRunning}
-                onSource={async (document, block, text, pdf) => {
+                onSource={async (document, block, text, pdf, video) => {
+                  if (video) {
+                    // A transcript citation: play that moment in the panel.
+                    openVideoAt(video);
+                    return;
+                  }
                   const previousPlacement = aiPlacement;
                   let sourceFailed = false;
                   setAiPlacement("panel");
@@ -4323,6 +4349,7 @@ export function App() {
                         key={videoReader.videoId}
                         source={videoReader}
                         workspace={workspaceCatalog.active}
+                        seek={videoSeek}
                       />
                     </Suspense>
                   )}

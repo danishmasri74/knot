@@ -72,6 +72,9 @@ pub struct Passage {
     pub pdf: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attribution: Option<String>,
+    /// A YouTube transcript passage's card and moment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<serde_json::Value>,
 }
 #[derive(Serialize)]
 pub struct Search {
@@ -290,6 +293,26 @@ pub fn topic_pending(
         .filter(|s| after.as_ref().is_none_or(|a| s.id > *a))
         .take(100)
         .collect())
+}
+/// Forget one document's cached passages so the next reconcile re-indexes
+/// it, for example after a transcript of one of its YouTube cards was saved.
+/// Only the disposable cache changes.
+#[tauri::command]
+pub fn topic_stale(
+    state: State<'_, AppState>,
+    cache: State<'_, TopicCache>,
+    activation: String,
+    id: String,
+) -> Reply<()> {
+    let key = {
+        let g = guard(&state, &activation)?;
+        let w = g.as_ref().map_err(Clone::clone)?;
+        identity(w)?
+    };
+    let db = open(&cache_path(&cache, &key))?;
+    db.execute("DELETE FROM sources WHERE id=?1", [&id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 #[tauri::command]
 pub fn topic_load(

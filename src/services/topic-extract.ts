@@ -1,3 +1,4 @@
+import { youtubeVideoId } from "./youtube-transcript";
 import { mcqText, readMcq } from "../features/quiz/mcq";
 import * as Y from "yjs";
 import type { Snapshot } from "./workspace";
@@ -25,6 +26,12 @@ export interface TopicPdf {
   key: string;
   name: string;
   blockId: string;
+}
+/** A YouTube card whose saved transcript is indexed with its document. */
+export interface TopicVideo {
+  videoId: string;
+  blockId: string;
+  title: string;
 }
 export function extractDeckPassages(
   source: TopicSource,
@@ -94,7 +101,7 @@ export function extractDeckPassages(
 export function extractTopicContent(
   source: TopicSource,
   snapshot: Snapshot,
-): { passages: TopicPassage[]; pdfs: TopicPdf[] } {
+): { passages: TopicPassage[]; pdfs: TopicPdf[]; videos: TopicVideo[] } {
   if (snapshot.collection.length + snapshot.document.length > 8 * 1024 * 1024)
     throw Error("oversized");
   const envelope = new Y.Doc(),
@@ -116,6 +123,7 @@ export function extractTopicContent(
     );
     if (roots.length !== 1) throw Error("root");
     const pdfs: TopicPdf[] = [];
+    const videos: TopicVideo[] = [];
     const result: TopicPassage[] = [],
       visited = new Set<string>();
     let size = 0;
@@ -140,6 +148,18 @@ export function extractTopicContent(
           name: String(block.get("prop:name") || "PDF"),
           blockId: id,
         });
+      if (flavour === "affine:embed-youtube") {
+        const videoId =
+          String(block.get("prop:videoId") || "") ||
+          youtubeVideoId(String(block.get("prop:url") || "")) ||
+          "";
+        if (/^[\w-]{11}$/.test(videoId) && videos.length < 20)
+          videos.push({
+            videoId,
+            blockId: id,
+            title: String(block.get("prop:title") || "YouTube video"),
+          });
+      }
       const value = block.get("prop:text");
       const quiz = flavour === "knot:mcq" ? readMcq(block.get("prop:definition")) : undefined;
       if (
@@ -196,7 +216,7 @@ export function extractTopicContent(
         for (const child of children.toArray()) walk(String(child));
     }
     walk(roots[0][0]);
-    return { passages: result, pdfs };
+    return { passages: result, pdfs, videos };
   } finally {
     envelope.destroy();
     body.destroy();

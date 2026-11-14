@@ -44,3 +44,43 @@ test("uncovered text, blocks from other documents and source-less contexts are k
   dropCoveredCopies(none);
   expect(none).toEqual({ text: "", structure: [], citationSources: [] });
 });
+
+test("saved YouTube transcripts become video citations, most relevant first", async () => {
+  const { composeAiContext } = await import("../src/services/ai-context-composer");
+  const { readCitationSources } = await import("../src/services/ai-citations");
+  const base = JSON.stringify({
+    sourceMode: "current",
+    document: "doc",
+    text: "My notes",
+    structure: [{ id: "b1", text: "My notes" }],
+    citationSources: [{ document: "doc", id: "b1", text: "My notes", citation: "[S1]" }],
+  });
+  const seg = (start: number, text: string) => ({ start, duration: 2000, text });
+  const result = JSON.parse(
+    composeAiContext(base, [], "explain backpropagation", [
+      {
+        location: { videoId: "aircAruvnKk", documentId: "doc", blockId: "yt", title: "Card title" },
+        transcript: {
+          title: "Neural networks",
+          track: { id: ".en", language: "en", name: "English", kind: "manual" },
+          chapters: [],
+          segments: [seg(0, "Intro to neurons."), seg(60_000, "Now backpropagation adjusts the weights.")],
+        },
+      },
+    ]),
+  );
+  const videos = result.citationSources.filter((s: { kind?: string }) => s.kind === "video");
+  expect(videos.map((s: { text: string }) => s.text)).toEqual([
+    "[1:00] Now backpropagation adjusts the weights.",
+    "[0:00] Intro to neurons.",
+  ]);
+  expect(videos[0]).toMatchObject({
+    citation: "[S2]",
+    document: "doc",
+    title: "Neural networks · YouTube transcript",
+    video: { videoId: "aircAruvnKk", blockId: "yt", start: 60_000, title: "Card title" },
+  });
+  // Saved chats read them back; the note entry still drops its copies.
+  expect(readCitationSources(JSON.stringify(result)).filter((s) => s.kind === "video")).toHaveLength(2);
+  expect(result.structure).toBeUndefined();
+});

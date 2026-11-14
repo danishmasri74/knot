@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ShellIcon } from "./ShellIcon";
+import { refreshTopicSource } from "../services/workspace-topic";
 import {
   activeChapter,
   activeLine,
@@ -30,11 +31,17 @@ function message(error: unknown) {
 export function VideoReader({
   source,
   workspace,
+  seek: seekRequest,
 }: {
   source: VideoSource;
   workspace: string;
+  /** Play from this moment (a cited transcript passage); `nonce` repeats it. */
+  seek?: { ms: number; nonce: number };
 }) {
   const player = useRef<HTMLIFrameElement>(null);
+  // Commands sent before the player is ready are dropped: hold the seek.
+  const ready = useRef(false);
+  const pendingSeek = useRef<number | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const request = useRef(0);
   const lastManualScroll = useRef(0);
@@ -71,6 +78,8 @@ export function VideoReader({
     setError(null);
     try {
       const next = await fetchTranscript(workspace, source.videoId, track);
+      // Workspace search indexes transcripts with the card's document.
+      void refreshTopicSource(source.documentId);
       if (token === request.current) setTranscript(next);
     } catch (e) {
       if (token === request.current) setError(message(e));
@@ -102,6 +111,17 @@ export function VideoReader({
           event?: string;
           info?: { currentTime?: unknown };
         };
+        if (
+          (data.event === "onReady" || data.event === "initialDelivery") &&
+          !ready.current
+        ) {
+          ready.current = true;
+          if (pendingSeek.current !== null) {
+            seekTo(pendingSeek.current);
+            pendingSeek.current = null;
+            return;
+          }
+        }
         const time = data.info?.currentTime;
         if (
           (data.event === "infoDelivery" || data.event === "initialDelivery") &&
@@ -122,11 +142,21 @@ export function VideoReader({
       youtubeOrigin,
     );
   }
-  function seek(ms: number) {
+  function seekTo(ms: number) {
     setNow(ms);
     post("seekTo", [ms / 1000, true]);
     post("playVideo");
   }
+  const seek = seekTo;
+  useEffect(() => {
+    if (!seekRequest) return;
+    if (ready.current) seekTo(seekRequest.ms);
+    else {
+      pendingSeek.current = seekRequest.ms;
+      setNow(seekRequest.ms);
+    }
+    // Only a new request seeks; `nonce` changes for each one.
+  }, [seekRequest?.nonce]);
 
   const lines = useMemo(
     () => (transcript ? transcriptLines(transcript.segments, transcript.chapters) : []),

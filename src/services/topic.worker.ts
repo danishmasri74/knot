@@ -77,9 +77,11 @@ self.onmessage = (
     try {
       const m = event.data;
       if (m.type === "extract") {
-        const { passages, pdfs } = m.card
+        const extracted = m.card
           ? extractDeckPassages(m.source!, m.card, m.questions)
           : extractTopicContent(m.source!, m.snapshot!);
+        const { passages, pdfs } = extracted;
+        const videos = "videos" in extracted ? extracted.videos : [];
         // Keyword coverage remains available if model initialization fails.
         let semantic = true;
         let result = passages;
@@ -88,7 +90,7 @@ self.onmessage = (
         } catch {
           semantic = false;
         }
-        self.postMessage({ id: m.id, result, semantic, pdfs });
+        self.postMessage({ id: m.id, result, semantic, pdfs, videos });
       } else if (m.type === "passages")
         self.postMessage({ id: m.id, result: await refine(m.passages!) });
       else self.postMessage({ id: m.id, result: await embed(m.query!, true) });

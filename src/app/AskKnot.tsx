@@ -85,6 +85,12 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ShellIcon } from "./ShellIcon";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
+import { youtubeCards } from "../features/editor/blocksuite/youtube-toolbar";
+import {
+  formatTimestamp,
+  savedTranscripts,
+  type VideoLocation,
+} from "../services/youtube-transcript";
 import {
   addAiMessageCard,
   applyAiProposal,
@@ -306,6 +312,7 @@ function AskKnotPanel({
     block: string,
     text: string,
     pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation,
+    video?: VideoLocation,
   ) => Promise<void>;
 }) {
   const [chats, setChats] = useState<Chat[]>(initialChats);
@@ -1723,9 +1730,35 @@ function AskKnotPanel({
               addedNotes: extra,
             }),
           ));
+      // Saved transcripts of the YouTube cards in these notes (never fetched
+      // here). A focused note or selection only brings its own note's cards.
+      const videos =
+        replayContext || cardContext || current.pdf || !useSources
+          ? []
+          : (
+              await savedTranscripts(
+                workspace,
+                youtubeCards(
+                  s.doc,
+                  current.label === "Selection" ||
+                    current.label === "Focused note"
+                    ? current.note
+                    : null,
+                ),
+              )
+            ).map(({ card, transcript }) => ({
+              location: {
+                videoId: card.videoId,
+                documentId: card.documentId,
+                blockId: card.blockId,
+                title: card.title,
+              },
+              transcript,
+            }));
+      if (request.current !== id || !mounted.current) return;
       const requestContext =
         replayContext ??
-        composeAiContext(baseContext, webSourcesRef.current, input);
+        composeAiContext(baseContext, webSourcesRef.current, input, videos);
       const bytes = (value: string) => new TextEncoder().encode(value).length;
       if (bytes(requestContext) > 180000)
         throw new Error(
@@ -3165,15 +3198,28 @@ const ChatText = memo(function ChatText({
   text: string;
   context?: string;
 }) {
+  const table = readCitationSources(context);
   const validMarkers = new Set(
-    readCitationSources(context).map(
-      (source, index) => source.citation ?? `[S${index + 1}]`,
-    ),
+    table.map((source, index) => source.citation ?? `[S${index + 1}]`),
   );
+  // Transcript citations read as the moment they cite: "▶ 12:24".
+  const moments = new Map<string, number>();
+  table.forEach((source, index) => {
+    if (source.kind !== "link" && source.kind !== "web" && source.video)
+      moments.set(source.citation ?? `[S${index + 1}]`, source.video.start);
+  });
   const ids = citationIds(text);
   const inline = (value: string) =>
     value.split(/(\*\*[^*]+\*\*|`[^`]+`|\[S\d+\])/g).map((part, i) =>
-      /^\[S\d+\]$/.test(part) && validMarkers.has(part) ? (
+      moments.has(part) ? (
+        <sup
+          className="ask-ref ask-ref-video"
+          key={i}
+          aria-label={`Source ${ids.indexOf(Number(part.slice(2, -1))) + 1}, video at ${formatTimestamp(moments.get(part)!)}`}
+        >
+          ▶ {formatTimestamp(moments.get(part)!)}
+        </sup>
+      ) : /^\[S\d+\]$/.test(part) && validMarkers.has(part) ? (
         <sup
           className="ask-ref"
           key={i}
@@ -3252,6 +3298,7 @@ const CitationSources = memo(function CitationSources({
     block: string,
     text: string,
     pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation,
+    video?: VideoLocation,
   ) => Promise<void>;
 }) {
   const [error, setError] = useState("");
@@ -3279,6 +3326,44 @@ const CitationSources = memo(function CitationSources({
             ? citedSentence(claimsFor(text, `[S${id}]`), source.text)
             : null;
         const excerpt = source?.kind === "link" ? readExcerpt(source) : null;
+        // A YouTube transcript passage (current notes or workspace search).
+        const video =
+          source &&
+          (source.kind === "video" ||
+            source.kind === undefined ||
+            source.kind === "note")
+            ? source.video
+            : undefined;
+        if (source && video)
+          return (
+            <div key={id}>
+              <div className="ask-source-title">
+                <span className="ask-source-index">{index + 1}</span>
+                <ShellIcon name="video" />
+                <span>{source.title || "YouTube transcript"}</span>
+              </div>
+              <blockquote>
+                <span className="ask-source-time">
+                  {formatTimestamp(video.start)}
+                </span>{" "}
+                {source.text.replace(/^\[[\d:]+\]\s*/, "")}
+              </blockquote>
+              <button
+                onClick={() => {
+                  setError("");
+                  void onSource(
+                    source.document,
+                    video.blockId,
+                    source.text,
+                    undefined,
+                    video,
+                  ).catch((e) => setError(String(e)));
+                }}
+              >
+                Play from {formatTimestamp(video.start)}
+              </button>
+            </div>
+          );
         return source ? (
           <div key={id}>
             <div className="ask-source-title">
@@ -3360,7 +3445,7 @@ const CitationSources = memo(function CitationSources({
                           source.document,
                           source.id,
                           source.text,
-                          source.pdf,
+                          "pdf" in source ? source.pdf : undefined,
                         )
                 ).catch((e) => setError(String(e)));
               }}

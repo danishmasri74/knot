@@ -6521,3 +6521,15 @@ knot-web-source { display: block; margin-block: 8px; }
 .video-reader-skeleton span:nth-child(2n) {
   width: 70%;
 }
+/* Ask Knot citations of a YouTube transcript moment. */
+.ask-ref-video {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ask-source-time {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

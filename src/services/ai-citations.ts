@@ -18,7 +18,10 @@ export function readCitationSources(context?: string): CitationSource[] {
             (source.kind === "web" &&
               typeof source.captureId === "string" &&
               typeof source.sectionId === "string" &&
-              typeof source.ref === "string")),
+              typeof source.ref === "string") ||
+            (source.kind === "video" &&
+              typeof source.video?.videoId === "string" &&
+              typeof source.video.start === "number")),
       );
     return [data, ...(data.addedNotes ?? [])].flatMap((source) =>
       (source.structure ?? []).map((block: { id: string; text: string }) => ({

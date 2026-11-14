@@ -24,6 +24,8 @@ export interface TopicPassage {
     rects: [];
   };
   attribution?: string;
+  /** A passage of a YouTube card's saved transcript. */
+  video?: import("./youtube-transcript").VideoLocation;
 }
 export interface TopicSearch {
   passages: TopicPassage[];

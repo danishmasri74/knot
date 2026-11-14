@@ -209,3 +209,21 @@ export function installYoutubeToolbars(
     },
   };
 }
+
+/** YouTube cards in a document, or only those inside one note. */
+export function youtubeCards(
+  doc: { getBlocksByFlavour(flavour: string): { model: BlockModel }[] },
+  noteId?: string | null,
+): VideoSource[] {
+  const inNote = (model: BlockModel) => {
+    for (let at: BlockModel | null = model; at; at = at.parent)
+      if (at.flavour === "affine:note") return at.id === noteId;
+    return false;
+  };
+  return doc
+    .getBlocksByFlavour("affine:embed-youtube")
+    .map(({ model }) => model)
+    .filter((model) => !noteId || inNote(model))
+    .map((model) => videoSource(model))
+    .filter((source): source is VideoSource => !!source);
+}

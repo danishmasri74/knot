@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 /// Appended to the instructions only when a context was compacted.
-pub(crate) const COMPACT_INSTRUCTIONS: &str = "noteSources holds the cited note blocks: per note, one line per block in order, starting with its citation marker; cite a block by copying that marker. Indentation shows nesting; leading #, -, 1., [ ]/[x], > and code: show heading, list, checklist, quote and code formatting, and block text can state status too. '--- note N ---' separates canvas notes; deeper-indented lines continue the block above. citationSources then lists only website passages.";
+pub(crate) const COMPACT_INSTRUCTIONS: &str = "noteSources holds the cited note blocks: per note, one line per block in order, starting with its citation marker; cite a block by copying that marker. Indentation shows nesting; leading #, -, 1., [ ]/[x], > and code: show heading, list, checklist, quote and code formatting, and block text can state status too. '--- note N ---' separates canvas notes; deeper-indented lines continue the block above. citationSources then lists website passages and YouTube transcript passages (kind video: text from a YouTube card's saved transcript, starting with the [m:ss] moment it covers; mention that moment when citing one).";
 
 /// Appended for edit operations when a context was compacted.
 pub(crate) const COMPACT_EDIT_INSTRUCTIONS: &str = "Never copy noteSources line markers such as #, -, 1., [ ] or [x] into generated text; express structure with native block types.";

@@ -10,7 +10,12 @@ import type {
   TopicEvidence,
 } from "./topic-types";
 import type { DeckCard, DeckData } from "../features/editor/blocksuite/card-deck";
-import type { TopicPdf } from "./topic-extract";
+import type { TopicPdf, TopicVideo } from "./topic-extract";
+import {
+  loadTranscript,
+  transcriptPassages,
+  transcriptTitle,
+} from "./youtube-transcript";
 import { extractTopicContent, extractDeckPassages } from "./topic-extract";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
 import { extractTopicPdf } from "./topic-pdf";
@@ -27,6 +32,7 @@ export class TopicIndexer {
         result: unknown;
         semantic?: boolean;
         pdfs?: TopicPdf[];
+        videos?: TopicVideo[];
       }) => void;
       reject: (error: Error) => void;
     }
@@ -76,6 +82,7 @@ export class TopicIndexer {
       result: unknown;
       semantic?: boolean;
       pdfs?: TopicPdf[];
+      videos?: TopicVideo[];
     }>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
@@ -146,6 +153,44 @@ export class TopicIndexer {
                   failed = true;
                   failure = "partial-pdf";
                 }
+              }
+              // Saved YouTube transcripts are indexed with the document that
+              // holds the card (docs/YOUTUBE-TRANSCRIPT-PLAN.md).
+              const seen = new Set<string>();
+              for (const video of extracted.videos ?? []) {
+                if (this.stopped) return;
+                if (seen.has(video.videoId)) continue;
+                seen.add(video.videoId);
+                const transcript = await loadTranscript(
+                  this.catalog!.workspace,
+                  video.videoId,
+                ).catch(() => null);
+                if (!transcript) continue;
+                let selected: TopicPassage[] = transcriptPassages(
+                  transcript,
+                ).map((passage) => ({
+                  document: source.id,
+                  id: `video:${video.blockId}:${passage.start}`,
+                  title: transcriptTitle(transcript.title || video.title),
+                  text: passage.text,
+                  revision: source.revision,
+                  vector: [],
+                  video: {
+                    videoId: video.videoId,
+                    documentId: source.id,
+                    blockId: video.blockId,
+                    start: passage.start,
+                    title: transcript.title || video.title,
+                  },
+                }));
+                try {
+                  selected = (
+                    await this.call("passages", { passages: selected })
+                  ).result as TopicPassage[];
+                } catch {
+                  this.semantic = false;
+                }
+                passages.push(...selected);
               }
             }
           } catch {
@@ -300,6 +345,14 @@ export function startTopicIndex() {
     active?.stop();
     active = undefined;
   };
+}
+/** Re-index one document soon, for example after a transcript of one of its
+ * YouTube cards was saved. The index is a disposable cache. */
+export async function refreshTopicSource(documentId: string) {
+  const activation = active?.catalog?.activation;
+  if (!activation || !isTauri()) return;
+  await invoke("topic_stale", { activation, id: documentId }).catch(() => {});
+  window.dispatchEvent(new Event("knot-topic-sources-changed"));
 }
 export function topicIndex() {
   if (!active && getAiEnabled() && getWorkspaceSearchEnabled())

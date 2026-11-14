@@ -77,6 +77,8 @@ export type WebCitation = {
 };
 export type NoteCitation = {
   pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation;
+  /** A YouTube transcript passage found by workspace search. */
+  video?: import("./youtube-transcript").VideoLocation;
   revision?: string;
   attribution?: string;
   webSource?: string;
@@ -104,7 +106,22 @@ export type LinkCitation = {
   excerptPage?: number;
   excerptUrl?: string;
 };
-export type CitationSource = NoteCitation | WebCitation | LinkCitation;
+/** A passage from the saved transcript of a YouTube card in the request's
+ * notes (docs/YOUTUBE-TRANSCRIPT-PLAN.md). */
+export type VideoCitation = {
+  kind: "video";
+  document: string;
+  id: string;
+  text: string;
+  title: string;
+  video: import("./youtube-transcript").VideoLocation;
+  citation?: string;
+};
+export type CitationSource =
+  | NoteCitation
+  | WebCitation
+  | LinkCitation
+  | VideoCitation;
 export type NativeWebResult = {
   url: string;
   finalUrl?: string;

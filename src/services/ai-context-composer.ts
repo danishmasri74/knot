@@ -6,7 +6,20 @@ import {
   type WebEvidence,
   type WebCitation,
   type CitationSource,
+  type VideoCitation,
 } from "./web-source-types";
+import {
+  transcriptPassages,
+  transcriptTitle,
+  type Transcript,
+  type VideoLocation,
+} from "./youtube-transcript";
+
+/** A YouTube card in the request's notes with a saved transcript. */
+export type VideoEvidence = {
+  location: Omit<VideoLocation, "start">;
+  transcript: Pick<Transcript, "segments" | "chapters" | "title" | "track">;
+};
 
 const bytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).length;
@@ -18,6 +31,7 @@ export function composeAiContext(
   context: string,
   attempts: WebAttempt[] = [],
   prompt = "",
+  videos: VideoEvidence[] = [],
 ) {
   const data = JSON.parse(context);
   // Native source children remain evidence when a saved card is reused or improved.
@@ -183,6 +197,41 @@ export function composeAiContext(
       }
     }
   }
+  // Saved transcripts of YouTube cards in these notes: the passages sharing
+  // the most words with the request first, then in order, round-robin across
+  // videos, while the context budget lasts. They never crowd out notes.
+  const videoQueues = videos.map(({ location, transcript }) =>
+    transcriptPassages(transcript)
+      .map((passage, index) => ({
+        passage,
+        index,
+        score: [...terms].filter((t) =>
+          passage.text.toLocaleLowerCase().includes(t),
+        ).length,
+      }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map(({ passage }): VideoCitation => ({
+        kind: "video",
+        document: location.documentId,
+        id: `video:${location.blockId}:${passage.start}`,
+        text: passage.text,
+        title:
+          transcriptTitle(transcript.title || location.title) +
+          (transcript.track.kind === "asr" ? " (auto-generated captions)" : ""),
+        video: { ...location, start: passage.start },
+      })),
+  );
+  while (videoQueues.some((q) => q.length)) {
+    for (const queue of videoQueues) {
+      const citation = queue.shift();
+      if (!citation) continue;
+      citationSources.push(citation);
+      if (bytes(result) > WEB_LIMITS.contextBytes) {
+        citationSources.pop();
+        queue.length = 0;
+      }
+    }
+  }
   for (const evidence of webEvidence) {
     if (
       evidence.omitted.length &&
@@ -220,7 +269,9 @@ export function dropCoveredCopies(data: {
   addedNotes?: unknown;
   citationSources: CitationSource[];
 }) {
-  const notes = data.citationSources.filter((s) => s.kind !== "web");
+  const notes = data.citationSources.filter(
+    (s) => s.kind === undefined || s.kind === "note",
+  );
   if (!notes.length) return;
   // Block IDs are only unique within a document.
   const key = (document: unknown, id: unknown) => `${document}\u0000${id}`;

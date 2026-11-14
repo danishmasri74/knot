@@ -1,6 +1,6 @@
 # YouTube cards: side-panel player with transcript
 
-Plan written 14 November 2026, after a brainstorm. **Phase 1 implemented 14 November 2026** (side panel, fetch, schema 13); phase 2 (Ask Knot) is not started.
+Plan written 14 November 2026, after a brainstorm. **Phase 1 implemented 14 November 2026** (side panel, fetch, schema 13). **Phase 2 implemented 14 November 2026** (Ask Knot sources and citations, workspace search); see "Phase 2 as built".
 
 ## What the user asked for
 
@@ -175,3 +175,11 @@ Notes for the build:
 - **Player messaging in WebView2** was confirmed in phase 0. It depends on a real page origin (error 153 otherwise).
 - **YouTube's terms** discourage automated access. Lower risk here because the user starts each fetch and everything stays on the device.
 - **Auto-generated captions** have no punctuation and contain errors. Label them, and keep AI answers citing timestamps so claims can be checked.
+
+## Phase 2 as built (14 November 2026)
+
+- **Passages:** `transcriptPassages` (`src/services/youtube-transcript.ts`) groups transcript lines into passages of about 45 seconds (at most 900 characters, never across a chapter start), each led by `[m:ss]`.
+- **Current-note requests:** `AskKnot.tsx` loads the saved transcripts of the YouTube cards in the document (only the focused note's cards for a focused note or selection; at most 6 videos; never fetches). `composeAiContext(..., videos)` adds them as `kind: "video"` citation sources after notes and web passages, the ones sharing the most words with the request first, round-robin across videos, within the 170,000-byte context budget. Each carries `video` (`VideoLocation`: video ID, document, card block, start, title). Rust passes them through `citationSources`, and the compact instructions tell the model they start with their moment.
+- **Workspace search:** the topic worker reports YouTube cards per document (`TopicVideo`). The indexer loads each saved transcript and indexes its passages with the document, with a `video` location (stored in the cache's passage payload). After a transcript is fetched, `topic_stale` drops that document from the disposable cache so it is re-indexed. Like PDFs, a document with unsaved edits omits these passages until it saves.
+- **Citations:** answers show transcript markers as `▶ 12:24`. The source shows the video icon, the quoted line with its time, and **Play from 12:24**, which opens that video in the side panel and seeks once the player is ready.
+- **Not built:** "Go to card", transcripts in `.knotbook`, and transcripts in canvas card suggestions.
