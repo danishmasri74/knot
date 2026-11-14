@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   cardMedia,
   cardPreview,
+  isBlankCard,
   isMcqCard,
   mediaText,
   type CardDeck,
@@ -144,7 +145,7 @@ export function LibraryCardDeck({
   const cards = useMemo(() => {
     const term = query.trim().toLocaleLowerCase();
     return Object.values(data ?? {})
-      .filter((card) => !card.deleted && matchesType(card, type))
+      .filter((card) => !card.deleted && !isBlankCard(card) && matchesType(card, type))
       .map((card) => ({ card, title: titleOf(card, data), text: cardPreview(card, undefined, data) }))
       .filter((row) => row.text.toLocaleLowerCase().includes(term))
       .sort((a, b) => {

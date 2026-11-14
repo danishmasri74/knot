@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CardDeck,
   cardPreview,
+  isBlankCard,
   type DeckCard,
 } from "../features/editor/blocksuite/card-deck";
 import { cardIcon } from "./CardThumbnail";
@@ -94,7 +95,8 @@ export function CardDeckPanel({
         const end = Math.min(offset + 100, cards.length);
         while (offset < end) {
           const card = cards[offset++];
-          if (card.deleted) continue;
+          // Nothing to reuse in a blank card; it appears once it has content.
+          if (card.deleted || isBlankCard(card)) continue;
           let preview = previews.get(card);
           if (!preview) {
             const text = cardPreview(card, undefined, deck?.data);

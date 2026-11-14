@@ -3207,7 +3207,12 @@ export function App() {
                     disabled={!active || busy}
                     onClick={() => {
                       void run(async () => {
-                        await session.current?.enrollWorkspaceCards();
+                        const cleaned =
+                          await session.current?.enrollWorkspaceCards();
+                        if (cleaned)
+                          setNotice(
+                            `Moved ${cleaned} empty ${cleaned === 1 ? "card" : "cards"} to Trash.`,
+                          );
                         openSurface("cardDeck");
                       });
                     }}

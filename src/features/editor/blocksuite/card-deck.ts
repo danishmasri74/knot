@@ -154,6 +154,30 @@ export function nodeMcq(node: CardNode, deck?: DeckData) {
   }
 }
 
+// Blocks that hold nothing to reuse when their text is empty.
+const textOnly = new Set(["affine:paragraph", "affine:list", "affine:code", "affine:divider"]);
+/** A note card with nothing in it: no text (spaces don't count), no media,
+ * no question. The deck doesn't list these; there's nothing to reuse. */
+export function isBlankCard(card: DeckCard): boolean {
+  if (card.media || isMcqCard(card)) return false;
+  const blank = (nodes: CardNode[]): boolean =>
+    nodes.every((node) => {
+      const flavour = node.props["sys:flavour"];
+      if (flavour?.type === "json" && !textOnly.has(String(flavour.value)))
+        return false;
+      const text = node.props["prop:text"];
+      if (
+        text?.type === "text" &&
+        text.delta.some(
+          (run: { insert?: unknown }) =>
+            typeof run.insert === "string" && run.insert.trim(),
+        )
+      )
+        return false;
+      return blank(node.children);
+    });
+  return blank(card.nodes);
+}
 export function cardPreview(card: DeckCard, fallback = "Empty card", deck?: DeckData): string {
   const media = mediaText(card);
   if (media) return media.search || fallback;
@@ -718,6 +742,18 @@ export class CardDeck {
       (doc.getMap<number>("knot:card-generations").get(instance) ?? 0) <
         (card.generation ?? 0)
     );
+  }
+  /** Move blank cards that aren't placed anywhere to Trash. Callers make
+   * sure every notebook is loaded first, so placements are complete. */
+  trashBlankUnplaced() {
+    const used = this.placements();
+    let count = 0;
+    for (const card of Object.values(this.data)) {
+      if (card.deleted || used.has(card.id) || !isBlankCard(card)) continue;
+      this.delete(card.id);
+      count++;
+    }
+    return count;
   }
   restore(id: string) {
     if (!this.data[id]?.deleted || this.data[id].purged) return;

@@ -927,10 +927,23 @@ export async function openEditor(
       },
       async enrollWorkspaceCards() {
         for (const item of catalog) {
-          if (disposed) return;
+          if (disposed) return 0;
           await hydrate(item.id);
         }
+        // Once per workspace: blank cards left over before the deck stopped
+        // listing them go to Trash (restorable), if no canvas uses them.
+        let cleaned = 0;
+        const key = `knot.cleanup.blank-cards.${workspace}`;
+        try {
+          if (!localStorage.getItem(key)) {
+            cleaned = cardDeck.trashBlankUnplaced();
+            localStorage.setItem(key, "done");
+          }
+        } catch {
+          // Without storage, skip the cleanup rather than repeat it.
+        }
         await persistence.flush();
+        return cleaned;
       },
       cardCanvas: doc.spaceDoc.guid,
       placeCard,
