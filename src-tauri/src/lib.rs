@@ -22,6 +22,7 @@ mod ui_preferences;
 mod workspaces;
 mod web_sources;
 mod web_render;
+mod youtube;
 use std::sync::Mutex;
 use storage::{Object, Snapshot, Workspace};
 use tauri::{Manager, State};
@@ -372,6 +373,31 @@ async fn ai_chat_save(
 #[tauri::command]
 async fn ai_chat_delete(state: State<'_, AppState>, workspace: String, id: String) -> Reply<()> {
     with_active(&state, &workspace, |w| w.delete_ai_chat(&id))
+}
+/// A video's saved transcript JSON, if any (docs/YOUTUBE-TRANSCRIPT-PLAN.md).
+#[tauri::command]
+async fn video_transcript_get(
+    state: State<'_, AppState>,
+    workspace: String,
+    video_id: String,
+) -> Reply<Option<String>> {
+    with_active(&state, &workspace, |w| w.video_transcript(&video_id))
+}
+/// Fetch a transcript from YouTube and save it in the workspace. The network
+/// request runs without holding the workspace lock.
+#[tauri::command]
+async fn video_transcript_fetch(
+    state: State<'_, AppState>,
+    workspace: String,
+    video_id: String,
+    track: Option<String>,
+    preferred: String,
+) -> Reply<String> {
+    if track.as_ref().is_some_and(|t| t.len() > 64) || preferred.len() > 35 {
+        return Err(youtube::UNREADABLE.into());
+    }
+    let transcript = youtube::fetch(&video_id, track.as_deref(), &preferred).await?;
+    with_active(&state, &workspace, |w| w.save_video_transcript(&transcript))
 }
 #[tauri::command]
 async fn set_favorite(state: State<'_, AppState>, id: String, favorite: bool) -> Reply<()> {
@@ -854,6 +880,8 @@ pub fn run() {
                 ai_chats_list,
                 ai_chat_save,
                 ai_chat_delete,
+                video_transcript_get,
+                video_transcript_fetch,
                 create_collection,
                 getting_started_status,
                 install_getting_started,

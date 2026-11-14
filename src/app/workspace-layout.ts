@@ -1,5 +1,5 @@
 export type PaneKind =
-  "note" | "pdf" | "browser" | "cardDeck" | "ask" | "reference";
+  "note" | "pdf" | "browser" | "cardDeck" | "ask" | "reference" | "video";
 export const supportingKinds = new Set<string>([
   "note",
   "pdf",
@@ -7,6 +7,7 @@ export const supportingKinds = new Set<string>([
   "cardDeck",
   "ask",
   "reference",
+  "video",
 ]);
 export type PaneTab = {
   id: string;

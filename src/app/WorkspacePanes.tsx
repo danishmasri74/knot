@@ -27,6 +27,7 @@ const icons = {
   ask: "sparkles",
   cardDeck: "cardDeck",
   reference: "link",
+  video: "video",
 } as const;
 export function ColumnVisibilityToggle({
   layout,

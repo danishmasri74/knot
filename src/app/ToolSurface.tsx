@@ -11,6 +11,7 @@ export const surfaceTitles = {
   backlinks: "Backlinks",
   reference: "Links",
   pdf: "PDF reader",
+  video: "Video",
   browser: "Browser",
   export: "Export document",
   library: "Library",

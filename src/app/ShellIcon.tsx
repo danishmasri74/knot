@@ -49,6 +49,7 @@ export const shellIconPaths = {
   workspace: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
   backup: "M4 4h16v5H4z M6 9v12h12V9 M10 13h4",
   note: "M6 3h9l3 3v15H6z M14 3v5h4 M9 12h6 M9 16h6",
+  video: "M3 5h18v14H3z M10 9l5 3-5 3z",
   multipleChoice:
     "M8 5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M8 12a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M8 19a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M5.5 12h.01 M12 5h9 M12 12h9 M12 19h9",
   pdf: "M6 3h9l3 3v15H6z M14 3v5h4 M10 16c3-2 4-7 2-6-2 1 1 7 4 5 1-1-4-1-6 1-2 2 0 2 0 0z",

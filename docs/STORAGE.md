@@ -54,6 +54,8 @@ Schema 9 adds a workspace-owned `card_deck` JSON record. Note-card content is in
 
 Schema 12 adds `ai_chats` (id, updated, data): one Ask Knot chat per row as the JSON the interface writes, at most 16 MiB each. Rust checks the ID, size and that the JSON names the same chat, but does not interpret the turns. Chats are workspace data, so SQLite backups, restores and relocation include them; `.knotbook` sharing never copies them. Older builds refuse a schema-12 database, as with every schema change.
 
+Schema 13 adds `video_transcripts` (video_id, language, kind, fetched_at, data): one saved YouTube transcript per video, keyed by its 11-character video ID, so every card for the same video shares it ([YOUTUBE-TRANSCRIPT-PLAN.md](YOUTUBE-TRANSCRIPT-PLAN.md)). `data` is versioned JSON written by `youtube.rs` (title, channel, duration, chosen and available tracks, chapters, timed segments), at most 2 MiB. Fetching another caption language replaces the row. Backups, restores and relocation include it through the database; `.knotbook` sharing doesn't copy it, so a recipient fetches the transcript again. Older builds refuse a schema-13 database.
+
 Deleting a placement retains its card. Explicit deck deletion removes live placements and retains a tombstone so restored or undone placements cannot resurrect it. Backups include the deck through the database. Trash purging retains attachment records referenced by deck content, including cards with no remaining placements.
 
 Empty Trash also empties deleted cards: each becomes a content-free tombstone (`deleted` and `purged`, `nodes: []`) that keeps its ID and generation, so notebooks that still link to it drop the placement on open instead of failing. Its attachments are released by the same purge.

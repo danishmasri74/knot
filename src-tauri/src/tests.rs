@@ -1342,7 +1342,7 @@ fn collection_trash_migrates_version_seven_with_recovery_backup() {
     let mut w = Workspace::open(root.clone()).unwrap();
     let notebook = w.create("note").unwrap();
     let folder = w.create_collection("Keep", Some(&notebook)).unwrap();
-    w.db.execute_batch("ALTER TABLE collections DROP COLUMN deleted_at; DROP TABLE mcq_progress; DROP TABLE mcq_attempts; DROP TABLE mcq_drafts; DROP TABLE card_deck; DROP TABLE notebook_origins; DROP TABLE unshared_references; DROP TABLE ai_chats; DELETE FROM schema_migrations WHERE version>=8; PRAGMA user_version=7;").unwrap();
+    w.db.execute_batch("ALTER TABLE collections DROP COLUMN deleted_at; DROP TABLE mcq_progress; DROP TABLE mcq_attempts; DROP TABLE mcq_drafts; DROP TABLE card_deck; DROP TABLE notebook_origins; DROP TABLE unshared_references; DROP TABLE ai_chats; DROP TABLE video_transcripts; DELETE FROM schema_migrations WHERE version>=8; PRAGMA user_version=7;").unwrap();
     drop(w);
     let w = Workspace::open(root).unwrap();
     assert_eq!(

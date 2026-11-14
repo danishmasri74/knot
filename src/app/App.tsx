@@ -44,6 +44,8 @@ import {
   type LinkPreference,
 } from "../services/web-links";
 import { parsePdfSourceUrl } from "../features/editor/blocksuite/pdf-highlights";
+import { installYoutubeToolbars } from "../features/editor/blocksuite/youtube-toolbar";
+import type { VideoSource } from "../services/youtube-transcript";
 import { ViewTransition } from "./ViewTransition";
 import { CanvasSuggestions } from "./CanvasSuggestions";
 import {
@@ -132,6 +134,9 @@ import type {
 } from "../features/editor/blocksuite/pdf-highlights";
 const PdfReader = lazy(() =>
   import("./PdfReader").then((module) => ({ default: module.PdfReader })),
+);
+const VideoReader = lazy(() =>
+  import("./VideoReader").then((module) => ({ default: module.VideoReader })),
 );
 import { BacklinksPanel } from "./BacklinksPanel";
 import {
@@ -356,7 +361,8 @@ export function App() {
       if (!(target instanceof Element)) return;
       const kind =
         target.closest<HTMLElement>("[data-pane-kind]")?.dataset.paneKind;
-      if (kind === "browser" || kind === "pdf") setDocumentUndo(false);
+      if (kind === "browser" || kind === "pdf" || kind === "video")
+        setDocumentUndo(false);
       else if (kind === "note") setDocumentUndo(true);
       const editor = target.closest<EditorSession["editor"]>(
         "affine-editor-container",
@@ -366,7 +372,7 @@ export function App() {
         setDocumentUndo(true);
       } else if (
         target.closest(
-          ".pane-browser, .pane-pdf, .ask-knot, input, textarea, dialog",
+          ".pane-browser, .pane-pdf, .video-reader, .ask-knot, input, textarea, dialog",
         )
       )
         setDocumentUndo(false);
@@ -438,6 +444,11 @@ export function App() {
       layoutRef.current.tabs[action.id]?.kind === "pdf"
     )
       setPdfReader(null);
+    if (
+      action.type === "close" &&
+      layoutRef.current.tabs[action.id]?.kind === "video"
+    )
+      setVideoReader(null);
     dispatchLayout(action);
   }
   const closePane = (id: string) => dispatchPaneAction({ type: "close", id });
@@ -596,6 +607,48 @@ export function App() {
     );
     openSurface("pdf");
   }
+  // The YouTube side panel (docs/YOUTUBE-TRANSCRIPT-PLAN.md): one video at a
+  // time, opened from a card's toolbar. Pressing the button again closes it.
+  const [videoReader, setVideoReader] = useState<VideoSource | null>(null);
+  const videoState = useRef(videoReader);
+  videoState.current = videoReader;
+  // Read the layout at call time; `layout` is declared further down.
+  const videoShown = (videoId: string) => {
+    const current = layoutRef.current;
+    return (
+      videoState.current?.videoId === videoId &&
+      !current.hidden &&
+      current.groups.some((g) => current.tabs[g.activeTabId]?.kind === "video")
+    );
+  };
+  const toggleVideo = useRef((source: VideoSource) => {
+    if (videoShown(source.videoId)) {
+      const tab = Object.values(layoutRef.current.tabs).find(
+        (entry) => entry.kind === "video",
+      );
+      if (tab) closePane(tab.id);
+      return;
+    }
+    setVideoReader(source);
+    openSurface("video");
+  });
+  const youtubeToolbars = useRef<ReturnType<
+    typeof installYoutubeToolbars
+  > | null>(null);
+  useEffect(() => {
+    const controller = installYoutubeToolbars(
+      (source) => toggleVideo.current(source),
+      (videoId) => videoShown(videoId),
+    );
+    youtubeToolbars.current = controller;
+    return () => {
+      controller.dispose();
+      youtubeToolbars.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    youtubeToolbars.current?.refresh();
+  });
   const [linksView, setLinksView] = useState<LinksView>("add");
   const [backlinks, setBacklinks] = useState<BacklinkReport | null>(null);
   async function scanBacklinks() {
@@ -1487,6 +1540,7 @@ export function App() {
     setSurface(null);
     setShowSearch(false);
     setPdfReader(null);
+    setVideoReader(null);
     setLinksView("add");
     setBacklinks(null);
     setCleanup(null);
@@ -2121,6 +2175,7 @@ export function App() {
               setSurface(null);
               setShowSearch(false);
               setPdfReader(null);
+              setVideoReader(null);
               setLinksView("add");
               setBacklinks(null);
               if (trash !== null) await loadTrash();
@@ -4134,7 +4189,9 @@ export function App() {
                       ?.notebookNotes()
                       .find((note) => note.id === tab.noteId)?.title) ||
                   "Note"
-                : surfaceTitles[tab.kind]
+                : tab.kind === "video"
+                  ? videoReader?.title || surfaceTitles.video
+                  : surfaceTitles[tab.kind]
             }
             contentKey={(tab) => tab.id}
             render={(tab) => (
@@ -4252,6 +4309,20 @@ export function App() {
                               "Resolve the save error and retry.",
                             );
                         }}
+                      />
+                    </Suspense>
+                  )}
+                {tab.kind === "video" && !videoReader && (
+                  <p>Open a YouTube card's side panel from its toolbar.</p>
+                )}
+                {tab.kind === "video" &&
+                  videoReader &&
+                  workspaceCatalog.active && (
+                    <Suspense fallback={<p>Loading video…</p>}>
+                      <VideoReader
+                        key={videoReader.videoId}
+                        source={videoReader}
+                        workspace={workspaceCatalog.active}
                       />
                     </Suspense>
                   )}
