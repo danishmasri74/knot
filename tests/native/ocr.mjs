@@ -337,6 +337,118 @@ try {
   await page.screenshot({ path: path.join(root, "scan-page2.png") });
   console.log("PASS: a scanned-page citation opens the PDF at page 2 with the lines highlighted.");
 
+  // Phase 3: the scanned page has a selectable text layer from OCR lines.
+  const layer = await page.evaluate(() => {
+    const frame = document.querySelector('.pdf-reader .pdf-page[data-page="2"]');
+    const spans = [...(frame?.querySelectorAll(".textLayer span") ?? [])];
+    return {
+      text: spans.map((s) => s.textContent).join(" | "),
+      note: !!document.querySelector(".pdf-reader .pdf-ocr-note"),
+      unread: document.querySelector(".pdf-reader")?.textContent.includes("hasn't read"),
+    };
+  });
+  assert.match(layer.text, /Ribosomes build proteins/);
+  assert(layer.note, "the page says its text was read from the scan");
+  assert(!layer.unread);
+  // Select a line and make a highlight from it, as on a text PDF.
+  await page.evaluate(() => {
+    const frame = document.querySelector('.pdf-reader .pdf-page[data-page="2"]');
+    const span = [...frame.querySelectorAll(".textLayer span")].find((s) =>
+      s.textContent.includes("Ribosomes"),
+    );
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    span.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.waitForSelector(".pdf-selection-panel", { timeout: 10000 });
+  await page.screenshot({ path: path.join(root, "scan-selection.png") });
+  await page.keyboard.press("Escape");
+  console.log("PASS: a scanned page has selectable text and a selection makes a highlight draft.");
+
+  // Phase 3: Ask Knot finds the saved text of the open note's images.
+  const noteText = await page.evaluate(async (target) => {
+    const { noteImageRefs, noteImageTexts } = await import("/src/services/note-image-text.ts");
+    const doc = { id: target.id, getBlocksByFlavour: (f) => document.querySelector("affine-editor-container").doc.getBlocksByFlavour(f) };
+    return (await noteImageTexts(noteImageRefs(doc, null))).map((e) => e.lines.map((l) => l.text).join(" "));
+  }, fixture.canvas);
+  assert(noteText.some((t) => t.includes("Mitochondria release energy")), JSON.stringify(noteText));
+  console.log("PASS: Ask Knot's note context gets the open canvas's image text.");
+
+  // Phase 3: Ctrl+K search finds text in images and scans and opens them.
+  for (const [query, label, check] of [
+    ["Mitochondria release", "Text in image", async () => {
+      await page.waitForFunction(
+        (id) => document.querySelector("affine-editor-container")?.doc.id === id,
+        fixture.canvas.id,
+        { timeout: 30000 },
+      );
+      await page.waitForSelector(".ocr-line-highlight", { timeout: 10000 });
+    }],
+    ["Ribosomes build", "Text in scan", async () => {
+      await page.waitForFunction(
+        () => document.querySelector(".pdf-reader")?.textContent.includes("Page 2 of 2"),
+        null,
+        { timeout: 30000 },
+      );
+      await page.waitForSelector(".pdf-reader .pdf-highlight", { timeout: 10000 });
+    }],
+  ]) {
+    await page.keyboard.press("Control+k");
+    const box = page.getByRole("combobox", { name: "Search workspace" });
+    await box.waitFor();
+    await box.fill(query);
+    const hit = page.locator("#global-search-results [role=option]").filter({ hasText: label });
+    await hit.first().waitFor({ timeout: 30000 }).catch(async (error) => {
+      console.log(
+        "DEBUG ocr_search:",
+        JSON.stringify(
+          await page.evaluate(async (q) => {
+            const invoke = window.__TAURI_INTERNALS__.invoke;
+            const { activation } = await invoke("topic_catalog");
+            return invoke("ocr_search", { activation, query: q }).catch((e) => String(e));
+          }, query),
+        ),
+        "options:",
+        await page.locator("#global-search-results [role=option]").allTextContents(),
+      );
+      throw error;
+    });
+    await page.screenshot({ path: path.join(root, `search-${label.replaceAll(" ", "-")}.png`) });
+    const wanted = await page.evaluate(async (q) => {
+      const invoke = window.__TAURI_INTERNALS__.invoke;
+      const { activation } = await invoke("topic_catalog");
+      return invoke("ocr_search", { activation, query: q });
+    }, query);
+    await hit.first().click();
+    await check().catch(async (error) => {
+      console.log(
+        "DEBUG wanted:",
+        JSON.stringify(wanted.map((m) => [m.document, m.key, m.block])),
+        "images in open doc:",
+        JSON.stringify(
+          await page.evaluate(() => {
+            const doc = document.querySelector("affine-editor-container")?.doc;
+            return doc
+              ? doc.getBlocksByFlavour("affine:image").map(({ model }) => [model.id, model.sourceId, doc.getParent(model)?.id])
+              : null;
+          }),
+        ),
+        "deck card:",
+        JSON.stringify(
+          await page.evaluate(async (deckId) => {
+            const deck = JSON.parse(await window.__TAURI_INTERNALS__.invoke("load_card_deck"));
+            return deck[deckId]?.nodes?.map((n) => [n.props["sys:flavour"]?.value, n.props["prop:sourceId"]?.value, n.children?.map((c) => [c.props["sys:flavour"]?.value, c.props["prop:sourceId"]?.value])]);
+          }, wanted[0]?.document?.slice(5)),
+        ),
+      );
+      throw error;
+    });
+  }
+  console.log("PASS: Ctrl+K finds text in an image and a scan and opens each with the lines marked.");
+
   // Pause shows in status; turning OCR off removes its passages; turning it
   // back on restores them from the cache without reading again.
   await page.evaluate(async () => {

@@ -25,6 +25,12 @@ import {
   validatePdfHighlight,
 } from "../features/editor/blocksuite/pdf-highlights";
 import { TextLayer, type PDFDocumentProxy } from "pdfjs-dist";
+import { lookupOcr } from "../services/note-image-text";
+import {
+  getOcrPreferences,
+  getWorkspaceSearchEnabled,
+} from "../services/ai-preferences";
+import type { OcrLine } from "../services/ocr-passages";
 import { openPdfBytes } from "../services/pdf-input";
 import type { AiPdfSource } from "../services/pdf-input";
 
@@ -58,6 +64,8 @@ export function PdfReader({
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
   const [hasText, setHasText] = useState(false);
+  // A scanned page: "read" when its text layer came from saved OCR lines.
+  const [scanned, setScanned] = useState<"read" | "unread" | undefined>();
   const root = useRef<HTMLElement>(null);
   const floating = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState(false);
@@ -163,10 +171,14 @@ export function PdfReader({
     `[data-page="${pageNumber}"]`,
   );
   const textLayer = pageFrame?.querySelector<HTMLDivElement>(".textLayer");
-  const pageStatus = useCallback((ready: boolean, text: boolean) => {
-    setReady(ready);
-    setHasText(text);
-  }, []);
+  const pageStatus = useCallback(
+    (ready: boolean, text: boolean, scan?: "read" | "unread") => {
+      setReady(ready);
+      setHasText(text);
+      setScanned(scan);
+    },
+    [],
+  );
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
     const target = scroller?.querySelector<HTMLElement>(
@@ -594,7 +606,16 @@ export function PdfReader({
       )}
       {loading && <p>Loading local PDF…</p>}
       {ready && !hasText && (
-        <p>This page has no selectable text. OCR is not supported.</p>
+        <p>
+          {getOcrPreferences().enabled && getWorkspaceSearchEnabled()
+            ? "Knot hasn't read the text on this scanned page yet. It reads scanned pages in the background while you're away."
+            : "This page has no selectable text. To read scanned pages, turn on Search my workspace and Read text in images and scans in Settings → AI."}
+        </p>
+      )}
+      {ready && scanned === "read" && (
+        <p className="pdf-ocr-note">
+          Text on this page was read from the scan and may contain errors.
+        </p>
       )}
       {draft && (
         <div ref={floating} className="pdf-selection-panel" style={position}>
@@ -847,6 +868,7 @@ export function PdfReader({
                 readerWidth={readerWidth}
                 zoom={zoom}
                 active={activePage}
+                ocrKey={key}
                 onStatus={pageStatus}
                 onPointerDownCapture={() => setPageNumber(number)}
                 onPointerLeave={cancelHover}
@@ -964,6 +986,7 @@ function ReaderPage({
   readerWidth,
   zoom,
   active,
+  ocrKey,
   onStatus,
   children,
   ...events
@@ -973,13 +996,20 @@ function ReaderPage({
   readerWidth: number;
   zoom: number;
   active: boolean;
-  onStatus: (ready: boolean, hasText: boolean) => void;
+  /** The PDF's attachment key, to find text OCR read from a scanned page. */
+  ocrKey?: string;
+  onStatus: (
+    ready: boolean,
+    hasText: boolean,
+    scanned?: "read" | "unread",
+  ) => void;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const frame = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   const [ready, setReady] = useState(false);
   const [hasText, setHasText] = useState(false);
+  const [scanned, setScanned] = useState<"read" | "unread" | undefined>();
   const [error, setError] = useState("");
   useEffect(() => {
     const el = frame.current!;
@@ -991,8 +1021,8 @@ function ReaderPage({
     return () => observer.disconnect();
   }, []);
   useLayoutEffect(() => {
-    if (active) onStatus(near && ready, hasText);
-  }, [active, near, ready, hasText, onStatus]);
+    if (active) onStatus(near && ready, hasText, scanned);
+  }, [active, near, ready, hasText, scanned, onStatus]);
   useEffect(() => {
     if (!near || !frame.current || !layer.current) return;
     let cancelled = false;
@@ -1039,9 +1069,22 @@ function ReaderPage({
         await render.promise;
         const content = await page.getTextContent();
         if (cancelled) return;
-        setHasText(
-          content.items.some((item) => "str" in item && item.str.trim()),
+        const layered = content.items.some(
+          (item) => "str" in item && item.str.trim(),
         );
+        if (!layered && ocrKey) {
+          // A scan: build the text layer from lines OCR already read.
+          const [lines] = await lookupOcr([{ key: ocrKey, page: pageNumber }]);
+          if (cancelled) return;
+          setScanned(lines?.length ? "read" : "unread");
+          if (lines?.length) {
+            ocrTextLayer(container, lines, unscaled, viewport);
+            setHasText(true);
+            setReady(true);
+            return;
+          }
+        } else setScanned(undefined);
+        setHasText(layered);
         text = new TextLayer({
           textContentSource: content,
           container,
@@ -1060,7 +1103,7 @@ function ReaderPage({
       canvas.remove();
       container.replaceChildren();
     };
-  }, [near, pdf, pageNumber, readerWidth, zoom]);
+  }, [near, pdf, pageNumber, readerWidth, zoom, ocrKey]);
 
   return (
     <div
@@ -1075,4 +1118,41 @@ function ReaderPage({
       {children}
     </div>
   );
+}
+
+/**
+ * An invisible, selectable text layer from OCR lines (boxes in page
+ * fractions), laid out like pdf.js's so selection, copy and highlight cards
+ * work as on text PDFs. Each line is stretched to its box.
+ */
+function ocrTextLayer(
+  container: HTMLDivElement,
+  lines: OcrLine[],
+  unscaled: { width: number; height: number },
+  viewport: { width: number; height: number },
+) {
+  const measure = document.createElement("canvas").getContext("2d");
+  const family = "sans-serif";
+  container.replaceChildren();
+  for (const line of lines) {
+    const height = line.h * unscaled.height;
+    const fontPx = line.h * viewport.height;
+    const span = document.createElement("span");
+    span.textContent = line.text;
+    span.setAttribute("role", "presentation");
+    span.style.left = `${line.x * 100}%`;
+    span.style.top = `${line.y * 100}%`;
+    span.style.fontFamily = family;
+    span.style.setProperty("--font-height", `${height}px`);
+    if (measure) {
+      measure.font = `${fontPx}px ${family}`;
+      const natural = measure.measureText(line.text).width;
+      if (natural > 0)
+        span.style.setProperty(
+          "--scale-x",
+          String((line.w * viewport.width) / natural),
+        );
+    }
+    container.append(span, document.createElement("br"));
+  }
 }

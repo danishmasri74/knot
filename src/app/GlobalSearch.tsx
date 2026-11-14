@@ -12,6 +12,7 @@ export function GlobalSearch({
   recent,
   onClose,
   onOpen,
+  onOpenOcr,
   preferredView,
   isResultOnCurrentPage,
 }: {
@@ -19,13 +20,15 @@ export function GlobalSearch({
   recent: () => Promise<KnowledgeObject[]>;
   onClose: () => void;
   onOpen: (source: KnowledgeObject, noteId?: string, view?: NoteView, query?: string) => Promise<void>;
+  /** Opens a match in text read from an image or a scanned page. */
+  onOpenOcr?: (result: Result) => Promise<void>;
   preferredView: NoteView;
   isResultOnCurrentPage?: (result: Result) => boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const callbacks = useRef({ search, recent, onClose, onOpen });
-  callbacks.current = { search, recent, onClose, onOpen };
+  const callbacks = useRef({ search, recent, onClose, onOpen, onOpenOcr });
+  callbacks.current = { search, recent, onClose, onOpen, onOpenOcr };
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
@@ -92,8 +95,10 @@ export function GlobalSearch({
     if (opening) return;
     setOpening(true);
     try {
-      await callbacks.current.onOpen(result.source, result.noteId,
-        view ?? (isResultOnCurrentPage?.(result) ? "page" : undefined), query.trim());
+      if (result.image || result.pdf) await callbacks.current.onOpenOcr?.(result);
+      else
+        await callbacks.current.onOpen(result.source, result.noteId,
+          view ?? (isResultOnCurrentPage?.(result) ? "page" : undefined), query.trim());
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -192,7 +197,7 @@ export function GlobalSearch({
         >
           {results.map((result, index) => (
             <button
-              key={`${result.source.id}:${result.noteId ?? ""}`}
+              key={`${result.source.id}:${result.noteId ?? ""}:${result.image?.blockId ?? ""}:${result.pdf ? `${result.pdf.key}#${result.pdf.page}` : ""}`}
               id={`search-result-${index}`}
               role="option"
               aria-label={
@@ -206,10 +211,22 @@ export function GlobalSearch({
               onMouseMove={() => setSelected(index)}
               onClick={() => void open(result)}
             >
-              <ShellIcon name={result.noteId ? "note" : "notebook"} />
+              <ShellIcon
+                name={
+                  result.image
+                    ? "image"
+                    : result.pdf
+                      ? "pdf"
+                      : result.noteId
+                        ? "note"
+                        : "notebook"
+                }
+              />
               <span>
                 <strong>{result.noteTitle || result.source.title}</strong>
-                {result.noteId && <small>{result.source.title}</small>}
+                {(result.noteId || result.image || result.pdf) && (
+                  <small>{result.source.title}</small>
+                )}
                 {result.excerpt && <small>{result.excerpt}</small>}
               </span>
               {selected === index && (

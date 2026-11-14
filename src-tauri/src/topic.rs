@@ -8,7 +8,7 @@ use std::{
     sync::Mutex,
 };
 use tauri::State;
-const FORMAT: i64 = 6;
+const FORMAT: i64 = 7;
 pub struct TopicCache(
     pub PathBuf,
     pub Mutex<bool>,
@@ -198,7 +198,7 @@ pub(crate) fn open(path: &Path) -> Result<Connection, String> {
         if check != "ok" {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        db.execute_batch("CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,revision TEXT NOT NULL,error INTEGER NOT NULL,failure TEXT); CREATE TABLE IF NOT EXISTS passages(source TEXT NOT NULL,ordinal INTEGER NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(source,ordinal)); CREATE TABLE IF NOT EXISTS representations(digest TEXT PRIMARY KEY,model TEXT NOT NULL,vector TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS lexical USING fts5(source UNINDEXED,ordinal UNINDEXED,title,body,tokenize='unicode61'); CREATE TABLE IF NOT EXISTS images(source TEXT NOT NULL,key TEXT NOT NULL,page INTEGER NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(source,key,page)); CREATE INDEX IF NOT EXISTS images_hash ON images(sha256); PRAGMA user_version=6;")?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,revision TEXT NOT NULL,error INTEGER NOT NULL,failure TEXT); CREATE TABLE IF NOT EXISTS passages(source TEXT NOT NULL,ordinal INTEGER NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(source,ordinal)); CREATE TABLE IF NOT EXISTS representations(digest TEXT PRIMARY KEY,model TEXT NOT NULL,vector TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS lexical USING fts5(source UNINDEXED,ordinal UNINDEXED,title,body,tokenize='unicode61'); CREATE TABLE IF NOT EXISTS images(source TEXT NOT NULL,key TEXT NOT NULL,page INTEGER NOT NULL,sha256 TEXT NOT NULL,block TEXT NOT NULL,PRIMARY KEY(source,key,page)); CREATE INDEX IF NOT EXISTS images_hash ON images(sha256); PRAGMA user_version=7;")?;
         Ok(db)
     };
     match init() {
@@ -357,9 +357,12 @@ pub fn topic_replace(
     // passages include (docs/WORKSPACE-OCR-PLAN.md).
     images: Option<Vec<crate::ocr::Unit>>,
     read: Option<Vec<crate::ocr::Unit>>,
+    // The block holding each of `images` (an image block or a PDF attachment).
+    blocks: Option<Vec<String>>,
 ) -> Reply<()> {
     let images = images.unwrap_or_default();
     let read = read.unwrap_or_default();
+    let blocks = blocks.unwrap_or_default();
     if images.len() > 4096 || passages.len() > 4096
         || passages.iter().any(|p| {
             p.document != id
@@ -422,9 +425,15 @@ pub fn topic_replace(
         .map_err(|e| e.to_string())?;
     }
     for (unit, hash) in &image_hashes {
+        let block = images
+            .iter()
+            .position(|u| u == unit)
+            .and_then(|i| blocks.get(i))
+            .map(|b| b.chars().take(200).collect::<String>())
+            .unwrap_or_default();
         tx.execute(
-            "INSERT OR IGNORE INTO images VALUES(?1,?2,?3,?4)",
-            params![id, unit.key, unit.page, hash],
+            "INSERT OR IGNORE INTO images VALUES(?1,?2,?3,?4,?5)",
+            params![id, unit.key, unit.page, hash, block],
         )
         .map_err(|e| e.to_string())?;
     }

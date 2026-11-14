@@ -48,6 +48,7 @@ import {
   withExcerpts,
 } from "../services/web-search-excerpts";
 import { citedSentence, claimsFor } from "../services/cited-sentence";
+import { noteImageRefs, noteImageTexts } from "../services/note-image-text";
 import {
   composeAiContext,
   retainedWebAttempts,
@@ -1797,9 +1798,31 @@ function AskKnotPanel({
               transcript,
             }));
       if (request.current !== id || !mounted.current) return;
+      // Text OCR already read from pictures in the same scope as the videos:
+      // questions about an image's words are answered from text.
+      const imageTexts =
+        replayContext || cardContext || current.pdf || !useSources
+          ? []
+          : await noteImageTexts(
+              noteImageRefs(
+                s.doc,
+                current.label === "Selection" && !current.ranges.length
+                  ? { blocks: current.selectedBlocks ?? [] }
+                  : current.label === "Selection" ||
+                      current.label === "Focused note"
+                    ? current.note
+                    : null,
+              ),
+            );
       const requestContext =
         replayContext ??
-        composeAiContext(baseContext, webSourcesRef.current, input, videos);
+        composeAiContext(
+          baseContext,
+          webSourcesRef.current,
+          input,
+          videos,
+          imageTexts,
+        );
       const bytes = (value: string) => new TextEncoder().encode(value).length;
       if (bytes(requestContext) > 180000)
         throw new Error(
@@ -3312,7 +3335,12 @@ const ChatText = memo(function ChatText({
   // Transcript citations read as the moment they cite: "▶ 12:24".
   const moments = new Map<string, number>();
   table.forEach((source, index) => {
-    if (source.kind !== "link" && source.kind !== "web" && source.video)
+    if (
+      source.kind !== "link" &&
+      source.kind !== "web" &&
+      source.kind !== "image" &&
+      source.video
+    )
       moments.set(source.citation ?? `[S${index + 1}]`, source.video.start);
   });
   const ids = citationIds(text);
@@ -3472,9 +3500,13 @@ const CitationSources = memo(function CitationSources({
               </button>
             </div>
           );
-        // Text Windows OCR read from an image (workspace search).
+        // Text Windows OCR read from an image (workspace search, or a
+        // picture in the request's own notes).
         const image =
-          source && (source.kind === undefined || source.kind === "note")
+          source &&
+          (source.kind === undefined ||
+            source.kind === "note" ||
+            source.kind === "image")
             ? source.image
             : undefined;
         if (source && image)

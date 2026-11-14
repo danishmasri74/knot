@@ -1,6 +1,6 @@
 # Offline OCR for workspace search
 
-Plan written 14 November 2026. **Phase 1 implemented 14 November 2026** (images in notes, canvases and cards) and **phase 2 implemented 14 November 2026** (scanned PDF pages, line highlights); see "Phase 1 as built" and "Phase 2 as built". Phase 3 (reuse) is not started.
+Plan written 14 November 2026. **Phase 1 implemented 14 November 2026** (images in notes, canvases and cards) and **phase 2 implemented 14 November 2026** (scanned PDF pages, line highlights); see "Phase 1 as built" and "Phase 2 as built". **Phase 3 implemented 14 November 2026** (reuse in Ask Knot, the PDF reader and Ctrl+K search); see "Phase 3 as built".
 
 ## Goal
 
@@ -170,6 +170,16 @@ A 250-item backlog therefore takes about 50 minutes. The only stall over 50 ms i
 - **Not OCR, found on the way:** Ask Knot sends `callId` with workspace-search and image-viewing results, while `SearchResult` and `ImageResult` in `ai.rs` only accepted `call_id`. Every answer that searched the workspace or looked at images failed at its second request with "invalid args `searches`… missing field `call_id`". Both now accept either spelling (`tool_results_accept_the_renderers_camel_case`).
 
 **Testing note:** this app's Tauri IPC goes over `postMessage`, and `invoke`, `ipc` and `postMessage` on `__TAURI_INTERNALS__` are non-writable. Overriding `window.fetch` or `invoke` in a native test does not intercept `ai_*` commands, so such tests reach the real provider with the user's saved key. Two attempts while writing `ocr.mjs` did (priced under $0.0003 in total; only test text was sent). Native tests that mock AI this way, such as `topic-retrieval.mjs`, should be checked before they are run again.
+
+## Phase 3 as built
+
+Nothing new is read: each part uses saved readings through `ocr_lookup` or `ocr_search`, and only while Read text in images and scans (and Search my workspace) are on.
+
+- **Ask Knot reads pictures' text.** `noteImageRefs`/`noteImageTexts` (`src/services/note-image-text.ts`) collect the images in the same scope as YouTube cards (selection, focused note or document, at most 10) and their saved lines. `composeAiContext` adds them after notes, web passages and transcripts as `kind: "image"` citation sources (most relevant passages first, within the context budget), titled "<caption> · text in image", with the image location and line boxes. Rust (`ai_context.rs`) sends the model only citation, kind, title and text, and `COMPACT_INSTRUCTIONS` and `IMAGES_RULES` say this text may contain recognition errors and that view_images is for what text can't show. Answers cite it with the same "Text read from image" source and **Open image**.
+- **Selectable scanned pages.** When a PDF page has no text layer, `ReaderPage` looks up the page's lines and builds an invisible text layer from them (`ocrTextLayer` in `PdfReader.tsx`), using pdf.js's span layout (`--font-height`, `--scale-x` stretching each line to its box). Selection, copy and highlight cards then work as on text PDFs, a line at a time. The reader says "Text on this page was read from the scan and may contain errors"; an unread scanned page says Knot hasn't read it yet (or how to turn reading on) instead of "OCR is not supported".
+- **Ctrl+K search.** `ocr_search` matches the query (case-insensitive, like Library search) against saved lines of the active workspace's images and scanned pages, using the search cache's `images` table, which now stores each item's block (`FORMAT` 7). Results show as "Text in image" or "Text in scan" with the image or PDF icon, the file name and page, and open the image (lines marked) or the PDF at the page (lines highlighted). Matches inside Card Deck cards are listed under the notebook or canvas the card is placed on and opened there; `openCitedImage` now does the same for Ask Knot citations of images in placed cards, finding the picture in the placed card by its file key.
+- **Tests:** `image_text_is_sent_without_navigation_data` (Rust), the composer's image-citation test, and new steps in `tests/native/ocr.mjs`: the scanned page has a text layer and a selection makes a highlight draft; Ask Knot's note context gets the canvas image's text; Ctrl+K finds and opens text in an image and in a scan.
+- **Limits:** the text layer and search know where each line is, not each word, so selections and highlights snap to lines. Unplaced Card Deck cards' images aren't listed in Ctrl+K search. The Ask Knot step is checked up to the composed context; no answer is generated in tests.
 
 ## Phases
 

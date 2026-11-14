@@ -21,7 +21,10 @@ export function readCitationSources(context?: string): CitationSource[] {
               typeof source.ref === "string") ||
             (source.kind === "video" &&
               typeof source.video?.videoId === "string" &&
-              typeof source.video.start === "number")),
+              typeof source.video.start === "number") ||
+            (source.kind === "image" &&
+              typeof source.image?.blockId === "string" &&
+              typeof source.image.key === "string")),
       );
     return [data, ...(data.addedNotes ?? [])].flatMap((source) =>
       (source.structure ?? []).map((block: { id: string; text: string }) => ({

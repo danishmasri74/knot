@@ -857,7 +857,7 @@ pub fn run() {
                 ai::ai_disconnect,
                 ai::ai_models,
                 ai::ai_respond,
-                ocr::ocr_configure, ocr::ocr_hold, ocr::ocr_lookup, ocr::ocr_read_backlog, ocr::ocr_status, topic::topic_enabled, topic::topic_catalog, topic::topic_pending, topic::topic_load, topic::topic_replace, topic::topic_search, topic::topic_stale,
+                ocr::ocr_configure, ocr::ocr_hold, ocr::ocr_lookup, ocr::ocr_read_backlog, ocr::ocr_search, ocr::ocr_status, topic::topic_enabled, topic::topic_catalog, topic::topic_pending, topic::topic_load, topic::topic_replace, topic::topic_search, topic::topic_stale,
                 ai::ai_cancel,
                 web_sources::web_sources_fetch,
                 web_sources::web_sources_cancel,

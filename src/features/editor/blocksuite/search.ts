@@ -16,6 +16,10 @@ export interface SearchReport {
     excerpt: string;
     noteId?: string;
     noteTitle?: string;
+    /** A match in text OCR read from an image (docs/WORKSPACE-OCR-PLAN.md). */
+    image?: import("../../../services/topic-types").ImageLocation;
+    /** A match in text OCR read from a scanned PDF page. */
+    pdf?: import("./pdf-highlights").PdfLocation;
   }[];
   skipped: string[];
   limited: boolean;

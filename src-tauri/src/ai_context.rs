@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 /// Appended to the instructions only when a context was compacted.
-pub(crate) const COMPACT_INSTRUCTIONS: &str = "noteSources holds the cited note blocks: per note, one line per block in order, starting with its citation marker; cite a block by copying that marker. Indentation shows nesting; leading #, -, 1., [ ]/[x], > and code: show heading, list, checklist, quote and code formatting, and block text can state status too. '--- note N ---' separates canvas notes; deeper-indented lines continue the block above. citationSources then lists website passages and YouTube transcript passages (kind video: text from a YouTube card's saved transcript, starting with the [m:ss] moment it covers; mention that moment when citing one).";
+pub(crate) const COMPACT_INSTRUCTIONS: &str = "noteSources holds the cited note blocks: per note, one line per block in order, starting with its citation marker; cite a block by copying that marker. Indentation shows nesting; leading #, -, 1., [ ]/[x], > and code: show heading, list, checklist, quote and code formatting, and block text can state status too. '--- note N ---' separates canvas notes; deeper-indented lines continue the block above. citationSources then lists website passages and YouTube transcript passages (kind video: text from a YouTube card's saved transcript, starting with the [m:ss] moment it covers; mention that moment when citing one) and text read from pictures in the notes (kind image: words Windows OCR read from an image on this device; it may contain recognition errors and loses layout, so say when a word looks misread).";
 
 /// Appended for edit operations when a context was compacted.
 pub(crate) const COMPACT_EDIT_INSTRUCTIONS: &str = "Never copy noteSources line markers such as #, -, 1., [ ] or [x] into generated text; express structure with native block types.";
@@ -184,7 +184,23 @@ pub(crate) fn compact(context: &str) -> Option<String> {
     if web.is_empty() {
         object.remove("citationSources");
     } else {
-        object.insert("citationSources".into(), Value::Array(web.into_iter().cloned().collect()));
+        // Image text needs no navigation data (key, block, line boxes).
+        let sent = web
+            .into_iter()
+            .map(|entry| {
+                if str_field(entry, "kind") != Some("image") {
+                    return entry.clone();
+                }
+                let mut slim = Map::new();
+                for key in ["citation", "kind", "title", "text"] {
+                    if let Some(value) = entry.get(key) {
+                        slim.insert(key.into(), value.clone());
+                    }
+                }
+                Value::Object(slim)
+            })
+            .collect();
+        object.insert("citationSources".into(), Value::Array(sent));
     }
     object.insert("noteSources".into(), Value::Array(note_sources));
     Some(value.to_string())
@@ -274,6 +290,20 @@ mod tests {
         assert_eq!(compacted["citationSources"].as_array().unwrap().len(), 1);
         assert_eq!(compacted["citationSources"][0]["ref"], "r1");
         assert!(compacted["webOutcomes"].is_array());
+    }
+
+    #[test]
+    fn image_text_is_sent_without_navigation_data() {
+        let original = json!({"sourceMode": "current", "mode": "ask", "citationSources": [
+            {"document": "a", "title": "Alpha", "id": "1", "text": "First", "citation": "[S1]", "type": "text", "parent": null, "note": "n"},
+            {"kind": "image", "document": "a", "id": "img", "text": "Deadline: 12 March", "title": "Whiteboard · text in image",
+             "image": {"key": "k", "documentId": "a", "blockId": "img", "rects": [[0.1, 0.2, 0.5, 0.05]]}, "citation": "[S2]"}
+        ]});
+        let compacted: Value = serde_json::from_str(&compact(&original.to_string()).unwrap()).unwrap();
+        assert_eq!(
+            compacted["citationSources"],
+            json!([{"citation": "[S2]", "kind": "image", "title": "Whiteboard · text in image", "text": "Deadline: 12 March"}])
+        );
     }
 
     #[test]

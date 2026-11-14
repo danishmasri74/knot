@@ -6592,3 +6592,8 @@ knot-web-source { display: block; margin-block: 8px; }
   border-radius: 2px;
   background: light-dark(#ffd54f66, #e0c56e66);
 }
+
+.pdf-ocr-note {
+  color: var(--shell-muted);
+  font-size: 12px;
+}

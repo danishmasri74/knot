@@ -84,3 +84,36 @@ test("saved YouTube transcripts become video citations, most relevant first", as
   expect(readCitationSources(JSON.stringify(result)).filter((s) => s.kind === "video")).toHaveLength(2);
   expect(result.structure).toBeUndefined();
 });
+
+test("text OCR read from pictures in the notes becomes image citations", async () => {
+  const { composeAiContext } = await import("../src/services/ai-context-composer");
+  const { readCitationSources } = await import("../src/services/ai-citations");
+  const base = JSON.stringify({
+    sourceMode: "current",
+    document: "doc",
+    text: "My notes",
+    structure: [{ id: "b1", text: "My notes" }],
+    citationSources: [{ document: "doc", id: "b1", text: "My notes", citation: "[S1]" }],
+  });
+  const line = (text: string, y: number) => ({ text, x: 0.1, y, w: 0.5, h: 0.05 });
+  const result = JSON.parse(
+    composeAiContext(base, [], "when is the deadline?", [], [
+      {
+        location: { key: "k", documentId: "doc", blockId: "img", caption: "Whiteboard" },
+        lines: [line("Quarterly notes", 0.1), line("Deadline: 12 March", 0.3)],
+      },
+    ]),
+  );
+  const images = result.citationSources.filter((s: { kind?: string }) => s.kind === "image");
+  expect(images).toHaveLength(1);
+  expect(images[0]).toMatchObject({
+    citation: "[S2]",
+    document: "doc",
+    id: "img",
+    title: "Whiteboard · text in image",
+    text: "Quarterly notes\nDeadline: 12 March",
+    image: { key: "k", blockId: "img", rects: [[0.1, 0.1, 0.5, 0.05], [0.1, 0.3, 0.5, 0.05]] },
+  });
+  // Saved chats read them back as citable sources.
+  expect(readCitationSources(JSON.stringify(result)).filter((s) => s.kind === "image")).toHaveLength(1);
+});

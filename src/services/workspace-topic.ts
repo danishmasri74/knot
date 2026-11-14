@@ -137,6 +137,7 @@ export class TopicIndexer {
             failed = false;
           let failure: string | undefined;
           let units: { key: string; page: number }[] = [];
+          let blocks: string[] = [];
           const read: { key: string; page: number }[] = [];
           // Pages of attached PDFs without a text layer, read by background OCR.
           const scans: { ref: TopicPdf; pages: number[] }[] = [];
@@ -236,6 +237,10 @@ export class TopicIndexer {
                   pages.map((page) => ({ key: ref.key, page })),
                 ),
               ];
+              blocks = [
+                ...refs.map((image) => image.blockId),
+                ...scans.flatMap(({ ref, pages }) => pages.map(() => ref.blockId)),
+              ];
               const ocr = units.length > 0 && getOcrPreferences().enabled;
               const readings = ocr
                 ? await invoke<(OcrLine[] | null)[]>("ocr_lookup", {
@@ -326,6 +331,7 @@ export class TopicIndexer {
             failure,
             images: units,
             read,
+            blocks,
           });
           // Yield between bounded source batches; queries never run a document scan.
           await new Promise((resolve) => setTimeout(resolve, 0));

@@ -507,7 +507,7 @@ const WEB_RULES: &str = "web_search searches the public web through OpenAI. Use 
 /// Shows the model images from the open note or canvas; the app sends them.
 pub(crate) const IMAGES_TOOL: &str = "view_images";
 pub(crate) const MAX_IMAGES: usize = 3;
-const IMAGES_RULES: &str = "view_images shows you up to three images from the open note or canvas. Call it when the question is about pictures, diagrams, charts or screenshots there that the supplied text does not describe. Do not call it otherwise, and call it at most once.";
+const IMAGES_RULES: &str = "view_images shows you up to three images from the open note or canvas. Call it when the question is about pictures, diagrams, charts or screenshots there that the supplied text does not describe. Text already read from those images may be in citationSources (kind image): use it for questions about their words, and call view_images only for what text can't show, such as layout, shapes or colours. Do not call it otherwise, and call it at most once.";
 /// Images the app sent for a view_images call.
 #[derive(Deserialize)]
 pub struct ImageResult {

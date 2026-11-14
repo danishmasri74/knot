@@ -951,6 +951,115 @@ pub fn ocr_lookup(
         .collect())
 }
 
+/// A Library search match in text OCR read from an image or a scanned page.
+#[derive(Serialize, Debug)]
+pub struct OcrMatch {
+    document: String,
+    key: String,
+    page: u32,
+    block: String,
+    /// The attachment's file name.
+    name: String,
+    excerpt: String,
+    /// Boxes of the matching lines, as image or page fractions.
+    rects: Vec<[f32; 4]>,
+}
+/// Matches for `query` (case-insensitive, like Library search) in saved OCR
+/// text of the active workspace's images and scanned pages. Nothing is read.
+#[tauri::command]
+pub fn ocr_search(
+    app: AppHandle,
+    state: State<'_, OcrState>,
+    activation: String,
+    query: String,
+) -> Reply<Vec<OcrMatch>> {
+    let needle = query.trim().to_lowercase();
+    if !state.enabled() || needle.is_empty() || needle.chars().count() > 200 {
+        return Ok(vec![]);
+    }
+    let app_state = app.state::<AppState>();
+    let cache = app.state::<topic::TopicCache>();
+    let rows: Vec<(String, String, u32, String, String, String)> = {
+        let g = topic::guard(&app_state, &activation)?;
+        let w = g.as_ref().map_err(Clone::clone)?;
+        let db = topic::open(&topic::cache_path(&cache, &topic::identity(w)?))?;
+        let mut stmt = db
+            .prepare("SELECT source,key,page,sha256,block FROM images ORDER BY source,page")
+            .map_err(|e| e.to_string())?;
+        let found = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, u32>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        found
+            .into_iter()
+            .map(|(source, key, page, sha, block)| {
+                let name = w
+                    .db
+                    .query_row("SELECT name FROM attachments WHERE id=?1", [&key], |r| r.get(0))
+                    .unwrap_or_default();
+                (source, key, page, sha, block, name)
+            })
+            .collect()
+    };
+    let db = state.open()?;
+    let mut matches = Vec::new();
+    for (document, key, page, sha, block, name) in rows {
+        let Some(lines) = state.reading(&db, &sha, page) else {
+            continue;
+        };
+        let hits: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.text.to_lowercase().contains(&needle))
+            .map(|(i, _)| i)
+            .collect();
+        let Some(&first) = hits.first() else {
+            continue;
+        };
+        // The first matching line with its neighbours, about 220 characters.
+        let excerpt = lines[first.saturating_sub(1)..(first + 2).min(lines.len())]
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" · ")
+            .chars()
+            .take(220)
+            .collect();
+        let rects = hits
+            .iter()
+            .take(100)
+            .map(|&i| {
+                let l = &lines[i];
+                let (x, y) = (l.x.clamp(0.0, 1.0), l.y.clamp(0.0, 1.0));
+                [x, y, l.w.min(1.0 - x), l.h.min(1.0 - y)]
+            })
+            .filter(|r| r[2] > 0.0 && r[3] > 0.0)
+            .collect();
+        matches.push(OcrMatch {
+            document,
+            key,
+            page,
+            block,
+            name,
+            excerpt,
+            rects,
+        });
+        if matches.len() >= 50 {
+            break;
+        }
+    }
+    Ok(matches)
+}
+
 /// Read images that were in the workspace before OCR (Settings → Read now).
 #[tauri::command]
 pub fn ocr_read_backlog(

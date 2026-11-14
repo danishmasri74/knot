@@ -1,3 +1,5 @@
+import { ocrPassages } from "./ocr-passages";
+import type { ImageTextEvidence } from "./note-image-text";
 import { readCitationSources } from "./ai-citations";
 import { readDurableWebSource } from "./web-ai-evidence";
 import {
@@ -7,6 +9,7 @@ import {
   type WebCitation,
   type CitationSource,
   type VideoCitation,
+  type ImageCitation,
 } from "./web-source-types";
 import {
   transcriptPassages,
@@ -32,6 +35,7 @@ export function composeAiContext(
   attempts: WebAttempt[] = [],
   prompt = "",
   videos: VideoEvidence[] = [],
+  images: ImageTextEvidence[] = [],
 ) {
   const data = JSON.parse(context);
   // Native source children remain evidence when a saved card is reused or improved.
@@ -223,6 +227,39 @@ export function composeAiContext(
   );
   while (videoQueues.some((q) => q.length)) {
     for (const queue of videoQueues) {
+      const citation = queue.shift();
+      if (!citation) continue;
+      citationSources.push(citation);
+      if (bytes(result) > WEB_LIMITS.contextBytes) {
+        citationSources.pop();
+        queue.length = 0;
+      }
+    }
+  }
+  // Text OCR already read from pictures in these notes, the passages sharing
+  // the most words with the request first, while the context budget lasts.
+  // The model can answer about an image's words without being sent it.
+  const imageQueues = images.map(({ location, lines }) =>
+    ocrPassages(lines)
+      .map((part, index) => ({
+        part,
+        index,
+        score: [...terms].filter((t) =>
+          part.text.toLocaleLowerCase().includes(t),
+        ).length,
+      }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map(({ part }): ImageCitation => ({
+        kind: "image",
+        document: location.documentId,
+        id: location.blockId,
+        text: part.text,
+        title: `${location.caption || "Image"} · text in image`,
+        image: { ...location, rects: part.rects },
+      })),
+  );
+  while (imageQueues.some((q) => q.length)) {
+    for (const queue of imageQueues) {
       const citation = queue.shift();
       if (!citation) continue;
       citationSources.push(citation);

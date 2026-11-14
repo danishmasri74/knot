@@ -121,11 +121,23 @@ export type VideoCitation = {
   video: import("./youtube-transcript").VideoLocation;
   citation?: string;
 };
+/** Text Windows OCR read from a picture in the request's notes
+ * (docs/WORKSPACE-OCR-PLAN.md, phase 3). */
+export type ImageCitation = {
+  kind: "image";
+  document: string;
+  id: string;
+  text: string;
+  title: string;
+  image: import("./topic-types").ImageLocation;
+  citation?: string;
+};
 export type CitationSource =
   | NoteCitation
   | WebCitation
   | LinkCitation
-  | VideoCitation;
+  | VideoCitation
+  | ImageCitation;
 export type NativeWebResult = {
   url: string;
   finalUrl?: string;

@@ -132,6 +132,7 @@ import { TrashConfirmation } from "./TrashConfirmation";
 import {
   searchSavedDocuments,
   type SearchContent,
+  type SearchReport,
 } from "../features/editor/blocksuite/search";
 import { BackupManager } from "./BackupManager";
 import { lazy, Suspense } from "react";
@@ -161,7 +162,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { flushUiPreferences } from "../services/ui-preferences";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -619,6 +620,65 @@ export function App() {
     } finally {
       worker?.terminate();
     }
+  }
+  /** Library search matches in text OCR read from images and scanned pages. */
+  async function ocrSearch(searchQuery: string): Promise<SearchReport["results"]> {
+    if (!isTauri()) return [];
+    const { activation } = await invoke<{ activation: string }>("topic_catalog");
+    const matches = await invoke<
+      {
+        document: string;
+        key: string;
+        page: number;
+        block: string;
+        name: string;
+        excerpt: string;
+        rects: [number, number, number, number][];
+      }[]
+    >("ocr_search", { activation, query: searchQuery });
+    if (!matches.length) return [];
+    const catalog = await repository.catalog();
+    // Card Deck cards are listed under the notebook or canvas they sit on.
+    const owners = new Map<string, KnowledgeObject | undefined>();
+    for (const match of matches)
+      if (match.document.startsWith("deck:") && !owners.has(match.document))
+        owners.set(
+          match.document,
+          (await cardPlacement(match.document.slice(5)).catch(() => null))?.owner,
+        );
+    return matches.flatMap((match) => {
+      const source = match.document.startsWith("deck:")
+        ? owners.get(match.document)
+        : catalog.find((item) => item.id === match.document);
+      if (!source || !match.block) return [];
+      return [
+        match.page
+          ? {
+              source,
+              noteTitle: `${match.name || "PDF"} · p. ${match.page}`,
+              excerpt: `Text in scan: ${match.excerpt}`,
+              pdf: {
+                key: match.key,
+                name: match.name || "PDF",
+                documentId: match.document,
+                blockId: match.block,
+                page: match.page,
+                rects: match.rects,
+              },
+            }
+          : {
+              source,
+              noteTitle: match.name || "Image",
+              excerpt: `Text in image: ${match.excerpt}`,
+              image: {
+                key: match.key,
+                documentId: match.document,
+                blockId: match.block,
+                rects: match.rects,
+              },
+            },
+      ];
+    });
   }
   const [citedDeckSource, setCitedDeckSource] = useState<{
     workspace: string;
@@ -1416,7 +1476,13 @@ export function App() {
    * (opening a document follows Settings → open notes in) or as a page.
    */
   /** Opens the note or card holding an image whose OCR text was cited. */
-  async function openCitedImage(document: string, image: ImageLocation) {
+  /** Opens the note or card holding an image whose OCR text was cited or
+   * found by search (`fromSearch`: no Ask Knot pane or continuation). */
+  async function openCitedImage(
+    document: string,
+    image: ImageLocation,
+    fromSearch = false,
+  ) {
     const gone = "This image is no longer in the source. The text read from it is shown here.";
     if (document.startsWith("deck:")) {
       const id = document.slice(5);
@@ -1431,8 +1497,33 @@ export function App() {
           .images.some((ref) => ref.key === image.key)
       )
         throw Error(gone);
-      setCitedDeckSource({ workspace: workspaceCatalog.active!, id, text: "" });
-      openSurface("cardDeck");
+      // A placed card: open it where it sits and find the picture by its file.
+      const placed = await cardPlacement(id);
+      if (!placed) {
+        setCitedDeckSource({ workspace: workspaceCatalog.active!, id, text: "" });
+        openSurface("cardDeck");
+        return;
+      }
+      if (fromSearch) await select(placed.owner);
+      else {
+        await selectCitation(placed.owner);
+        openPane("ask");
+      }
+      const opened = session.current;
+      if (!opened || opened.doc.id !== placed.owner.id) return;
+      const block = opened.doc
+        .getBlocksByFlavour("affine:image")
+        .concat(opened.doc.getBlocksByFlavour("affine:attachment"))
+        .map(({ model }) => model)
+        .find((model) => {
+          if ((model as unknown as { sourceId?: string }).sourceId !== image.key)
+            return false;
+          for (let at: typeof model | null = model; at; at = opened.doc.getParent(at))
+            if (at.id === placed.placement) return true;
+          return false;
+        });
+      if (!block) throw Error(gone);
+      await revealImageBlock(opened, block.id, image.rects);
       return;
     }
     const source = (await repository.catalog()).find(
@@ -1451,14 +1542,51 @@ export function App() {
         )
     )
       throw Error(gone);
-    await selectCitation(source);
-    openPane("ask");
+    if (fromSearch) await select(source);
+    else {
+      await selectCitation(source);
+      openPane("ask");
+    }
     const opened = session.current;
     if (!opened || opened.doc.id !== document) return;
+    await revealImageBlock(opened, image.blockId, image.rects);
+  }
+  /** Where a Card Deck card is placed (the open notebook first), if anywhere. */
+  async function cardPlacement(
+    id: string,
+  ): Promise<{ owner: KnowledgeObject; placement: string } | null> {
+    const workspace = workspaceIdentity.current;
+    const current = () => workspaceIdentity.current === workspace;
+    const catalog = await repository.catalog();
+    const owners = [...catalog].sort(
+      (a, b) =>
+        Number(b.id === session.current?.doc.id) -
+          Number(a.id === session.current?.doc.id) || a.id.localeCompare(b.id),
+    );
+    const location = await findCardPlacement(
+      id,
+      owners.map((owner) => owner.id),
+      (owner) => {
+        const doc = session.current?.collection.getDoc(owner);
+        return doc?.root ? doc.spaceDoc : undefined;
+      },
+      repository.load,
+      current,
+    );
+    if (!location || !current()) return null;
+    const owner = catalog.find((item) => item.id === location.document);
+    return owner ? { owner, placement: location.placement } : null;
+  }
+  /** Reveals an image block (on the canvas or in the page) and marks lines. */
+  async function revealImageBlock(
+    opened: EditorSession,
+    blockId: string,
+    rects?: [number, number, number, number][],
+  ) {
     // Reveal the note holding the image: a card on the canvas or in the notebook.
     let note: string | undefined;
     for (
-      let model = opened.doc.getBlock(image.blockId)?.model ?? null;
+      let model = opened.doc.getBlock(blockId)?.model ?? null;
       model;
       model = opened.doc.getParent(model)
     )
@@ -1481,11 +1609,11 @@ export function App() {
     if (session.current !== opened) return;
     requestAnimationFrame(() => {
       const element = session.current?.editor.querySelector(
-        `[data-block-id="${CSS.escape(image.blockId)}"]`,
+        `[data-block-id="${CSS.escape(blockId)}"]`,
       );
       element?.scrollIntoView({ block: "center", behavior: "smooth" });
       const picture = element?.querySelector("img");
-      if (!picture || !image.rects?.length) {
+      if (!picture || !rects?.length) {
         element?.animate(
           [{ outline: "3px solid #ffe08a" }, { outline: "3px solid transparent" }],
           { duration: 2400 },
@@ -1494,7 +1622,7 @@ export function App() {
       }
       // Mark the lines the cited text was read from once the picture stops
       // moving (page scrolling, or the canvas opening and zooming to the card).
-      void highlightImageLines(picture, image.rects);
+      void highlightImageLines(picture, rects);
     });
   }
   async function focusCitedCard(
@@ -2485,7 +2613,29 @@ export function App() {
             !library &&
             isSearchResultOnPage(session.current?.editor, source.id, noteId)
           }
-          search={scanSearch}
+          search={async (searchQuery, signal) => {
+            const report = await scanSearch(searchQuery, signal);
+            const ocr = await ocrSearch(searchQuery).catch(() => []);
+            signal.throwIfAborted();
+            return { ...report, results: [...report.results, ...ocr] };
+          }}
+          onOpenOcr={async (result) => {
+            let opened = false;
+            await run(async () => {
+              setShowSearch(false);
+              if (result.image)
+                // The image's own document: a Card Deck card is listed under
+                // the notebook it sits on but opened through the card.
+                await openCitedImage(result.image.documentId, result.image, true);
+              else if (result.pdf) {
+                await select(result.source);
+                await openPdf(result.pdf);
+              }
+              opened = true;
+            }, true);
+            if (!opened)
+              throw new Error("Could not open this result. Please try again.");
+          }}
           recent={() => repository.list("", 0, { collection: null })}
           onClose={() => setShowSearch(false)}
           onOpen={async (source, noteId, view, query) => {
