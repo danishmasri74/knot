@@ -120,3 +120,16 @@ test("workspace, attachment-only and unreadable requests show no note chip", () 
     }),
   ).toEqual([]);
 });
+
+test("a selected YouTube card shows once, as its video", () => {
+  const chips = sentAttachments({
+    context: {
+      label: "Switching to Obsidian",
+      document: "doc",
+      selectionKind: "website",
+      blocks: ["yt"],
+    },
+    videos: [video],
+  });
+  expect(chips.map((c) => c.kind)).toEqual(["video"]);
+});

@@ -1776,10 +1776,14 @@ function AskKnotPanel({
                 workspace,
                 youtubeCards(
                   s.doc,
-                  current.label === "Selection" ||
-                    current.label === "Focused note"
-                    ? current.note
-                    : null,
+                  // A selection brings only its own videos: the selected
+                  // objects' (a card on the board has no note), else its note's.
+                  current.label === "Selection" && !current.ranges.length
+                    ? { blocks: current.selectedBlocks ?? [] }
+                    : current.label === "Selection" ||
+                        current.label === "Focused note"
+                      ? current.note
+                      : null,
                 ),
               )
             ).map(({ card, transcript }) => ({
@@ -1835,6 +1839,7 @@ function AskKnotPanel({
                   pdf: current.pdf ? pdfSource : undefined,
                   selectionKind: current.selectionKind,
                   canvas: current.canvas,
+                  blocks: current.selectedBlocks,
                 }
               : undefined,
           passages: extra

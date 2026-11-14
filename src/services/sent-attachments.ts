@@ -60,6 +60,8 @@ export type SentContext = {
   pdf?: AiPdfSource;
   selectionKind?: "website" | "file";
   canvas?: boolean;
+  /** Blocks selected as whole objects. */
+  blocks?: string[];
 };
 
 export function sentAttachments(parts: {
@@ -71,7 +73,14 @@ export function sentAttachments(parts: {
   videos?: VideoLocation[];
 }): SentAttachment[] {
   const result: SentAttachment[] = [];
-  const context = parts.context;
+  // A selected YouTube card is listed once, as its video.
+  const context =
+    parts.context?.blocks?.length &&
+    parts.context.blocks.every((id) =>
+      parts.videos?.some((video) => video.blockId === id),
+    )
+      ? undefined
+      : parts.context;
   if (context) {
     const generic = ["Page", "Focused note", "Selection", "Canvas text"];
     const label =

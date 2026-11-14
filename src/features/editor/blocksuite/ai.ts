@@ -55,6 +55,8 @@ export type AiContext = {
   selectionKey?: string;
   selectionLabel?: string;
   selectionKind?: "website" | "file";
+  /** Blocks selected as whole objects (cards, embeds, files), if any. */
+  selectedBlocks?: string[];
   pdf?: boolean;
   pdfSource?: AiPdfSource;
   workspace: string;
@@ -346,6 +348,9 @@ export function captureAiContext(
     canvas: editor.mode === "edgeless",
     selectionKey,
     selectionKind: websiteLabel ? "website" : selectedFile ? "file" : undefined,
+    ...(selectedBlocks.length && {
+      selectedBlocks: selectedBlocks.map((block) => block.id),
+    }),
     selectionLabel:
       selectedPdf?.name ||
       selectedFile?.name ||

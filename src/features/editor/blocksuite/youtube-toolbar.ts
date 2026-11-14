@@ -143,7 +143,8 @@ export function installYoutubeToolbars(
     queued = false;
     if (stopped) return;
     for (const root of roots) if (!root.host.isConnected) roots.delete(root);
-    for (const button of buttons) if (!button.isConnected) buttons.delete(button);
+    for (const button of buttons)
+      if (!button.isConnected) buttons.delete(button);
     const scopes: (Document | ShadowRoot)[] = [document];
     for (const widget of document.querySelectorAll<HTMLElement>(
       "edgeless-element-toolbar-widget, .blocksuite-portal",
@@ -216,20 +217,29 @@ export function installYoutubeToolbars(
   };
 }
 
-/** YouTube cards in a document, or only those inside one note. */
+/**
+ * YouTube cards in a document, only those inside one note, or only the
+ * selected blocks and what they contain (`{ blocks }`, which may be empty).
+ */
 export function youtubeCards(
   doc: { getBlocksByFlavour(flavour: string): { model: BlockModel }[] },
-  noteId?: string | null,
+  scope?: string | null | { blocks: string[] },
 ): VideoSource[] {
-  const inNote = (model: BlockModel) => {
+  const inScope = (model: BlockModel) => {
+    if (!scope) return true;
+    if (typeof scope === "object") {
+      for (let at: BlockModel | null = model; at; at = at.parent)
+        if (scope.blocks.includes(at.id)) return true;
+      return false;
+    }
     for (let at: BlockModel | null = model; at; at = at.parent)
-      if (at.flavour === "affine:note") return at.id === noteId;
+      if (at.flavour === "affine:note") return at.id === scope;
     return false;
   };
   return doc
     .getBlocksByFlavour("affine:embed-youtube")
     .map(({ model }) => model)
-    .filter((model) => !noteId || inNote(model))
+    .filter(inScope)
     .map((model) => videoSource(model))
     .filter((source): source is VideoSource => !!source);
 }
