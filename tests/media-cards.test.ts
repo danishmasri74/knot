@@ -95,7 +95,8 @@ describe("media identity", () => {
     ).toBe("youtube:dQw4w9WgXcQ");
     expect(id("affine:image", { sourceId: "abc=" })).toBe("file:abc=");
     expect(id("affine:attachment", { sourceId: "" })).toBeUndefined();
-    expect(id("affine:embed-linked-doc", { pageId: "p1" })).toBe("page:p1");
+    // Linked pages link to notes; they aren't cards.
+    expect(id("affine:embed-linked-doc", { pageId: "p1" })).toBeUndefined();
     expect(id("affine:bookmark", { url: "" })).toBeUndefined();
     expect(id("affine:note", {})).toBeUndefined();
   });
@@ -250,6 +251,35 @@ describe("media cards", () => {
     // Removing one placement keeps the card.
     b.remove("placed");
     expect(deck.data[id].deleted).toBeFalsy();
+    deck.dispose();
+  });
+
+  it("drops linked-page cards an earlier build saved, and their links", () => {
+    const retired = {
+      id: "old",
+      media: true as const,
+      nodes: [
+        {
+          props: {
+            "sys:flavour": {
+              type: "json" as const,
+              value: "affine:embed-linked-doc",
+            },
+            "prop:pageId": { type: "json" as const, value: "p1" },
+          },
+          children: [],
+        },
+      ],
+    };
+    const deck = new CardDeck({ old: retired }, () => {});
+    expect(deck.data.old).toBeUndefined();
+    const a = canvas();
+    a.add("linked", "affine:embed-linked-doc", { pageId: "p1" });
+    a.doc.getMap<string>("knot:card-links").set("linked", "old");
+    deck.attach(a.doc);
+    expect(a.card("linked")).toBeUndefined();
+    expect(a.blocks.has("linked")).toBe(true);
+    expect(mediaCards(deck)).toHaveLength(0);
     deck.dispose();
   });
 

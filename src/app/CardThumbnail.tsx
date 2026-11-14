@@ -14,7 +14,6 @@ const kindIcons = {
   pdf: "pdf",
   file: "attach",
   image: "image",
-  page: "note",
 } as const satisfies Record<MediaKind, string>;
 
 /** The shared object icon for a card: what it is, never how it's placed. */
@@ -29,12 +28,23 @@ export function cardIcon(card: DeckCard) {
 const cache = new Map<string, Promise<string | null>>();
 const maxCached = 200;
 const maxBytes = 12 * 1024 * 1024;
+const maxPdfBytes = 50 * 1024 * 1024;
+
+/** A PDF's first page, small enough for a card. */
+async function pdfThumbnail(bytes: Uint8Array) {
+  const { renderCanvasPdf } =
+    await import("../features/editor/blocksuite/canvas-pdf");
+  const canvas = document.createElement("canvas");
+  await renderCanvasPdf(bytes, canvas, 480);
+  return canvas.toDataURL("image/webp", 0.82);
+}
 
 function thumbnail(key: string, type: string): Promise<string | null> {
   let job = cache.get(key);
   if (job) return job;
   job = (async () => {
     const bytes = new Uint8Array(await attachments.get(key));
+    if (type === "application/pdf") return pdfThumbnail(bytes);
     const url = URL.createObjectURL(
       new Blob([bytes], { type: type || undefined }),
     );
@@ -63,15 +73,18 @@ function thumbnail(key: string, type: string): Promise<string | null> {
   return job;
 }
 
-/** A media card's picture: the video's thumbnail or the image itself.
- * Other kinds (and images that can't be read) show the kind's icon. */
+/** A media card's picture: the video's thumbnail, the image itself or a
+ * PDF's first page. Other kinds (and files that can't be read) show the
+ * kind's icon. */
 export function CardThumbnail({ card }: { card: DeckCard }) {
   const media = cardMedia(card);
   const host = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [image, setImage] = useState<string | null>(null);
   const key =
-    media?.kind === "image" ? String(media.get("prop:sourceId") ?? "") : "";
+    media?.kind === "image" || media?.kind === "pdf"
+      ? String(media.get("prop:sourceId") ?? "")
+      : "";
   const type = String(media?.get("prop:type") ?? "");
   const size = Number(media?.get("prop:size")) || 0;
   useEffect(() => {
@@ -88,7 +101,8 @@ export function CardThumbnail({ card }: { card: DeckCard }) {
     return () => observer.disconnect();
   }, [key]);
   useEffect(() => {
-    if (!visible || !key || size > maxBytes) return;
+    const limit = media?.kind === "pdf" ? maxPdfBytes : maxBytes;
+    if (!visible || !key || size > limit) return;
     let alive = true;
     void thumbnail(key, type).then((url) => {
       if (alive) setImage(url);
@@ -96,7 +110,7 @@ export function CardThumbnail({ card }: { card: DeckCard }) {
     return () => {
       alive = false;
     };
-  }, [visible, key, type, size]);
+  }, [visible, key, type, size, media?.kind]);
   if (!media) return null;
   const videoId = media.identity?.startsWith("youtube:")
     ? media.identity.slice("youtube:".length)

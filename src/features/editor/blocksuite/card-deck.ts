@@ -82,10 +82,9 @@ const mediaLabels: Record<MediaKind, string> = {
   pdf: "PDF",
   file: "File",
   image: "Image",
-  page: "Linked page",
 };
 /** A media card's name and secondary line, for lists and search. */
-export function mediaText(card: DeckCard, titles?: (pageId: string) => string | undefined) {
+export function mediaText(card: DeckCard) {
   const media = cardMedia(card);
   if (!media) return;
   const text = (key: string) => {
@@ -97,7 +96,6 @@ export function mediaText(card: DeckCard, titles?: (pageId: string) => string | 
     text("prop:title") ||
     text("prop:name") ||
     text("prop:caption") ||
-    (media.kind === "page" ? titles?.(text("prop:pageId")) : "") ||
     url ||
     mediaLabels[media.kind];
   let site = "";
@@ -223,6 +221,7 @@ export class CardDeck {
       card.createdAt ??= now;
       card.updatedAt ??= card.createdAt;
     }
+    this.dropRetired();
   }
   placements(canvas?: string) {
     const ids = new Set<string>();
@@ -348,6 +347,25 @@ export class CardDeck {
     }
     return count;
   }
+  /** Cards for objects that are no longer cards (linked pages, which an
+   * earlier build saved) and the links to them. */
+  private dropRetired(doc?: Y.Doc) {
+    if (!doc) {
+      for (const [id, card] of Object.entries(this.data))
+        if (card.media && !cardMedia(card)) {
+          delete this.data[id];
+          this.contentVersion++;
+        }
+      return;
+    }
+    const links = doc.getMap<string>("knot:card-links");
+    const blocks = doc.getMap<Y.Map<unknown>>("blocks");
+    for (const [instance, shared] of [...links]) {
+      const flavour = blocks.get(instance)?.get("sys:flavour");
+      if (!this.data[shared] && flavour !== undefined && flavour !== "affine:note" && !isMediaFlavour(flavour))
+        links.delete(instance);
+    }
+  }
   /** The oldest live card of this object type for this video, page or file.
    * Different types (a YouTube card and a link to it) can't share content. */
   private findMedia(identity: string, flavour: unknown) {
@@ -461,7 +479,10 @@ export class CardDeck {
             this.replace(doc, id, card.nodes);
           this.signatures.set(doc.guid + id, JSON.stringify(card.nodes));
         }
-        if (!editorOnly) this.attachMedia(doc);
+        if (!editorOnly) {
+          this.dropRetired(doc);
+          this.attachMedia(doc);
+        }
       });
     } finally {
       this.syncing = false;

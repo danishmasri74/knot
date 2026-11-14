@@ -6777,3 +6777,9 @@ knot-web-source { display: block; margin-block: 8px; }
   height: 100%;
   border: 0;
 }
+/* A PDF card shows the top of its first page. */
+.card-media-thumb[data-kind="pdf"] img {
+  object-fit: cover;
+  object-position: top;
+  background: #fff;
+}

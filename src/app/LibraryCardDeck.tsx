@@ -33,14 +33,12 @@ const types = [
   "Links",
   "PDFs & files",
   "Images",
-  "Linked pages",
 ];
 const typeKinds: Record<string, MediaKind[]> = {
   Videos: ["video"],
   Links: ["link"],
   "PDFs & files": ["pdf", "file"],
   Images: ["image"],
-  "Linked pages": ["page"],
 };
 function matchesType(card: DeckCard, type: string) {
   const media = cardMedia(card);

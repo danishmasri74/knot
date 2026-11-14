@@ -1,10 +1,11 @@
 import { youtubeVideoId } from "../../../services/youtube-transcript";
 
-// Standalone canvas objects that are Card Deck cards (videos, links, files,
-// images and linked pages). The deck owns their content; each canvas owns
-// where and how big they are and which view (card or embed) they use.
+// Standalone canvas objects that are Card Deck cards (videos, links, files
+// and images). Linked pages are links to notes, not cards. The deck owns
+// their content; each canvas owns where and how big they are and which view
+// (card or embed) they use.
 
-export type MediaKind = "video" | "link" | "pdf" | "file" | "image" | "page";
+export type MediaKind = "video" | "link" | "pdf" | "file" | "image";
 
 const mediaFlavours = {
   "affine:embed-youtube": "video",
@@ -14,8 +15,6 @@ const mediaFlavours = {
   "affine:embed-loom": "link",
   "affine:attachment": "file",
   "affine:image": "image",
-  "affine:embed-linked-doc": "page",
-  "affine:embed-synced-doc": "page",
 } as const satisfies Record<string, MediaKind>;
 
 export type MediaFlavour = keyof typeof mediaFlavours;
@@ -108,12 +107,8 @@ export function mediaIdentity(
     const page = normalizePageUrl(text("prop:url"));
     return page && `url:${page}`;
   }
-  if (kind === "file" || kind === "image") {
-    const key = text("prop:sourceId");
-    return key ? `file:${key}` : undefined;
-  }
-  const page = text("prop:pageId");
-  return page ? `page:${page}` : undefined;
+  const key = text("prop:sourceId");
+  return key ? `file:${key}` : undefined;
 }
 
 // BlockSuite's card sizes for each display style (EMBED_CARD_WIDTH/HEIGHT).
@@ -137,8 +132,6 @@ const defaultStyles: Record<MediaFlavour, string> = {
   "affine:embed-loom": "video",
   "affine:attachment": "horizontalThin",
   "affine:image": "",
-  "affine:embed-linked-doc": "horizontal",
-  "affine:embed-synced-doc": "syncedDoc",
 };
 
 /** Canvas size for a card placed from the deck, in the given display style. */
@@ -157,10 +150,8 @@ export function mediaSize(
     return [480, 320];
   }
   const chosen =
-    flavour === "affine:embed-synced-doc"
-      ? "syncedDoc"
-      : typeof style === "string" && styleSizes[style]
-        ? style
-        : defaultStyles[flavour];
+    typeof style === "string" && styleSizes[style]
+      ? style
+      : defaultStyles[flavour];
   return styleSizes[chosen] ?? [752, 116];
 }
