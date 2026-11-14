@@ -1,6 +1,5 @@
 import { Mascot } from "./Mascot";
 import {
-  CardPlacement,
   cardPlacement,
   useCardPlacements,
 } from "./CardPlacement";
@@ -24,6 +23,8 @@ import { Destinations } from "./AddNotePicker";
 import { ShellIcon } from "./ShellIcon";
 import { ShellMenu } from "./ShellMenu";
 import { cardIcon, CardThumbnail } from "./CardThumbnail";
+import { PlacementMenu, UsedIn, type OpenCardUse } from "./CardUses";
+import type { PlacementIndex } from "./CardPlacement";
 import type { MediaKind } from "../features/editor/blocksuite/media-cards";
 
 const types = [
@@ -82,8 +83,11 @@ export function LibraryCardDeck({
   onSelect,
   onTrash,
   onTrashMany,
+  onOpenUse,
 }: {
   cardId?: string;
+  /** Opens a notebook at one place the card is used. */
+  onOpenUse?: OpenCardUse;
   /** Moves several cards to Trash at once (Delete with cards selected). */
   onTrashMany?: (ids: string[]) => Promise<void>;
   /** Moves a card to Trash (restorable from Trash, like the sidebar's Card Deck). */
@@ -219,6 +223,8 @@ export function LibraryCardDeck({
         deckData={data}
         key={card.id}
         card={card}
+        placements={placements}
+        onOpenUse={onOpenUse}
         onCreateEditor={onCreateEditor}
         onEditMcq={() => onComposeMcq?.(card.id)}
         onFlush={onFlush}
@@ -339,29 +345,37 @@ export function LibraryCardDeck({
                 cardPlacement(placements, row.card.id).state === "unplaced",
             );
             const item = ({ card, title }: (typeof visible)[number]) => (
-              <button
+              <article
                 className="library-note-card"
                 key={card.id}
-                data-library-card-id={card.id}
                 data-placement={cardPlacement(placements, card.id).state}
                 data-selected={picked.has(card.id) || undefined}
-                aria-label={`Edit ${title}`}
-                aria-description={`${cardPlacement(placements, card.id).label}${picked.has(card.id) ? ". Selected" : ""}`}
-                onClick={(event) => {
-                  const toggle = event.ctrlKey || event.metaKey;
-                  if (toggle || event.shiftKey) {
-                    event.preventDefault();
-                    pick(card.id, event.shiftKey, toggle);
-                    return;
-                  }
-                  if (picked.size) setPicked(new Set());
-                  void selectCard(card.id);
-                }}
               >
+                {/* The whole card opens it; the placement menu sits above. */}
+                <button
+                  type="button"
+                  className="library-note-card-open"
+                  data-library-card-id={card.id}
+                  aria-label={`Edit ${title}`}
+                  aria-description={`${cardPlacement(placements, card.id).label}${picked.has(card.id) ? ". Selected" : ""}`}
+                  onClick={(event) => {
+                    const toggle = event.ctrlKey || event.metaKey;
+                    if (toggle || event.shiftKey) {
+                      event.preventDefault();
+                      pick(card.id, event.shiftKey, toggle);
+                      return;
+                    }
+                    if (picked.size) setPicked(new Set());
+                    void selectCard(card.id);
+                  }}
+                />
                 <CardDeckPreview deck={data} card={card} />
                 <span className="library-note-card-footer">
-                  <CardPlacement
-                    placement={cardPlacement(placements, card.id)}
+                  <PlacementMenu
+                    index={placements}
+                    cardId={card.id}
+                    deck={data}
+                    onOpen={onOpenUse}
                   />
                   <span>
                     <ShellIcon name={cardIcon(card)} />
@@ -377,7 +391,7 @@ export function LibraryCardDeck({
                   </span>
                   <ShellIcon name="expand" />
                 </span>
-              </button>
+              </article>
             );
             if (split < 0) return visible.map(item);
             return (
@@ -424,6 +438,8 @@ export function LibraryCardDeck({
 function CardPage({
   deckData,
   card,
+  placements,
+  onOpenUse,
   onClose,
   onOpen,
   onPlace,
@@ -433,6 +449,8 @@ function CardPage({
   onTrash,
 }: {
   card: DeckCard;
+  placements?: PlacementIndex;
+  onOpenUse?: OpenCardUse;
   /** Moves the card to Trash and leaves its page. */
   onTrash: () => Promise<void>;
   deckData?: DeckData;
@@ -564,6 +582,14 @@ function CardPage({
     >
       {chromeHost ? createPortal(chrome, chromeHost) : chrome}
       <div className="card-page-content" hidden={choosing}>
+        {onOpenUse && (
+          <UsedIn
+            index={placements}
+            cardId={card.id}
+            deck={deckData}
+            onOpen={onOpenUse}
+          />
+        )}
         {isMcqCard(card) ? (
           <div className="mcq-deck-preview">
             <CardDeckPreview deck={deckData} card={card} expanded />

@@ -202,6 +202,7 @@ describe("blank cards", () => {
     const index = {
       owners: [],
       cards: new Map([["placed", new Set(["nb"])]]),
+      uses: new Map(),
       trashed: new Set(["placed", "hidden"]),
       complete: true,
     };

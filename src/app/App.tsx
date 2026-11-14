@@ -37,6 +37,7 @@ import { observeNotePaneToolbar } from "../features/editor/blocksuite/note-pane-
 import { waitForEditorView } from "./view-readiness";
 import { BrowserPanel } from "./BrowserPanel";
 import { CardEditDialog } from "./CardEditDialog";
+import type { CardUse } from "./CardPlacement";
 import type { CardEditRequest } from "../features/editor/blocksuite/card-embed";
 import { VideoResume } from "./ResumeCard";
 import {
@@ -1411,6 +1412,38 @@ export function App() {
       completed = true;
     }, true);
     if (!completed) throw Error("Could not add this card. Please try again.");
+  }
+  /** Open one place a card is used: the card on that notebook's canvas,
+   * or the note that shows it. */
+  async function openCardUse(cardId: string, use: CardUse) {
+    let completed = false;
+    await run(async () => {
+      await session.current?.flush();
+      const workspace = workspaceIdentity.current;
+      const current = () => workspaceIdentity.current === workspace;
+      const notebook = (await repository.catalog()).find(
+        (row) => row.id === use.owner,
+      );
+      if (!notebook) throw Error("That notebook is no longer available.");
+      const target = use.kind === "canvas" ? cardId : use.host!;
+      const location = await findCardPlacement(
+        target,
+        [use.owner],
+        (owner) => {
+          const doc = session.current?.collection.getDoc(owner);
+          return doc?.root ? doc.spaceDoc : undefined;
+        },
+        repository.load,
+        current,
+      );
+      if (!current()) throw Error("Workspace changed while opening this card.");
+      if (!location) throw Error("The card is no longer there.");
+      // On its canvas, centred and selected; a note that shows it opens in
+      // the usual view, where the card appears inside it.
+      await openNote(notebook, location.placement, use.kind === "canvas" ? "edgeless" : undefined);
+      completed = true;
+    }, true);
+    if (!completed) throw Error("Could not open this card. Please try again.");
   }
   async function placeLibraryCard(
     id: string,
@@ -4156,6 +4189,7 @@ export function App() {
                 onOpen={openLibraryCard}
                 onPlace={placeLibraryCard}
                 onTrash={trashLibraryCard}
+                onOpenUse={openCardUse}
                 onTrashMany={(ids) => run(() => trashLibraryCards(ids), true)}
               />
             }
@@ -4757,6 +4791,7 @@ export function App() {
                       key={workspaceCatalog.active}
                       workspace={workspaceCatalog.active ?? ""}
                       canvas={session.current?.cardCanvas}
+                      onOpenUse={openCardUse}
                       deck={
                         documentLoading ? undefined : session.current?.cardDeck
                       }

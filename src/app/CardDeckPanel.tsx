@@ -1,5 +1,4 @@
 import {
-  CardPlacement,
   cardPlacement,
   useCardPlacements,
 } from "./CardPlacement";
@@ -15,6 +14,7 @@ import {
   type DeckCard,
 } from "../features/editor/blocksuite/card-deck";
 import { cardIcon } from "./CardThumbnail";
+import { PlacementMenu, type OpenCardUse } from "./CardUses";
 import { ShellIcon } from "./ShellIcon";
 const orders = [
   "Newest first",
@@ -44,7 +44,10 @@ export function CardDeckPanel({
   canvas,
   workspace,
   source,
+  onOpenUse,
 }: {
+  /** Opens a notebook at one place the card is used. */
+  onOpenUse?: OpenCardUse;
   deck?: CardDeck;
   canvas?: string;
   workspace?: string;
@@ -322,8 +325,12 @@ export function CardDeckPanel({
                   <ShellIcon name="more" />
                 </button>
                 <CardDeckPreview deck={deck?.data} deckVersion={deck?.contentVersion} card={card.source} />
-                <CardPlacement
-                  placement={cardPlacement(placements, card.id, canvas)}
+                <PlacementMenu
+                  index={placements}
+                  cardId={card.id}
+                  deck={deck?.data}
+                  canvas={canvas}
+                  onOpen={onOpenUse}
                 />
               </article>
             ))}

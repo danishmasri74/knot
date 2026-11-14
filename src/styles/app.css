@@ -6869,3 +6869,171 @@ knot-web-source { display: block; margin-block: 8px; }
   min-height: 0;
   overflow: auto;
 }
+
+/* Library card: one full-card button opens it; the placement menu sits above. */
+.library-note-card {
+  position: relative;
+}
+.library-note-card > :not(.library-note-card-open) {
+  pointer-events: none;
+}
+.library-note-card-open {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.library-note-card:has(> .library-note-card-open:focus-visible) {
+  outline: 2px solid var(--control-accent);
+  outline-offset: 3px;
+}
+.library-note-card-open:focus-visible {
+  outline: none;
+}
+.library-note-card .placement-menu {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+.library-note-card-footer > .placement-menu,
+.card-deck-card > .placement-menu {
+  flex: 1;
+  min-width: 0;
+}
+
+/* "On 3 canvases" as a menu of where the card is used. */
+.placement-menu > summary {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: 5px;
+  list-style: none;
+  cursor: pointer;
+}
+.placement-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.placement-menu > summary:hover,
+.placement-menu[open] > summary {
+  background: var(--shell-selected);
+}
+.placement-menu > summary:focus-visible {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: 1px;
+}
+.placement-menu .shell-menu-content {
+  width: 280px;
+}
+.placement-menu-heading {
+  padding: 6px 8px 2px;
+  color: var(--shell-muted);
+  font-size: 11px;
+}
+.placement-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--dropdown-border);
+}
+.placement-menu .shell-menu-content > button > .shell-icon:last-child {
+  width: 14px;
+  height: 14px;
+  color: var(--shell-muted);
+}
+.placement-menu-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.placement-menu-text > span,
+.placement-menu-text > small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.placement-menu-text > small {
+  color: var(--shell-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* The card page's "Used in" box. */
+.card-page-content {
+  display: flex;
+  flex-direction: column;
+}
+.card-page-content > :is(.library-card-editor, .media-card-view, .mcq-deck-preview) {
+  flex: 1;
+  min-height: 0;
+}
+.card-used-in {
+  flex: none;
+  box-sizing: border-box;
+  width: min(720px, calc(100% - 48px));
+  margin: 16px auto 0;
+  padding: 12px 14px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  background: var(--shell-surface);
+}
+.card-used-in h2 {
+  margin: 0;
+  color: var(--shell-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.card-used-in-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.card-used-in-links button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-nav);
+  color: var(--shell-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.card-used-in-links button:hover {
+  background: var(--shell-selected);
+}
+.card-used-in-links button > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.card-used-in-links button > small {
+  color: var(--shell-muted);
+}
+.card-used-in-links .card-used-in-note {
+  border-style: dashed;
+  color: var(--shell-muted);
+}
+.card-used-in-links .shell-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+/* An open placement menu stays above the cards after it. */
+.library-note-card:has(.placement-menu[open]),
+.card-deck-card:has(.placement-menu[open]) {
+  z-index: 5;
+}
+.card-deck-card:has(.placement-menu[open]) {
+  position: relative;
+}

@@ -11,3 +11,4 @@
 - In Ctrl+K search, press Ctrl+Enter on a note to add its card to the open canvas, or to insert it into the note you're writing.
 - Cards can be reused inside notes in Page view: they stay in sync with the original, and "Edit card" changes it everywhere.
 - Double-clicking a YouTube card now plays it in the Video panel instead of opening YouTube in the browser.
+- Click "On 3 canvases" on a card to see every notebook and note that uses it and jump there; a card's page in the Library lists them too.

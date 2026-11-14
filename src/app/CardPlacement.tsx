@@ -7,9 +7,20 @@ import {
 import { repository, type KnowledgeObject } from "../services/workspace";
 import { ShellIcon } from "./ShellIcon";
 
+/** One place a card is used: on a notebook's canvas (`count` copies), or
+ * shown inside a note card (`host`) in that notebook. */
+export type CardUse = {
+  owner: string;
+  kind: "canvas" | "note";
+  count: number;
+  host?: string;
+};
+
 export type PlacementIndex = {
   owners: KnowledgeObject[];
   cards: Map<string, Set<string>>;
+  /** Where each card is used, notebook by notebook (live notebooks only). */
+  uses: Map<string, CardUse[]>;
   /** Cards placed in notebooks that are in Trash. */
   trashed: Set<string>;
   complete: boolean;
@@ -50,6 +61,7 @@ export function useCardPlacements(
         }
         return used;
       };
+      const placed: [string, string[]][] = [];
       for (const owner of owners) {
         const doc = live.get(owner.id);
         const ids = doc
@@ -61,11 +73,13 @@ export function useCardPlacements(
           if (!cards.has(id)) cards.set(id, new Set());
           cards.get(id)!.add(owner.id);
         }
+        placed.push([owner.id, ids]);
       }
+      const uses = collectUses(placed, data);
       const trashed = new Set<string>();
       for (const owner of trashedOwners)
         for (const id of usedBy(saved.get(owner) ?? [])) trashed.add(id);
-      setIndex({ owners, cards, trashed, complete });
+      setIndex({ owners, cards, uses, trashed, complete });
     };
     const refresh = async () => {
       const run = ++generation;
@@ -133,6 +147,36 @@ export function useCardPlacements(
     };
   }, [deck, workspace, revision]);
   return index;
+}
+
+/** Where each card is used: per notebook, its canvas copies (from the
+ * placed card IDs, repeats included) and the notes that show it. */
+export function collectUses(
+  placed: [owner: string, cardIds: string[]][],
+  data: DeckData | undefined,
+) {
+  const uses = new Map<string, CardUse[]>();
+  const use = (id: string, entry: CardUse) => {
+    if (!uses.has(id)) uses.set(id, []);
+    uses.get(id)!.push(entry);
+  };
+  for (const [owner, ids] of placed) {
+    const counts = new Map<string, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const [id, count] of counts) {
+      use(id, { owner, kind: "canvas", count });
+      const card = data?.[id];
+      if (!data || !card || card.deleted) continue;
+      const shown = new Set([
+        ...cardQuestionReferences(card.nodes),
+        ...cardEmbedReferences(card.nodes),
+      ]);
+      for (const other of shown)
+        if (other !== id && data[other] && !data[other].deleted)
+          use(other, { owner, kind: "note", count: 1, host: id });
+    }
+  }
+  return uses;
 }
 
 /** Notebooks in Trash: their cards stay out of the deck until restored. */
