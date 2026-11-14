@@ -1352,9 +1352,12 @@ export function App() {
       );
       if (!current()) throw Error("Workspace changed while opening this card.");
       if (location) {
+        // A video, link, file or image lives on the canvas, never in Page view.
+        const media = (session.current?.cardDeck.data[id] ?? undefined)?.media;
         await openNote(
           notebooks.find((row) => row.id === location.document)!,
           location.placement,
+          media ? "edgeless" : undefined,
         );
         found = true;
       }

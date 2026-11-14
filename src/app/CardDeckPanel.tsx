@@ -11,9 +11,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CardDeck,
   cardPreview,
-  isMcqCard,
   type DeckCard,
 } from "../features/editor/blocksuite/card-deck";
+import { cardIcon } from "./CardThumbnail";
 import { ShellIcon } from "./ShellIcon";
 const orders = [
   "Newest first",
@@ -286,7 +286,7 @@ export function CardDeckPanel({
                 data-placement={
                   cardPlacement(placements, card.id, canvas).state
                 }
-                aria-label={`${card.name || "Untitled note"}. ${cardPlacement(placements, card.id, canvas).label}`}
+                aria-label={`${card.name || "Untitled card"}. ${cardPlacement(placements, card.id, canvas).label}`}
                 draggable
                 onDragStart={(event) => {
                   event.dataTransfer.setData(
@@ -300,7 +300,7 @@ export function CardDeckPanel({
                   showMenu(card.id, event.clientX, event.clientY);
                 }}
               >
-                <ShellIcon name={isMcqCard(card.source) ? "multipleChoice" : "note"} />
+                <ShellIcon name={cardIcon(card.source)} />
                 <button
                   className="card-deck-trigger"
                   aria-label="Card actions"
@@ -328,7 +328,7 @@ export function CardDeckPanel({
         <p>
           {query || filter !== filters[0]
             ? "No matching cards."
-            : "Your note cards will appear here. Plain text stays on its whiteboard."}
+            : "Your notes, videos, links, files and images appear here. Plain text stays on its whiteboard."}
         </p>
       )}
     </section>

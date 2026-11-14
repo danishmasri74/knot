@@ -8,8 +8,10 @@ import { createPortal } from "react-dom";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  cardMedia,
   cardPreview,
   isMcqCard,
+  mediaText,
   type CardDeck,
   type DeckData,
   type DeckCard,
@@ -20,6 +22,33 @@ import { ChoicePopover } from "./ChoicePopover";
 import { Destinations } from "./AddNotePicker";
 import { ShellIcon } from "./ShellIcon";
 import { ShellMenu } from "./ShellMenu";
+import { cardIcon, CardThumbnail } from "./CardThumbnail";
+import type { MediaKind } from "../features/editor/blocksuite/media-cards";
+
+const types = [
+  "All cards",
+  "Notes",
+  "Multiple choice",
+  "Videos",
+  "Links",
+  "PDFs & files",
+  "Images",
+  "Linked pages",
+];
+const typeKinds: Record<string, MediaKind[]> = {
+  Videos: ["video"],
+  Links: ["link"],
+  "PDFs & files": ["pdf", "file"],
+  Images: ["image"],
+  "Linked pages": ["page"],
+};
+function matchesType(card: DeckCard, type: string) {
+  const media = cardMedia(card);
+  if (type === "All cards") return true;
+  if (type === "Multiple choice") return isMcqCard(card);
+  if (type === "Notes") return !media && !isMcqCard(card);
+  return !!media && (typeKinds[type] ?? []).includes(media.kind);
+}
 
 type CreateCardEditor = (
   id: string,
@@ -39,7 +68,7 @@ const titleOf = (card: DeckCard, deck?: DeckData) =>
     .split(/\r?\n/)
     .find((line) => line.trim())
     ?.trim()
-    .slice(0, 120) || "Untitled note";
+    .slice(0, 120) || "Untitled card";
 
 export function LibraryCardDeck({
   deck,
@@ -117,7 +146,7 @@ export function LibraryCardDeck({
   const cards = useMemo(() => {
     const term = query.trim().toLocaleLowerCase();
     return Object.values(data ?? {})
-      .filter((card) => !card.deleted && (type === "All cards" || isMcqCard(card) === (type === "Multiple choice")))
+      .filter((card) => !card.deleted && matchesType(card, type))
       .map((card) => ({ card, title: titleOf(card, data), text: cardPreview(card, undefined, data) }))
       .filter((row) => row.text.toLocaleLowerCase().includes(term))
       .sort((a, b) => {
@@ -185,7 +214,7 @@ export function LibraryCardDeck({
           />
         </label>
         <div className="library-view-controls">
-          <ChoicePopover label="Card type" value={type} options={["All cards", "Notes", "Multiple choice"]}
+          <ChoicePopover label="Card type" value={type} options={types}
             onChange={(value) => { setType(value); setPage(0); }} />
           <ChoicePopover
             label="Sort cards"
@@ -260,14 +289,14 @@ export function LibraryCardDeck({
                     placement={cardPlacement(placements, card.id)}
                   />
                   <span>
-                    <ShellIcon name={isMcqCard(card) ? "multipleChoice" : "note"} />
+                    <ShellIcon name={cardIcon(card)} />
                     {card.updatedAt
                       ? new Date(card.updatedAt).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
                           year: "numeric",
                         })
-                      : isMcqCard(card) ? "Multiple choice" : "Note card"}
+                      : isMcqCard(card) ? "Multiple choice" : (mediaText(card)?.label ?? "Note card")}
                   </span>
                   <ShellIcon name="expand" />
                 </span>
@@ -280,7 +309,7 @@ export function LibraryCardDeck({
           <Mascot mood={query ? "search" : "library"} />
           <p>{query
             ? "No cards match your search."
-            : "Your note cards will appear here as you create notes in your notebooks."}</p>
+            : "Your notes, videos, links, files and images appear here as you add them to your notebooks."}</p>
         </div>
       )}
       {pages > 1 && (
@@ -385,7 +414,7 @@ function CardPage({
           title={titleOf(card, deckData)}
           aria-current="page"
         >
-          <ShellIcon name={isMcqCard(card) ? "multipleChoice" : "note"} /> <span>{titleOf(card, deckData)}</span>
+          <ShellIcon name={cardIcon(card)} /> <span>{titleOf(card, deckData)}</span>
         </span>
       </nav>
       <ShellMenu
@@ -451,6 +480,8 @@ function CardPage({
             <CardDeckPreview deck={deckData} card={card} expanded />
             <button type="button" onClick={onEditMcq}>Edit or preview question</button>
           </div>
+        ) : cardMedia(card) ? (
+          <MediaCardView card={card} />
         ) : <CardEditor cardId={card.id} create={onCreateEditor} />}
       </div>
       {error && <p role="alert">{error}</p>}
@@ -475,6 +506,46 @@ function CardPage({
         </div>
       )}
     </section>
+  );
+}
+
+/** A video, link, file or image card: shown, not edited. Its own canvas
+ * toolbar edits it; changes there update the card everywhere. */
+function MediaCardView({ card }: { card: DeckCard }) {
+  const media = cardMedia(card)!;
+  const text = mediaText(card)!;
+  const url = String(media.get("prop:url") ?? "");
+  const videoId = media.identity?.startsWith("youtube:")
+    ? media.identity.slice("youtube:".length)
+    : "";
+  const description = String(media.get("prop:description") ?? "");
+  return (
+    <div className="media-card-view" data-kind={media.kind}>
+      {videoId ? (
+        <div className="media-card-player">
+          <iframe
+            src={`https://www.youtube.com/embed/${videoId}?rel=0`}
+            title={`YouTube video: ${text.title}`}
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+      ) : (
+        <CardThumbnail card={card} />
+      )}
+      <h2>{text.title}</h2>
+      <p className="media-card-detail">{text.detail}</p>
+      {description && <p>{description}</p>}
+      {url && (
+        <a href={url} target="_blank" rel="noreferrer">
+          <ShellIcon name="external" /> {url}
+        </a>
+      )}
+      <p className="media-card-hint">
+        Use “Open in notebook” to see it on its canvas.
+      </p>
+    </div>
   );
 }
 

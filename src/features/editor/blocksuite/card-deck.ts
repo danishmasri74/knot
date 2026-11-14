@@ -1,5 +1,13 @@
 import * as Y from "yjs";
 import { mcqText, readMcq, type McqDefinition } from "../../quiz/mcq";
+import {
+  isContentProp,
+  isMediaFlavour,
+  mediaIdentity,
+  mediaKind,
+  type MediaFlavour,
+  type MediaKind,
+} from "./media-cards";
 
 type Value =
   | { type: "text"; delta: ReturnType<Y.Text["toDelta"]> }
@@ -19,6 +27,9 @@ export interface DeckCard {
   /** Emptied from Trash: content is gone, the ID stays so old placements expire. */
   purged?: boolean;
   generation?: number;
+  /** A standalone canvas object (video, link, file, image or linked page):
+   * `nodes` is that one block's shared content, not a note's children. */
+  media?: true;
 }
 export type DeckData = Record<string, DeckCard>;
 const encode = (value: unknown): Value => {
@@ -49,6 +60,59 @@ const decode = (value: Value): unknown => {
   }
   return value.value;
 };
+/** The canvas object a media card is, and what it shows as. */
+export function cardMedia(card: DeckCard | undefined):
+  | { flavour: MediaFlavour; kind: MediaKind; get: (key: string) => unknown; identity?: string }
+  | undefined {
+  if (!card?.media || card.nodes.length !== 1) return;
+  const node = card.nodes[0];
+  const get = (key: string) => {
+    const value = node.props[key];
+    return value?.type === "json" ? value.value : undefined;
+  };
+  const flavour = get("sys:flavour");
+  if (!isMediaFlavour(flavour)) return;
+  const kind = mediaKind(flavour, get);
+  if (!kind) return;
+  return { flavour, kind, get, identity: mediaIdentity(flavour, get) };
+}
+const mediaLabels: Record<MediaKind, string> = {
+  video: "YouTube video",
+  link: "Link",
+  pdf: "PDF",
+  file: "File",
+  image: "Image",
+  page: "Linked page",
+};
+/** A media card's name and secondary line, for lists and search. */
+export function mediaText(card: DeckCard, titles?: (pageId: string) => string | undefined) {
+  const media = cardMedia(card);
+  if (!media) return;
+  const text = (key: string) => {
+    const value = media.get(key);
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const url = text("prop:url");
+  const title =
+    text("prop:title") ||
+    text("prop:name") ||
+    text("prop:caption") ||
+    (media.kind === "page" ? titles?.(text("prop:pageId")) : "") ||
+    url ||
+    mediaLabels[media.kind];
+  let site = "";
+  try {
+    site = url ? new URL(url).host.replace(/^www\./, "") : "";
+  } catch {
+    site = url;
+  }
+  const detail = [mediaLabels[media.kind], site].filter(Boolean).join(" · ");
+  // Everything searchable: title, address, description and caption.
+  const search = [title, url, text("prop:description"), text("prop:caption"), text("prop:name")]
+    .filter((part, index, all) => part && all.indexOf(part) === index)
+    .join("\n");
+  return { title, detail, search, label: mediaLabels[media.kind] };
+}
 export function isMcqCard(card: DeckCard | undefined): boolean {
   if (!card) return false;
   const flavour = card.nodes[0]?.props["sys:flavour"];
@@ -93,6 +157,8 @@ export function nodeMcq(node: CardNode, deck?: DeckData) {
 }
 
 export function cardPreview(card: DeckCard, fallback = "Empty card", deck?: DeckData): string {
+  const media = mediaText(card);
+  if (media) return media.search || fallback;
   if (isMcqCard(card)) {
     const quiz = cardMcq(card);
     return quiz ? mcqText(quiz) : "Multiple-choice question unavailable";
@@ -118,6 +184,24 @@ export function cardPreview(card: DeckCard, fallback = "Empty card", deck?: Deck
     });
   walk(card.nodes);
   return lines.join("\n").trim() || fallback;
+}
+/** Media blocks placed directly on the canvas (not inside a note). */
+export function standaloneMedia(doc: Y.Doc) {
+  const blocks = doc.getMap<Y.Map<unknown>>("blocks");
+  const ids = new Set<string>();
+  for (const block of blocks.values()) {
+    if (!(block instanceof Y.Map) || block.get("sys:flavour") !== "affine:surface")
+      continue;
+    const children = block.get("sys:children");
+    if (!(children instanceof Y.Array)) continue;
+    for (const id of children.toArray())
+      if (
+        typeof id === "string" &&
+        isMediaFlavour(blocks.get(id)?.get("sys:flavour"))
+      )
+        ids.add(id);
+  }
+  return ids;
 }
 /** The deck owns content; a document owns placement, size and instance identity. */
 export class CardDeck {
@@ -150,8 +234,13 @@ export class CardDeck {
   }
   usedCards(doc: Y.Doc) {
     const ids = new Set<string>();
-    for (const [instance, shared] of doc.getMap<string>("knot:card-links"))
-      if (doc.getMap("blocks").has(instance)) ids.add(shared);
+    const standalone = standaloneMedia(doc);
+    const blocks = doc.getMap<Y.Map<unknown>>("blocks");
+    for (const [instance, shared] of doc.getMap<string>("knot:card-links")) {
+      const flavour = blocks.get(instance)?.get("sys:flavour");
+      // A media block moved into a note is part of that note's content.
+      if (flavour === "affine:note" || standalone.has(instance)) ids.add(shared);
+    }
     for (const block of doc.getMap<Y.Map<unknown>>("blocks").values()) {
       if (block.get("sys:flavour") !== mcqReferenceFlavour) continue;
       const id = block.get("prop:cardId");
@@ -217,6 +306,124 @@ export class CardDeck {
       children.push(nodes.map(insert));
     });
   }
+  /** A standalone object's shared content: its flavour and content props. */
+  private mediaContent(doc: Y.Doc, id: string): CardNode[] {
+    const block = doc.getMap<Y.Map<unknown>>("blocks").get(id)!;
+    const props: Record<string, Value> = {};
+    // Sorted, so the same content has the same signature in every document.
+    for (const key of [...block.keys()].sort())
+      if (isContentProp(key)) props[key] = encode(block.get(key));
+    return [{ props, children: [] }];
+  }
+  private applyMedia(doc: Y.Doc, id: string, nodes: CardNode[]) {
+    const block = doc.getMap<Y.Map<unknown>>("blocks").get(id);
+    const node = nodes[0];
+    if (!block || !node) return;
+    const flavour = node.props["sys:flavour"];
+    if (flavour?.type !== "json" || flavour.value !== block.get("sys:flavour"))
+      return;
+    doc.transact(() => {
+      for (const key of [...block.keys()])
+        if (isContentProp(key) && !(key in node.props)) block.delete(key);
+      for (const [key, value] of Object.entries(node.props)) {
+        if (key === "sys:flavour" || key === "sys:version") continue;
+        if (JSON.stringify(encode(block.get(key))) !== JSON.stringify(value))
+          block.set(key, decode(value));
+      }
+    });
+  }
+  /** Placements of a card other than `instance` in `doc`, across open documents. */
+  private otherPlacements(cardId: string, doc: Y.Doc, instance: string) {
+    let count = 0;
+    for (const target of this.docs) {
+      if (this.editorDocs.has(target)) continue;
+      const standalone = standaloneMedia(target);
+      for (const [other, shared] of target.getMap<string>("knot:card-links"))
+        if (
+          shared === cardId &&
+          standalone.has(other) &&
+          !(target === doc && other === instance)
+        )
+          count++;
+    }
+    return count;
+  }
+  /** The oldest live card of this object type for this video, page or file.
+   * Different types (a YouTube card and a link to it) can't share content. */
+  private findMedia(identity: string, flavour: unknown) {
+    let found: DeckCard | undefined;
+    for (const card of Object.values(this.data)) {
+      const media = cardMedia(card);
+      if (card.deleted || media?.identity !== identity || media.flavour !== flavour)
+        continue;
+      if (!found || (card.createdAt ?? 0) < (found.createdAt ?? 0)) found = card;
+    }
+    return found;
+  }
+  /** Give a standalone object a card: the existing one for the same thing, or
+   * a new one. Returns false while it has nothing to be identified by yet. */
+  private linkMedia(doc: Y.Doc, id: string) {
+    const block = doc.getMap<Y.Map<unknown>>("blocks").get(id)!;
+    const identity = mediaIdentity(block.get("sys:flavour"), (key) =>
+      block.get(key),
+    );
+    if (!identity) return false;
+    const links = doc.getMap<string>("knot:card-links");
+    const nodes = this.mediaContent(doc, id);
+    const signature = JSON.stringify(nodes);
+    const existing = this.findMedia(identity, block.get("sys:flavour"));
+    const now = Date.now();
+    if (existing) {
+      links.set(id, existing.id);
+      doc
+        .getMap<number>("knot:card-generations")
+        .set(id, existing.generation ?? 0);
+      // Placed elsewhere: the card wins, so other canvases don't change.
+      // Its only copy: this object is the newest version of it.
+      if (this.otherPlacements(existing.id, doc, id)) {
+        this.applyMedia(doc, id, existing.nodes);
+        this.signatures.set(doc.guid + id, JSON.stringify(existing.nodes));
+      } else {
+        if (JSON.stringify(existing.nodes) !== signature) {
+          this.contentVersion++;
+          this.data[existing.id] = { ...existing, nodes, updatedAt: now };
+        }
+        this.signatures.set(doc.guid + id, signature);
+      }
+      return true;
+    }
+    const cardId = crypto.randomUUID();
+    links.set(id, cardId);
+    this.contentVersion++;
+    this.data[cardId] = {
+      id: cardId,
+      nodes,
+      media: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.signatures.set(doc.guid + id, signature);
+    return true;
+  }
+  /** How a card is already shown on a canvas, if anywhere: new placements
+   * reuse its display style. */
+  placementStyle(cardId: string) {
+    for (const target of this.docs) {
+      if (this.editorDocs.has(target)) continue;
+      const blocks = target.getMap<Y.Map<unknown>>("blocks");
+      const standalone = standaloneMedia(target);
+      for (const [instance, shared] of target.getMap<string>(
+        "knot:card-links",
+      )) {
+        if (shared !== cardId || !standalone.has(instance)) continue;
+        const block = blocks.get(instance)!;
+        return {
+          style: block.get("prop:style"),
+          embed: block.get("prop:embed"),
+        };
+      }
+    }
+  }
   attach(doc: Y.Doc, editorOnly = false) {
     this.docs.add(doc);
     if (editorOnly) this.editorDocs.add(doc);
@@ -254,6 +461,7 @@ export class CardDeck {
             this.replace(doc, id, card.nodes);
           this.signatures.set(doc.guid + id, JSON.stringify(card.nodes));
         }
+        if (!editorOnly) this.attachMedia(doc);
       });
     } finally {
       this.syncing = false;
@@ -273,6 +481,112 @@ export class CardDeck {
       stop();
       this.stops = this.stops.filter((entry) => entry !== stop);
     };
+  }
+  private attachMedia(doc: Y.Doc) {
+    const links = doc.getMap<string>("knot:card-links");
+    for (const id of standaloneMedia(doc)) {
+      const cardId = links.get(id);
+      const card = cardId ? this.data[cardId] : undefined;
+      if (!card) {
+        this.linkMedia(doc, id);
+        continue;
+      }
+      if (this.expired(doc, id, card)) {
+        this.removeInstance(doc, id);
+        continue;
+      }
+      if (
+        JSON.stringify(this.mediaContent(doc, id)) !== JSON.stringify(card.nodes)
+      )
+        this.applyMedia(doc, id, card.nodes);
+      this.signatures.set(doc.guid + id, JSON.stringify(card.nodes));
+    }
+  }
+  /** Publish edits to standalone objects and enroll new ones. */
+  private scanMedia(doc: Y.Doc, origin: unknown) {
+    const links = doc.getMap<string>("knot:card-links");
+    for (const id of standaloneMedia(doc)) {
+      const cardId = links.get(id);
+      const card = cardId ? this.data[cardId] : undefined;
+      if (!cardId || !card) {
+        this.linkMedia(doc, id);
+        continue;
+      }
+      if (this.expired(doc, id, card)) {
+        this.removeInstance(doc, id);
+        continue;
+      }
+      if (!this.signatures.has(doc.guid + id)) {
+        // Undo restored this object: show the card as it is now.
+        this.applyMedia(doc, id, card.nodes);
+        this.signatures.set(doc.guid + id, JSON.stringify(card.nodes));
+        continue;
+      }
+      const nodes = this.mediaContent(doc, id);
+      const signature = JSON.stringify(nodes);
+      if (this.signatures.get(doc.guid + id) === signature) continue;
+      const media = cardMedia({ id: cardId, nodes, media: true });
+      const identity = media?.identity;
+      const other = identity ? this.findMedia(identity, media.flavour) : undefined;
+      if (!identity || (other && other.id !== cardId)) {
+        // Now the same as another card (or nothing at all): use the matching
+        // card for this object and leave this card as it was.
+        links.delete(id);
+        this.signatures.delete(doc.guid + id);
+        this.linkMedia(doc, id);
+        continue;
+      }
+      this.publish(doc, id, cardId, nodes, signature, origin);
+      for (const target of this.docs) {
+        const standalone = standaloneMedia(target);
+        for (const [instance, shared] of target.getMap<string>(
+          "knot:card-links",
+        )) {
+          if (shared !== cardId || (target === doc && instance === id)) continue;
+          if (!standalone.has(instance)) continue;
+          this.applyMedia(target, instance, nodes);
+          this.signatures.set(target.guid + instance, signature);
+        }
+      }
+    }
+  }
+  /** Record a card's new content, keeping the revision dates Undo restores. */
+  private publish(
+    doc: Y.Doc,
+    id: string,
+    cardId: string,
+    nodes: CardNode[],
+    signature: string,
+    origin: unknown,
+  ) {
+    const previous = this.data[cardId];
+    const now = Date.now();
+    let updatedAt = now;
+    if (previous) {
+      const history = this.revisions.get(cardId) ?? [];
+      if (origin instanceof Y.UndoManager) {
+        const prior = history
+          .slice()
+          .reverse()
+          .find((entry) => entry.signature === signature);
+        updatedAt = prior?.date ?? previous.updatedAt ?? now;
+      }
+      history.push({
+        signature: JSON.stringify(previous.nodes),
+        date: previous.updatedAt ?? now,
+      });
+      this.revisions.set(cardId, history);
+    }
+    this.contentVersion++;
+    this.data[cardId] = {
+      id: cardId,
+      nodes,
+      generation: previous?.generation,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt,
+      ...(previous?.media ? { media: true as const } : {}),
+    };
+    this.signatures.set(doc.guid + id, signature);
   }
   private scan(doc: Y.Doc, origin: unknown) {
     if (this.syncing) return;
@@ -311,33 +625,7 @@ export class CardDeck {
           cardId = crypto.randomUUID();
           links.set(id, cardId);
         }
-        const previous = this.data[cardId];
-        const now = Date.now();
-        let updatedAt = now;
-        if (previous) {
-          const history = this.revisions.get(cardId) ?? [];
-          if (origin instanceof Y.UndoManager) {
-            const prior = history
-              .slice()
-              .reverse()
-              .find((entry) => entry.signature === signature);
-            updatedAt = prior?.date ?? previous.updatedAt ?? now;
-          }
-          history.push({
-            signature: JSON.stringify(previous.nodes),
-            date: previous.updatedAt ?? now,
-          });
-          this.revisions.set(cardId, history);
-        }
-        this.contentVersion++;
-        this.data[cardId] = {
-          id: cardId,
-          nodes,
-          generation: previous?.generation,
-          createdAt: previous?.createdAt ?? now,
-          updatedAt,
-        };
-        this.signatures.set(doc.guid + id, signature);
+        this.publish(doc, id, cardId, nodes, signature, origin);
         for (const target of this.docs)
           for (const [instance, shared] of target.getMap<string>(
             "knot:card-links",
@@ -352,6 +640,7 @@ export class CardDeck {
             this.signatures.set(target.guid + instance, signature);
           }
       }
+      if (!this.editorDocs.has(doc)) this.scanMedia(doc, origin);
       for (const id of links.keys()) {
         if (!doc.getMap("blocks").has(id))
           this.signatures.delete(doc.guid + id);
@@ -474,7 +763,8 @@ export class CardDeck {
         doc
           .getMap<number>("knot:card-generations")
           .set(instance, card.generation ?? 0);
-        this.replace(doc, instance, card.nodes);
+        if (card.media) this.applyMedia(doc, instance, card.nodes);
+        else this.replace(doc, instance, card.nodes);
         this.signatures.set(doc.guid + instance, JSON.stringify(card.nodes));
       });
       this.notify();

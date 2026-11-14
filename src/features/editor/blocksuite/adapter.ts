@@ -6,7 +6,8 @@ import { createSearchReveal } from "./search-reveal";
 import { createNotePageView } from "./note-page-view";
 import { waitForEditorView } from "../../../app/view-readiness";
 import { openCardMenu } from "./card-menu";
-import { CardDeck, cardMcq, cardQuestionReferences, mcqReferenceFlavour, resolveDeckMcq, type DeckData } from "./card-deck";
+import { CardDeck, cardMcq, cardMedia, cardQuestionReferences, mcqReferenceFlavour, resolveDeckMcq, standaloneMedia, type DeckData } from "./card-deck";
+import { mediaSize } from "./media-cards";
 import { McqReferenceSchema, McqSchema, McqSpec, mcqContexts, mcqDecks } from "./mcq-block";
 import { NotebookQuizProgress } from "../../quiz/progress";
 import { publishMcq, type McqDefinition, type McqMutation } from "../../quiz/mcq";
@@ -471,6 +472,24 @@ export async function openEditor(
           )
         : [viewport.center.x, viewport.center.y];
       let placement: string | undefined;
+      const media = cardMedia(cardDeck.data[id]);
+      if (media) {
+        // The same kind of object as the card, in the view it has elsewhere.
+        const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model;
+        if (!surface) return;
+        const shown = cardDeck.placementStyle(id);
+        const [width, height] = mediaSize(media.flavour, media.get, shown?.style);
+        const props: Record<string, unknown> = {
+          xywh: `[${center[0] - width / 2},${center[1] - height / 2},${width},${height}]`,
+        };
+        if (typeof shown?.style === "string") props.style = shown.style;
+        if (typeof shown?.embed === "boolean") props.embed = shown.embed;
+        cardDeck.place(doc.spaceDoc, id, () => {
+          placement = doc.addBlock(media.flavour, props, surface.id);
+          return placement;
+        });
+        return placement;
+      }
       cardDeck.place(doc.spaceDoc, id, () => {
         placement = doc.addBlock(
           "affine:note",
@@ -498,16 +517,20 @@ export async function openEditor(
     };
     let closeCardMenu = () => {};
     const cardContext = (event: MouseEvent) => {
+      // The innermost card: a note, or a video, link, file or image placed
+      // directly on the canvas (one inside a note belongs to the note).
+      const links = doc.spaceDoc.getMap<string>("knot:card-links");
+      const standalone = standaloneMedia(doc.spaceDoc);
       const element = event
         .composedPath()
         .find(
           (node): node is HTMLElement =>
             node instanceof HTMLElement &&
-            node.matches("affine-edgeless-note, affine-note"),
+            (node.matches("affine-edgeless-note, affine-note") ||
+              standalone.has(node.getAttribute("data-block-id") ?? "")),
         );
       const id = element?.getAttribute("data-block-id");
-      const shared =
-        id && doc.spaceDoc.getMap<string>("knot:card-links").get(id);
+      const shared = id && links.get(id);
       if (!shared) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -747,6 +770,8 @@ export async function openEditor(
       async createCardPageView(cardId: string, host: HTMLElement) {
         if (disposed || !cardDeck.data[cardId] || cardDeck.data[cardId].deleted)
           throw new Error("This card is unavailable.");
+        if (cardDeck.data[cardId].media)
+          throw new Error("Open this card on its canvas to change it.");
         // A temporary editing document is never a notebook or a saved placement.
         const temporary = new DocCollection({
           id: workspace,

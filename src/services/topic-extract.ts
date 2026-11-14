@@ -73,7 +73,9 @@ export function extractDeckPassages(
   videos: TopicVideo[];
   images: TopicImage[];
 } {
-  if (card.deleted || source.id !== `deck:${card.id}`)
+  // A standalone video, link, file or image is indexed with the canvas it's
+  // on (as before it was a card), so search opens it there.
+  if (card.deleted || card.media || source.id !== `deck:${card.id}`)
     return { passages: [], pdfs: [], videos: [], images: [] };
   const texts: string[] = [],
     pdfs: TopicPdf[] = [],

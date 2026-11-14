@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from "react";
-import { cardMcq, isMcqCard, mcqReferenceFlavour, nodeMcq, unavailableMcq, type CardNode, type DeckCard, type DeckData } from "../features/editor/blocksuite/card-deck";
+import { CardThumbnail } from "./CardThumbnail";
+import { cardMcq, isMcqCard, mediaText, mcqReferenceFlavour, nodeMcq, unavailableMcq, type CardNode, type DeckCard, type DeckData } from "../features/editor/blocksuite/card-deck";
 
 function property(node: CardNode, key: string) {
   const value = node.props[key];
@@ -48,6 +49,15 @@ export const CardDeckPreview = memo(function CardDeckPreview({
   deckVersion?: number;
   expanded?: boolean;
 }) {
+  const media = mediaText(card);
+  if (media)
+    return (
+      <div className="card-deck-preview media-deck-preview">
+        <CardThumbnail card={card} />
+        <strong>{media.title}</strong>
+        <small>{media.detail}</small>
+      </div>
+    );
   if (isMcqCard(card)) {
     const quiz = cardMcq(card);
     return <div className="card-deck-preview mcq-deck-preview">

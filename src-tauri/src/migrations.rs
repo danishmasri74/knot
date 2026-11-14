@@ -5,7 +5,7 @@ use crate::{
 use rusqlite::Connection;
 use std::{fs, path::Path};
 
-pub const CURRENT_SCHEMA: i64 = 13;
+pub const CURRENT_SCHEMA: i64 = 14;
 const PREFIX: &str = "pre-migration-schema-";
 
 fn verify_archive(path: &Path) -> Result<()> {
@@ -157,7 +157,10 @@ pub fn upgrade(ws: &Workspace, version: i64) -> Result<()> {
         if version < 12 {
             tx.execute_batch(include_str!("../migrations/012_ai_chats.sql"))?;
         }
-        tx.execute_batch(include_str!("../migrations/013_video_transcripts.sql"))?;
+        if version < 13 {
+            tx.execute_batch(include_str!("../migrations/013_video_transcripts.sql"))?;
+        }
+        tx.execute_batch(include_str!("../migrations/014_media_cards.sql"))?;
         if version == 0 {
             tx.execute("UPDATE getting_started SET pending=1", [])?;
         }

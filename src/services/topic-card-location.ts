@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import type { Snapshot } from "./workspace";
+import { standaloneMedia } from "../features/editor/blocksuite/card-deck";
 
 /** Only root-owned, live placements count; dangling link records do not. */
 export function liveCardPlacements(body: Y.Doc, shared?: string): string[] {
@@ -12,15 +13,19 @@ export function liveCardPlacements(body: Y.Doc, shared?: string): string[] {
   const children = roots[0].get("sys:children");
   if (!(children instanceof Y.Array)) return [];
   const links = body.getMap<string>("knot:card-links");
-  return children.toArray().filter((id): id is string => {
+  const linked = (id: unknown): id is string =>
+    typeof id === "string" &&
+    (shared === undefined ? links.has(id) : links.get(id) === shared);
+  const notes = children.toArray().filter((id): id is string => {
     const block = blocks.get(id);
     return (
-      typeof id === "string" &&
-      (shared === undefined ? links.has(id) : links.get(id) === shared) &&
+      linked(id) &&
       block instanceof Y.Map &&
       block.get("sys:flavour") === "affine:note"
     );
   });
+  // Videos, links, files and images placed directly on the canvas.
+  return [...notes, ...[...standaloneMedia(body)].filter(linked)];
 }
 
 export function savedCardPlacements(
