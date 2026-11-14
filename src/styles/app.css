@@ -5496,6 +5496,85 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   margin-top: 4px;
   font-size: 11px;
 }
+/* "Continue where you left off" in an empty Video or Browser panel. */
+.resume-empty {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.resume-empty > p {
+  margin: 0;
+  color: var(--shell-muted);
+}
+.resume-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 420px;
+  padding: 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--shell-radius);
+  background: var(--shell-surface);
+  color: var(--shell-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.resume-card:hover {
+  background: var(--shell-selected);
+}
+.resume-card:focus-visible {
+  outline: 2px solid var(--shell-accent);
+  outline-offset: 2px;
+}
+.resume-card-thumb {
+  flex: none;
+  width: 112px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--shell-selected);
+}
+.resume-card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--shell-selected);
+  color: var(--shell-muted);
+}
+.resume-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.resume-card-eyebrow,
+.resume-card-detail {
+  color: var(--shell-muted);
+  font-size: 11px;
+}
+.resume-card-title,
+.resume-card-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.resume-card-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+.browser-empty .resume-card {
+  margin: 16px 0 4px;
+  max-width: 340px;
+}
 .browser-error {
   padding: 10px 12px;
   display: flex;

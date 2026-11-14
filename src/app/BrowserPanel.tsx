@@ -9,14 +9,19 @@ import {
 import { normalizeWebAddress } from "../services/web-links";
 import { ShellIcon } from "./ShellIcon";
 import { listen } from "@tauri-apps/api/event";
+import { lastPage, pageHost, rememberPage } from "../services/resume";
+import { ResumeCard } from "./ResumeCard";
 
 export function BrowserPanel({
+  workspace,
   request,
   onNavigate,
   expanded,
   onExpand,
   onClose,
 }: {
+  /** Where the last page viewed is remembered, to offer it next time. */
+  workspace: string | null;
   request: BrowserRequest | null;
   onNavigate: (url: string) => void;
   expanded: boolean;
@@ -134,6 +139,13 @@ export function BrowserPanel({
       void browserApi.bounds(browserBounds(element), false).catch(() => {});
     };
   }, [status?.session]);
+  const pageUrl = status && !status.error ? status.url : "";
+  const pageTitle = status?.loading ? "" : (status?.title ?? "");
+  useEffect(() => {
+    if (workspace && pageUrl)
+      rememberPage(workspace, { url: pageUrl, title: pageTitle });
+  }, [workspace, pageUrl, pageTitle]);
+  const resume = status ? null : lastPage(workspace);
   const action = (kind: "back" | "forward" | "reload" | "stop" | "focus") => {
     setError("");
     void browserApi.action(kind).catch((e) => setError(String(e)));
@@ -253,6 +265,15 @@ export function BrowserPanel({
           <div className="browser-empty">
             <Mascot mood="explore" className="browser-mascot" />
             <p>Enter a web address to begin.</p>
+            {resume && (
+              <ResumeCard
+                icon="globe"
+                title={resume.title || pageHost(resume.url)}
+                detail={pageHost(resume.url)}
+                label={`Continue browsing ${resume.title || pageHost(resume.url)}`}
+                onResume={() => onNavigate(resume.url)}
+              />
+            )}
             <p className="browser-empty-hint">
               Browsing won’t save a source or create a note.
             </p>

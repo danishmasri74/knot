@@ -36,6 +36,7 @@ import {
 import { observeNotePaneToolbar } from "../features/editor/blocksuite/note-pane-toolbar";
 import { waitForEditorView } from "./view-readiness";
 import { BrowserPanel } from "./BrowserPanel";
+import { VideoResume } from "./ResumeCard";
 import {
   browserApi,
   getBrowserWidth,
@@ -4525,6 +4526,7 @@ export function App() {
                   )}
                 {tab.kind === "browser" && (
                   <BrowserPanel
+                    workspace={workspaceCatalog.active}
                     request={browserRequest}
                     onNavigate={navigateBrowser}
                     expanded={browserExpanded}
@@ -4619,7 +4621,17 @@ export function App() {
                     </Suspense>
                   )}
                 {tab.kind === "video" && !videoReader && (
-                  <p>Open a YouTube card's side panel from its toolbar.</p>
+                  <VideoResume
+                    workspace={workspaceCatalog.active}
+                    onResume={({ source, position }) => {
+                      setVideoReader(source);
+                      setVideoSeek(
+                        position > 0
+                          ? { ms: position, nonce: Date.now() }
+                          : undefined,
+                      );
+                    }}
+                  />
                 )}
                 {tab.kind === "video" &&
                   videoReader &&

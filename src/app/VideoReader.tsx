@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ShellIcon } from "./ShellIcon";
 import { refreshTopicSource } from "../services/workspace-topic";
+import { rememberVideo, rememberVideoPosition } from "../services/resume";
 import {
   activeChapter,
   activeLine,
@@ -51,6 +52,37 @@ export function VideoReader({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(0);
+  // The empty Video panel offers to continue the last video from here.
+  const resume = useRef({
+    workspace,
+    videoId: source.videoId,
+    saved: -1,
+    duration: 0,
+  });
+  useEffect(() => {
+    rememberVideo(workspace, source);
+    resume.current = {
+      workspace,
+      videoId: source.videoId,
+      saved: -1,
+      duration: 0,
+    };
+  }, [workspace, source]);
+  function savePosition(seconds: number, duration: unknown) {
+    // YouTube sends the duration only in some updates; keep the last one.
+    if (typeof duration === "number" && duration > 0)
+      resume.current.duration = duration;
+    const { workspace, videoId, saved } = resume.current;
+    // The player reports 0 before playing; don't lose the saved moment.
+    if (seconds < 1) return;
+    // Near the end there's nothing to continue: start over next time.
+    const total = resume.current.duration;
+    const ms =
+      total > 0 && total - seconds < 10 ? 0 : Math.round(seconds * 1000);
+    if (saved >= 0 && Math.abs(ms - saved) < 1000) return;
+    resume.current.saved = ms;
+    rememberVideoPosition(workspace, videoId, ms);
+  }
 
   useEffect(() => {
     const token = ++request.current;
@@ -95,7 +127,13 @@ export function VideoReader({
 
   const post = (func: string, args: unknown[] = []) =>
     player.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func, args, id: "knot", channel: "widget" }),
+      JSON.stringify({
+        event: "command",
+        func,
+        args,
+        id: "knot",
+        channel: "widget",
+      }),
       youtubeOrigin,
     );
   useEffect(() => {
@@ -109,7 +147,7 @@ export function VideoReader({
       try {
         const data = JSON.parse(event.data) as {
           event?: string;
-          info?: { currentTime?: unknown };
+          info?: { currentTime?: unknown; duration?: unknown };
         };
         if (
           (data.event === "onReady" || data.event === "initialDelivery") &&
@@ -127,8 +165,10 @@ export function VideoReader({
           (data.event === "infoDelivery" || data.event === "initialDelivery") &&
           typeof time === "number" &&
           Number.isFinite(time)
-        )
+        ) {
           setNow(Math.round(time * 1000));
+          savePosition(time, data.info?.duration);
+        }
       } catch {
         // Not a player message.
       }
@@ -159,7 +199,10 @@ export function VideoReader({
   }, [seekRequest?.nonce]);
 
   const lines = useMemo(
-    () => (transcript ? transcriptLines(transcript.segments, transcript.chapters) : []),
+    () =>
+      transcript
+        ? transcriptLines(transcript.segments, transcript.chapters)
+        : [],
     [transcript],
   );
   const rows = useMemo(
@@ -171,17 +214,27 @@ export function VideoReader({
     ? rows.filter((row) => row.type === "line" && lineMatches(row.text, query))
     : rows;
   const current = activeLine(lines, now);
-  const chapter = transcript ? activeChapter(transcript.chapters, now) : undefined;
+  const chapter = transcript
+    ? activeChapter(transcript.chapters, now)
+    : undefined;
 
   useEffect(() => {
     if (current < 0 || searching) return;
     if (Date.now() - lastManualScroll.current < manualScrollMs) return;
-    const row = list.current?.querySelector<HTMLElement>(`[data-line="${current}"]`);
+    const row = list.current?.querySelector<HTMLElement>(
+      `[data-line="${current}"]`,
+    );
     const box = list.current;
     if (!row || !box) return;
     const top = row.offsetTop - box.offsetTop;
-    if (top < box.scrollTop || top + row.offsetHeight > box.scrollTop + box.clientHeight)
-      box.scrollTo({ top: Math.max(0, top - box.clientHeight / 3), behavior: "smooth" });
+    if (
+      top < box.scrollTop ||
+      top + row.offsetHeight > box.scrollTop + box.clientHeight
+    )
+      box.scrollTo({
+        top: Math.max(0, top - box.clientHeight / 3),
+        behavior: "smooth",
+      });
   }, [current, searching]);
   const manual = () => {
     lastManualScroll.current = Date.now();
@@ -269,7 +322,10 @@ export function VideoReader({
             <p className="video-reader-status" role="status">
               {fetching ? "Getting transcript…" : error}
               {error && !fetching && (
-                <button type="button" onClick={() => void getTranscript(transcript.track.id)}>
+                <button
+                  type="button"
+                  onClick={() => void getTranscript(transcript.track.id)}
+                >
                   Try again
                 </button>
               )}
@@ -297,7 +353,9 @@ export function VideoReader({
                     aria-current={row.index === current ? "true" : undefined}
                     onClick={() => seek(row.start)}
                   >
-                    <span className="video-reader-time">{formatTimestamp(row.start)}</span>
+                    <span className="video-reader-time">
+                      {formatTimestamp(row.start)}
+                    </span>
                     <span>{row.text}</span>
                   </button>
                 </div>
@@ -309,10 +367,14 @@ export function VideoReader({
           </div>
           <p className="video-reader-footer">
             <span>
-              {transcript.track.kind === "asr" ? "Auto-generated captions" : "Creator captions"} ·{" "}
-              {transcript.track.name}
+              {transcript.track.kind === "asr"
+                ? "Auto-generated captions"
+                : "Creator captions"}{" "}
+              · {transcript.track.name}
             </span>
-            <span>Saved {new Date(transcript.fetchedAt).toLocaleDateString()}</span>
+            <span>
+              Saved {new Date(transcript.fetchedAt).toLocaleDateString()}
+            </span>
           </p>
         </>
       ) : fetching ? (
@@ -339,10 +401,14 @@ export function VideoReader({
         <div className="video-reader-state">
           <h3>Read along with the video</h3>
           <p>
-            Knot asks YouTube for this video's captions and saves them in this workspace, so
-            they're here offline.
+            Knot asks YouTube for this video's captions and saves them in this
+            workspace, so they're here offline.
           </p>
-          <button type="button" className="video-reader-primary" onClick={() => void getTranscript()}>
+          <button
+            type="button"
+            className="video-reader-primary"
+            onClick={() => void getTranscript()}
+          >
             Get transcript
           </button>
         </div>
