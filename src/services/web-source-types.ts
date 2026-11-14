@@ -77,6 +77,10 @@ export type WebCitation = {
 };
 export type NoteCitation = {
   pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation;
+  /** Text read from an image by OCR on this device. */
+  image?: import("./topic-types").ImageLocation;
+  /** Text read from a scanned PDF page by OCR on this device. */
+  ocr?: true;
   /** A YouTube transcript passage found by workspace search. */
   video?: import("./youtube-transcript").VideoLocation;
   revision?: string;

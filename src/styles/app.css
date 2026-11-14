@@ -6583,3 +6583,12 @@ knot-web-source { display: block; margin-block: 8px; }
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* OCR citation: the lines of an image the cited text was read from. */
+.ocr-line-highlight {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  border-radius: 2px;
+  background: light-dark(#ffd54f66, #e0c56e66);
+}

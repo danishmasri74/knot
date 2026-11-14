@@ -8,7 +8,7 @@ use std::{
     sync::Mutex,
 };
 use tauri::State;
-const FORMAT: i64 = 3;
+const FORMAT: i64 = 6;
 pub struct TopicCache(
     pub PathBuf,
     pub Mutex<bool>,
@@ -75,6 +75,12 @@ pub struct Passage {
     /// A YouTube transcript passage's card and moment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video: Option<serde_json::Value>,
+    /// Text OCR read from an image: the image block and line boxes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<serde_json::Value>,
+    /// Text OCR read from a scanned PDF page (with `pdf`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ocr: Option<bool>,
 }
 #[derive(Serialize)]
 pub struct Search {
@@ -86,7 +92,7 @@ pub struct Search {
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
-fn identity(w: &Workspace) -> Result<String, String> {
+pub(crate) fn identity(w: &Workspace) -> Result<String, String> {
     let path = w.root.canonicalize().map_err(|e| e.to_string())?;
     let manifest = std::fs::read(w.root.join("workspace.json")).map_err(|e| e.to_string())?;
     let created = std::fs::metadata(w.root.join("knot.db"))
@@ -178,7 +184,7 @@ fn source(w: &Workspace, id: &str) -> Result<Option<Source>, String> {
     }
     w.db.query_row("SELECT o.id,o.title,CAST(coalesce(d.revision,0) AS TEXT)||':'||CAST(o.updated_at AS TEXT) FROM objects o LEFT JOIN documents d ON d.object_id=o.id WHERE o.id=?1 AND o.deleted_at IS NULL",[id],|r|Ok(Source{id:r.get(0)?,title:r.get(1)?,revision:r.get(2)?})).optional().map_err(|e|e.to_string())
 }
-fn open(path: &Path) -> Result<Connection, String> {
+pub(crate) fn open(path: &Path) -> Result<Connection, String> {
     std::fs::create_dir_all(path.parent().ok_or("Invalid cache path")?)
         .map_err(|e| e.to_string())?;
     let init = || -> rusqlite::Result<Connection> {
@@ -192,7 +198,7 @@ fn open(path: &Path) -> Result<Connection, String> {
         if check != "ok" {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        db.execute_batch("CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,revision TEXT NOT NULL,error INTEGER NOT NULL,failure TEXT); CREATE TABLE IF NOT EXISTS passages(source TEXT NOT NULL,ordinal INTEGER NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(source,ordinal)); CREATE TABLE IF NOT EXISTS representations(digest TEXT PRIMARY KEY,model TEXT NOT NULL,vector TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS lexical USING fts5(source UNINDEXED,ordinal UNINDEXED,title,body,tokenize='unicode61'); PRAGMA user_version=3;")?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,revision TEXT NOT NULL,error INTEGER NOT NULL,failure TEXT); CREATE TABLE IF NOT EXISTS passages(source TEXT NOT NULL,ordinal INTEGER NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(source,ordinal)); CREATE TABLE IF NOT EXISTS representations(digest TEXT PRIMARY KEY,model TEXT NOT NULL,vector TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS lexical USING fts5(source UNINDEXED,ordinal UNINDEXED,title,body,tokenize='unicode61'); CREATE TABLE IF NOT EXISTS images(source TEXT NOT NULL,key TEXT NOT NULL,page INTEGER NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(source,key,page)); CREATE INDEX IF NOT EXISTS images_hash ON images(sha256); PRAGMA user_version=6;")?;
         Ok(db)
     };
     match init() {
@@ -206,10 +212,10 @@ fn open(path: &Path) -> Result<Connection, String> {
         }
     }
 }
-fn cache_path(cache: &TopicCache, workspace: &str) -> PathBuf {
+pub(crate) fn cache_path(cache: &TopicCache, workspace: &str) -> PathBuf {
     cache.0.join(format!("{workspace}.sqlite"))
 }
-fn guard<'a>(
+pub(crate) fn guard<'a>(
     state: &'a AppState,
     activation: &str,
 ) -> Reply<std::sync::MutexGuard<'a, Result<Workspace, String>>> {
@@ -261,7 +267,7 @@ pub fn topic_pending(
         sources.iter().map(|s| s.id.as_str()).collect();
     for id in existing {
         if !eligible_ids.contains(id.as_str()) {
-            for table in ["sources", "passages", "lexical"] {
+            for table in ["sources", "passages", "lexical", "images"] {
                 let column = if table == "sources" { "id" } else { "source" };
                 tx.execute(&format!("DELETE FROM {table} WHERE {column}=?1"), [&id])
                     .map_err(|e| e.to_string())?;
@@ -336,17 +342,25 @@ pub fn topic_load(
     serde_json::to_value(w.load(&id).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn topic_replace(
     state: State<'_, AppState>,
     cache: State<'_, TopicCache>,
+    ocr: State<'_, crate::ocr::OcrState>,
     activation: String,
     id: String,
     revision: String,
     passages: Vec<Passage>,
     failed: bool,
     failure: Option<String>,
+    // The source's images and scanned PDF pages, and those whose OCR text the
+    // passages include (docs/WORKSPACE-OCR-PLAN.md).
+    images: Option<Vec<crate::ocr::Unit>>,
+    read: Option<Vec<crate::ocr::Unit>>,
 ) -> Reply<()> {
-    if passages.len() > 4096
+    let images = images.unwrap_or_default();
+    let read = read.unwrap_or_default();
+    if images.len() > 4096 || passages.len() > 4096
         || passages.iter().any(|p| {
             p.document != id
                 || p.revision != revision
@@ -365,9 +379,16 @@ pub fn topic_replace(
     if source(w, &id)?.is_none_or(|s| s.revision != revision) {
         return Err("Source changed".into());
     }
+    let image_hashes = crate::ocr::hashes(w, &images);
+    // A reading stored after the renderer looked it up: index this source again.
+    let revision = if crate::ocr::missing_readings(&ocr, &image_hashes, &read) {
+        String::new()
+    } else {
+        revision
+    };
     let mut db = open(&cache_path(&cache, &identity(w)?))?;
     let tx = db.transaction().map_err(|e| e.to_string())?;
-    for table in ["passages", "lexical"] {
+    for table in ["passages", "lexical", "images"] {
         tx.execute(&format!("DELETE FROM {table} WHERE source=?1"), [&id])
             .map_err(|e| e.to_string())?;
     }
@@ -397,6 +418,13 @@ pub fn topic_replace(
         tx.execute(
             "INSERT INTO lexical(source,ordinal,title,body) VALUES(?1,?2,?3,?4)",
             params![id, n, p.title, p.text],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    for (unit, hash) in &image_hashes {
+        tx.execute(
+            "INSERT OR IGNORE INTO images VALUES(?1,?2,?3,?4)",
+            params![id, unit.key, unit.page, hash],
         )
         .map_err(|e| e.to_string())?;
     }

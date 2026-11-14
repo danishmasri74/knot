@@ -1,6 +1,7 @@
 import { AiDiagnostics } from "./AiDiagnostics";
 import { useEffect, useId, useRef, useState } from "react";
 import { ShellIcon } from "./ShellIcon";
+import { OcrSettings } from "./OcrSettings";
 import {
   getAiSuggestionsEnabled,
   setAiSuggestionsEnabled,
@@ -162,6 +163,7 @@ export function AiSettings({
           <span />
         </button>
       </div>
+      <OcrSettings enabled={enabled && workspaceSearch} />
       <div className="settings-row">
         <div>
           <strong id="ai-web-search-label">Search the web</strong>

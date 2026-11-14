@@ -11,6 +11,39 @@ export function setWorkspaceSearchEnabled(enabled: boolean) {
   localStorage.setItem(workspaceSearchKey, String(enabled));
   window.dispatchEvent(new Event(WORKSPACE_SEARCH_CHANGED));
 }
+/**
+ * Settings → AI → Read text in images (docs/WORKSPACE-OCR-PLAN.md). On by
+ * default: Windows OCR runs on this device, paced, for new images only until
+ * the backlog is started. Pause lasts for this session.
+ */
+export const OCR_CHANGED = "knot-ocr-changed";
+const ocrKey = "knot.ai-ocr";
+const ocrBatteryKey = "knot.ai-ocr-battery";
+let ocrPaused = false;
+export type OcrPreferences = {
+  enabled: boolean;
+  battery: boolean;
+  paused: boolean;
+};
+export function getOcrPreferences(): OcrPreferences {
+  let enabled = true,
+    battery = false;
+  try {
+    enabled = localStorage.getItem(ocrKey) !== "false";
+    battery = localStorage.getItem(ocrBatteryKey) === "true";
+  } catch {
+    /* defaults */
+  }
+  return { enabled, battery, paused: ocrPaused };
+}
+export function setOcrPreferences(next: Partial<OcrPreferences>) {
+  if (next.enabled !== undefined)
+    localStorage.setItem(ocrKey, String(next.enabled));
+  if (next.battery !== undefined)
+    localStorage.setItem(ocrBatteryKey, String(next.battery));
+  if (next.paused !== undefined) ocrPaused = next.paused;
+  window.dispatchEvent(new Event(OCR_CHANGED));
+}
 const key = "knot.ai-enabled";
 export function getAiEnabled(): boolean {
   try {

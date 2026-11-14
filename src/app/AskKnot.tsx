@@ -320,6 +320,7 @@ function AskKnotPanel({
     text: string,
     pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation,
     video?: VideoLocation,
+    image?: import("../services/topic-types").ImageLocation,
   ) => Promise<void>;
 }) {
   const [chats, setChats] = useState<Chat[]>(initialChats);
@@ -3405,6 +3406,7 @@ const CitationSources = memo(function CitationSources({
     text: string,
     pdf?: import("../features/editor/blocksuite/pdf-highlights").PdfLocation,
     video?: VideoLocation,
+    image?: import("../services/topic-types").ImageLocation,
   ) => Promise<void>;
 }) {
   const [error, setError] = useState("");
@@ -3470,6 +3472,38 @@ const CitationSources = memo(function CitationSources({
               </button>
             </div>
           );
+        // Text Windows OCR read from an image (workspace search).
+        const image =
+          source && (source.kind === undefined || source.kind === "note")
+            ? source.image
+            : undefined;
+        if (source && image)
+          return (
+            <div key={id}>
+              <div className="ask-source-title">
+                <span className="ask-source-index">{index + 1}</span>
+                <ShellIcon name="image" />
+                <span>{image.caption || "Image"}</span>
+              </div>
+              <small className="ask-source-note">Text read from image</small>
+              <blockquote>{source.text}</blockquote>
+              <button
+                onClick={() => {
+                  setError("");
+                  void onSource(
+                    source.document,
+                    image.blockId,
+                    source.text,
+                    undefined,
+                    undefined,
+                    image,
+                  ).catch((e) => setError(String(e)));
+                }}
+              >
+                Open image
+              </button>
+            </div>
+          );
         return source ? (
           <div key={id}>
             <div className="ask-source-title">
@@ -3477,6 +3511,11 @@ const CitationSources = memo(function CitationSources({
               <ShellIcon name={source.kind === "link" ? "globe" : "note"} />
               <span>{source.title || "Source note"}</span>
             </div>
+            {"ocr" in source && source.ocr && (
+              <small className="ask-source-note">
+                Text read from scanned page
+              </small>
+            )}
             {source.kind === "web" && sentence ? (
               <>
                 <blockquote>

@@ -17,8 +17,12 @@ import {
 import { cardMcq, cardPreview, type DeckData } from "../features/editor/blocksuite/card-deck";
 import { McqComposer } from "./McqComposer";
 import type { McqDefinition } from "../features/quiz/mcq";
-import { startTopicIndex } from "../services/workspace-topic";
-import { WORKSPACE_SEARCH_CHANGED } from "../services/ai-preferences";
+import type { ImageLocation } from "../services/topic-types";
+import { configureOcr, startTopicIndex } from "../services/workspace-topic";
+import {
+  OCR_CHANGED,
+  WORKSPACE_SEARCH_CHANGED,
+} from "../services/ai-preferences";
 import { ColumnVisibilityToggle, WorkspacePanes } from "./WorkspacePanes";
 import { useNotebookLayout } from "./useNotebookLayout";
 import { NotePagePane } from "./NotePagePane";
@@ -197,6 +201,41 @@ const defaultLibrary: LibraryLocation = {
   library: "notebooks",
 };
 
+/** Briefly marks OCR line boxes (image fractions) over an image, once its
+ * position has been stable for a few frames (at most about two seconds). */
+async function highlightImageLines(
+  picture: HTMLImageElement,
+  rects: [number, number, number, number][],
+) {
+  let last = "",
+    stable = 0;
+  for (let frame = 0; frame < 150 && stable < 8; frame++) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (!picture.isConnected) return;
+    const b = picture.getBoundingClientRect();
+    const key = [b.left, b.top, b.width, b.height].map(Math.round).join();
+    stable = key === last && b.width > 0 ? stable + 1 : 0;
+    last = key;
+  }
+  if (stable < 8) return;
+  const box = picture.getBoundingClientRect();
+  for (const [x, y, w, h] of rects.slice(0, 100)) {
+    const mark = document.createElement("div");
+    mark.className = "ocr-line-highlight";
+    Object.assign(mark.style, {
+      left: `${box.left + x * box.width}px`,
+      top: `${box.top + y * box.height}px`,
+      width: `${w * box.width}px`,
+      height: `${h * box.height}px`,
+    });
+    document.body.append(mark);
+    mark
+      .animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], {
+        duration: 2600,
+      })
+      .finished.finally(() => mark.remove());
+  }
+}
 export function App() {
   const [library, setLibrary] = useState<LibraryLocation | null>(
     defaultLibrary,
@@ -749,9 +788,11 @@ export function App() {
       stop = startTopicIndex();
     };
     window.addEventListener(WORKSPACE_SEARCH_CHANGED, changed);
+    window.addEventListener(OCR_CHANGED, configureOcr);
     return () => {
       stop?.();
       window.removeEventListener(WORKSPACE_SEARCH_CHANGED, changed);
+      window.removeEventListener(OCR_CHANGED, configureOcr);
     };
   }, [workspaceCatalog.active, aiEnabled]);
   workspaceIdentity.current = workspaceCatalog.active;
@@ -1374,6 +1415,88 @@ export function App() {
    * Shows a cited card in the view its document is open in: on the canvas
    * (opening a document follows Settings → open notes in) or as a page.
    */
+  /** Opens the note or card holding an image whose OCR text was cited. */
+  async function openCitedImage(document: string, image: ImageLocation) {
+    const gone = "This image is no longer in the source. The text read from it is shown here.";
+    if (document.startsWith("deck:")) {
+      const id = document.slice(5);
+      const deck =
+        session.current?.cardDeck.data ??
+        (JSON.parse(await repository.loadCardDeck()) as DeckData);
+      const card = deck[id];
+      if (
+        !card ||
+        card.deleted ||
+        !extractDeckPassages({ id: document, title: "Card Deck", revision: "" }, card)
+          .images.some((ref) => ref.key === image.key)
+      )
+        throw Error(gone);
+      setCitedDeckSource({ workspace: workspaceCatalog.active!, id, text: "" });
+      openSurface("cardDeck");
+      return;
+    }
+    const source = (await repository.catalog()).find(
+      (item) => item.id === document,
+    );
+    if (!source) throw Error("Source is unavailable or deleted.");
+    const dirty = session.current
+      ?.topicOverlay()
+      .documents.find((row) => row.id === document);
+    const snapshot = dirty ? dirty.snapshot : await repository.load(document);
+    if (
+      !snapshot ||
+      !extractTopicContent({ id: document, title: "", revision: "" }, snapshot)
+        .images.some(
+          (ref) => ref.key === image.key && ref.blockId === image.blockId,
+        )
+    )
+      throw Error(gone);
+    await selectCitation(source);
+    openPane("ask");
+    const opened = session.current;
+    if (!opened || opened.doc.id !== document) return;
+    // Reveal the note holding the image: a card on the canvas or in the notebook.
+    let note: string | undefined;
+    for (
+      let model = opened.doc.getBlock(image.blockId)?.model ?? null;
+      model;
+      model = opened.doc.getParent(model)
+    )
+      if (model.flavour === "affine:note") {
+        note = model.id;
+        break;
+      }
+    if (opened.editor.mode === "edgeless") {
+      if (note) await opened.focusCanvasCard(note);
+    } else if (
+      note &&
+      opened.doc.spaceDoc.getMap<string>("knot:card-links").has(note)
+    )
+      await opened.focusNotebookNote(note);
+    else await opened.setMode("page");
+    setMode(opened.editor.mode);
+    setFocusedNote(
+      opened.editor.mode === "edgeless" ? null : (opened.revealedNoteId ?? null),
+    );
+    if (session.current !== opened) return;
+    requestAnimationFrame(() => {
+      const element = session.current?.editor.querySelector(
+        `[data-block-id="${CSS.escape(image.blockId)}"]`,
+      );
+      element?.scrollIntoView({ block: "center", behavior: "smooth" });
+      const picture = element?.querySelector("img");
+      if (!picture || !image.rects?.length) {
+        element?.animate(
+          [{ outline: "3px solid #ffe08a" }, { outline: "3px solid transparent" }],
+          { duration: 2400 },
+        );
+        return;
+      }
+      // Mark the lines the cited text was read from once the picture stops
+      // moving (page scrolling, or the canvas opening and zooming to the card).
+      void highlightImageLines(picture, image.rects);
+    });
+  }
   async function focusCitedCard(
     opened: EditorSession,
     id: string,
@@ -3844,7 +3967,7 @@ export function App() {
                 }
                 onSuggestionHandled={() => setSuggestion(null)}
                 onBusy={setAiRunning}
-                onSource={async (document, block, text, pdf, video) => {
+                onSource={async (document, block, text, pdf, video, image) => {
                   if (video) {
                     // A transcript citation: play that moment in the panel.
                     openVideoAt(video);
@@ -3854,6 +3977,10 @@ export function App() {
                   let sourceFailed = false;
                   setAiPlacement("panel");
                   try {
+                    if (image) {
+                      await openCitedImage(document, image);
+                      return;
+                    }
                     if (document.startsWith("deck:")) {
                       const id = document.slice(5);
                       const deck = session.current?.cardDeck.data ??

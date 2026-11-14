@@ -2,16 +2,18 @@ import { openPdfBytes } from "./pdf-input";
 import { attachments } from "./workspace";
 import { splitPassage, type TopicPdf } from "./topic-extract";
 import type { TopicPassage, TopicSource } from "./topic-types";
+/** Pages without a text layer listed per PDF for background OCR. */
+export const MAX_SCANNED_PAGES = 200;
 // Session cache is bounded; persistent text is held only in the disposable native index.
 const pagesByHash = new Map<
   string,
-  { pages: { page: number; text: string }[]; partial: boolean }
+  { pages: { page: number; text: string }[]; partial: boolean; scanned: number[] }
 >();
 export async function extractTopicPdf(
   source: TopicSource,
   ref: TopicPdf,
   signal?: AbortSignal,
-): Promise<{ passages: TopicPassage[]; partial: boolean }> {
+): Promise<{ passages: TopicPassage[]; partial: boolean; scanned: number[] }> {
   if (signal?.aborted) throw Error("PDF indexing cancelled");
   const bytes = new Uint8Array(await attachments.get(ref.key));
   if (bytes.length > 10 * 1024 * 1024) throw Error("PDF size limit");
@@ -28,7 +30,7 @@ export async function extractTopicPdf(
       void task.destroy();
     };
     signal?.addEventListener("abort", cancel, { once: true });
-    extracted = { pages: [], partial: false };
+    extracted = { pages: [], partial: false, scanned: [] };
     try {
       const pdf = await task.promise;
       if (pdf.numPages > 1000) extracted.partial = true;
@@ -85,7 +87,10 @@ export async function extractTopicPdf(
             break;
           }
           if (!text.trim()) {
-            extracted.partial = true;
+            // No text layer (a scan): background OCR reads it, up to a cap.
+            if (extracted.scanned.length < MAX_SCANNED_PAGES)
+              extracted.scanned.push(n);
+            else extracted.partial = true;
             continue;
           }
           extracted.pages.push({ page: n, text });
@@ -104,6 +109,7 @@ export async function extractTopicPdf(
   }
   return {
     partial: extracted.partial,
+    scanned: extracted.scanned,
     passages: extracted.pages.flatMap((p) =>
       splitPassage(p.text)
         .filter((t) => t.trim())

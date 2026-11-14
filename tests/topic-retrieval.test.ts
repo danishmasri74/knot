@@ -9,6 +9,7 @@ import {
   extractDeckPassages,
   splitPassage,
 } from "../src/services/topic-extract";
+import { ocrPassages } from "../src/services/ocr-passages";
 const base = {
   scope: "auto" as const,
   mode: "ask",
@@ -228,4 +229,59 @@ test("YouTube cards inside Card Deck cards are reported too", async () => {
     } as never,
   );
   expect(videos).toEqual([{ videoId: "aircAruvnKk", blockId: "0", title: "NN" }]);
+});
+
+test("images are listed for OCR once each, with captions, up to the cap", () => {
+  const json = (value: string) => ({ type: "json" as const, value });
+  const node = (props: Record<string, string>) => ({
+    props: Object.fromEntries(
+      Object.entries(props).map(([k, v]) => [k, json(v)]),
+    ),
+    children: [],
+  });
+  const card = {
+    id: "x",
+    nodes: [
+      node({ "sys:flavour": "affine:image", "prop:sourceId": "a", "prop:caption": "Whiteboard" }),
+      node({ "sys:flavour": "affine:image", "prop:sourceId": "a" }),
+      node({ "sys:flavour": "affine:attachment", "prop:sourceId": "b", "prop:type": "image/png", "prop:name": "scan.png" }),
+      node({ "sys:flavour": "affine:attachment", "prop:sourceId": "c", "prop:type": "application/pdf" }),
+      node({ "sys:flavour": "affine:image" }),
+      ...Array.from({ length: 60 }, (_, i) =>
+        node({ "sys:flavour": "affine:image", "prop:sourceId": `k${i}` }),
+      ),
+    ],
+  };
+  const { images } = extractDeckPassages(
+    { id: "deck:x", title: "Card", revision: "r1" },
+    card as never,
+  );
+  expect(images.slice(0, 2)).toEqual([
+    { key: "a", blockId: "0", caption: "Whiteboard" },
+    { key: "b", blockId: "2", caption: "scan.png" },
+  ]);
+  expect(images).toHaveLength(50);
+  expect(images.some((image) => image.key === "c")).toBe(false);
+});
+
+test("OCR passages carry the boxes of the lines they came from", () => {
+  const line = (text: string, y: number) => ({ text, x: 0.1, y, w: 0.95, h: 0.05 });
+  const lines = [
+    line("Quarterly whiteboard notes", 0.1),
+    line("Photosynthesis needs chlorophyll", 0.3),
+    ...Array.from({ length: 40 }, (_, i) =>
+      line(`Line ${i} of a long scanned page about cells`, 0.4 + i * 0.01),
+    ),
+  ];
+  const parts = ocrPassages(lines);
+  expect(parts.length).toBeGreaterThan(1);
+  expect(parts.map((p) => p.text).join("")).toBe(
+    lines.map((l) => l.text).join("\n"),
+  );
+  // Clamped to the image: x + w never exceeds 1.
+  expect(parts[0].rects[0]).toEqual([0.1, 0.1, 0.9, 0.05]);
+  expect(parts[0].rects).toHaveLength(
+    parts[0].text.split("\n").filter((t) => t.trim()).length,
+  );
+  expect(ocrPassages([])).toEqual([]);
 });

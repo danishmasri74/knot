@@ -27,6 +27,36 @@ export interface TopicPdf {
   name: string;
   blockId: string;
 }
+/** An image whose text Windows OCR may read (docs/WORKSPACE-OCR-PLAN.md). */
+export interface TopicImage {
+  key: string;
+  blockId: string;
+  caption: string;
+}
+/** Images per source sent to OCR; the plan's cap. */
+export const MAX_TOPIC_IMAGES = 50;
+function addImage(
+  images: TopicImage[],
+  flavour: string,
+  get: (key: string) => string,
+  blockId: string,
+) {
+  const key = get("prop:sourceId");
+  const image =
+    flavour === "affine:image" ||
+    (flavour === "affine:attachment" && get("prop:type").startsWith("image/"));
+  if (
+    image &&
+    key &&
+    images.length < MAX_TOPIC_IMAGES &&
+    !images.some((i) => i.key === key)
+  )
+    images.push({
+      key,
+      blockId,
+      caption: (get("prop:caption") || (flavour === "affine:attachment" ? get("prop:name") : "")).slice(0, 200),
+    });
+}
 /** A YouTube card whose saved transcript is indexed with its document. */
 export interface TopicVideo {
   videoId: string;
@@ -37,12 +67,18 @@ export function extractDeckPassages(
   source: TopicSource,
   card: DeckCard,
   deck?: DeckData,
-): { passages: TopicPassage[]; pdfs: TopicPdf[]; videos: TopicVideo[] } {
+): {
+  passages: TopicPassage[];
+  pdfs: TopicPdf[];
+  videos: TopicVideo[];
+  images: TopicImage[];
+} {
   if (card.deleted || source.id !== `deck:${card.id}`)
-    return { passages: [], pdfs: [], videos: [] };
+    return { passages: [], pdfs: [], videos: [], images: [] };
   const texts: string[] = [],
     pdfs: TopicPdf[] = [],
     videos: TopicVideo[] = [],
+    images: TopicImage[] = [],
     segments: { text: string; attribution?: string }[] = [];
   const walk = (nodes: CardNode[]) =>
     nodes.forEach((node, index) => {
@@ -80,6 +116,7 @@ export function extractDeckPassages(
           name: prop("prop:name") || "PDF",
           blockId: String(index),
         });
+      addImage(images, flavour, prop, String(index));
       // Most notes are Card Deck cards: their YouTube cards are indexed here.
       if (flavour === "affine:embed-youtube") {
         const videoId =
@@ -107,13 +144,18 @@ export function extractDeckPassages(
         ...(segment.attribution ? { attribution: segment.attribution } : {}),
       })),
   );
-  return { passages, pdfs, videos };
+  return { passages, pdfs, videos, images };
 }
 /** Isolated decoding: follow only reachable blocks, never instantiate an editor. */
 export function extractTopicContent(
   source: TopicSource,
   snapshot: Snapshot,
-): { passages: TopicPassage[]; pdfs: TopicPdf[]; videos: TopicVideo[] } {
+): {
+  passages: TopicPassage[];
+  pdfs: TopicPdf[];
+  videos: TopicVideo[];
+  images: TopicImage[];
+} {
   if (snapshot.collection.length + snapshot.document.length > 8 * 1024 * 1024)
     throw Error("oversized");
   const envelope = new Y.Doc(),
@@ -136,6 +178,7 @@ export function extractTopicContent(
     if (roots.length !== 1) throw Error("root");
     const pdfs: TopicPdf[] = [];
     const videos: TopicVideo[] = [];
+    const images: TopicImage[] = [];
     const result: TopicPassage[] = [],
       visited = new Set<string>();
     let size = 0;
@@ -160,6 +203,7 @@ export function extractTopicContent(
           name: String(block.get("prop:name") || "PDF"),
           blockId: id,
         });
+      addImage(images, flavour, (key) => String(block.get(key) ?? ""), id);
       if (flavour === "affine:embed-youtube") {
         const videoId =
           String(block.get("prop:videoId") || "") ||
@@ -228,7 +272,7 @@ export function extractTopicContent(
         for (const child of children.toArray()) walk(String(child));
     }
     walk(roots[0][0]);
-    return { passages: result, pdfs, videos };
+    return { passages: result, pdfs, videos, images };
   } finally {
     envelope.destroy();
     body.destroy();

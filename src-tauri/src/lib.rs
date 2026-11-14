@@ -2,6 +2,7 @@ mod ai;
 mod ai_chats;
 mod ai_context;
 mod topic;
+mod ocr;
 mod backup;
 mod browser;
 mod canvas_previews;
@@ -788,6 +789,15 @@ pub fn run() {
                 base.join("ai-diagnostics.sqlite"),
             ));
             app.manage(topic::TopicCache(app.path().app_cache_dir()?.join("topic-v1"), Mutex::new(true), Mutex::new(std::collections::HashMap::new())));
+            // OCR results outlive search-cache rebuilds (docs/WORKSPACE-OCR-PLAN.md).
+            // Test runs (KNOT_TEST_DATA_DIR) keep their own OCR cache.
+            let ocr_dir = if cfg!(debug_assertions) && std::env::var_os("KNOT_TEST_DATA_DIR").is_some() {
+                base.join("ocr-v1")
+            } else {
+                app.path().app_cache_dir()?.join("ocr-v1")
+            };
+            app.manage(ocr::OcrState::new(ocr_dir.join("ocr.sqlite")));
+            ocr::spawn(app.handle().clone());
             app.manage(AppState {
                 workspace: Mutex::new(workspace),
                 base,
@@ -847,7 +857,7 @@ pub fn run() {
                 ai::ai_disconnect,
                 ai::ai_models,
                 ai::ai_respond,
-                topic::topic_enabled, topic::topic_catalog, topic::topic_pending, topic::topic_load, topic::topic_replace, topic::topic_search, topic::topic_stale,
+                ocr::ocr_configure, ocr::ocr_hold, ocr::ocr_lookup, ocr::ocr_read_backlog, ocr::ocr_status, topic::topic_enabled, topic::topic_catalog, topic::topic_pending, topic::topic_load, topic::topic_replace, topic::topic_search, topic::topic_stale,
                 ai::ai_cancel,
                 web_sources::web_sources_fetch,
                 web_sources::web_sources_cancel,

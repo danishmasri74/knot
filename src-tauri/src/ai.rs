@@ -248,6 +248,7 @@ pub async fn ai_respond(
     state: State<'_, Requests>,
     workspace: State<'_, crate::AppState>,
     topic: State<'_, crate::topic::TopicCache>,
+    ocr: State<'_, crate::ocr::OcrState>,
     diagnostics: State<'_, crate::diagnostics::Diagnostics>,
     link: Option<crate::diagnostics::Link>,
     id: String,
@@ -262,6 +263,8 @@ pub async fn ai_respond(
     pdf_input: Option<String>,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
+    // Background OCR waits while an answer streams.
+    let _ocr_busy = ocr.busy();
     let tools = tools.unwrap_or_default();
     let searches = searches.unwrap_or_default();
     let viewed = viewed.unwrap_or_default();
@@ -497,7 +500,7 @@ fn tool_description(name: &str) -> &'static str {
 /// results back with the next request; at most two per message.
 pub(crate) const SEARCH_TOOL: &str = "search_workspace";
 pub(crate) const MAX_SEARCHES: usize = 2;
-const SEARCH_RULES: &str = "search_workspace searches the user's other notes, cards and PDFs on their device and returns verbatim excerpts. Call it when the answer may be in notes beyond the supplied context, such as what the user's notes say about a topic. Do not call it when the supplied context already answers, or for general knowledge and writing requests. Write a short, specific query with the key terms, resolving words like it or that from the conversation. Search again with a different query only if the results miss the point. Answer from the excerpts' text and cite them with their exact citation field. Preserve exceptions, conditions, corrections and conflicting claims with their separate citations. Repeated copies are not independent confirmation. Distinguish attributed saved quotations and website evidence from the user's commentary. Coverage may be incomplete; disclose that when it matters. If the excerpts do not support an answer, say so.";
+const SEARCH_RULES: &str = "search_workspace searches the user's other notes, cards and PDFs on their device and returns verbatim excerpts. Call it when the answer may be in notes beyond the supplied context, such as what the user's notes say about a topic. Do not call it when the supplied context already answers, or for general knowledge and writing requests. Write a short, specific query with the key terms, resolving words like it or that from the conversation. Search again with a different query only if the results miss the point. Answer from the excerpts' text and cite them with their exact citation field. Preserve exceptions, conditions, corrections and conflicting claims with their separate citations. Repeated copies are not independent confirmation. Distinguish attributed saved quotations and website evidence from the user's commentary. Excerpts whose title ends with '· text in image' were read from an image by OCR on this device and may contain recognition errors; say when a word looks misread. Coverage may be incomplete; disclose that when it matters. If the excerpts do not support an answer, say so.";
 /// OpenAI's hosted web search; off unless the user turns it on.
 pub(crate) const WEB_TOOL: &str = "web_search";
 const WEB_RULES: &str = "web_search searches the public web through OpenAI. Use it only when the answer needs current or outside information that the supplied context, the user's notes and general knowledge cannot give, such as recent events, prices, releases or a specific website. For anything about the user's own notes, use the supplied context or search_workspace instead. Each web search costs the user money, so search only when it is needed. Base web claims on the results and keep the links the search provides; never invent URLs.";
@@ -508,6 +511,8 @@ const IMAGES_RULES: &str = "view_images shows you up to three images from the op
 /// Images the app sent for a view_images call.
 #[derive(Deserialize)]
 pub struct ImageResult {
+    // The renderer sends camelCase (`callId`).
+    #[serde(alias = "callId")]
     call_id: String,
     names: Vec<String>,
     /// PNG or JPEG data URLs, prepared on the device.
@@ -519,6 +524,8 @@ fn valid_image(data: &str) -> bool {
 /// A workspace search the app ran for a search_workspace call.
 #[derive(Deserialize)]
 pub struct SearchResult {
+    // The renderer sends camelCase (`callId`).
+    #[serde(alias = "callId")]
     call_id: String,
     query: String,
     /// The device's evidence for the query (sourceMode workspace).
@@ -925,6 +932,20 @@ async fn consume_response(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tool_results_accept_the_renderers_camel_case() {
+        let search: super::SearchResult = serde_json::from_str(
+            r#"{"callId":"call_1","query":"q","evidence":"{}"}"#,
+        )
+        .unwrap();
+        assert_eq!(search.call_id, "call_1");
+        let snake: super::SearchResult =
+            serde_json::from_str(r#"{"call_id":"call_2","query":"q","evidence":"{}"}"#).unwrap();
+        assert_eq!(snake.call_id, "call_2");
+        let viewed: super::ImageResult =
+            serde_json::from_str(r#"{"callId":"call_3","names":[],"images":[]}"#).unwrap();
+        assert_eq!(viewed.call_id, "call_3");
+    }
     use super::*;
     include!("ai_payload_baseline.rs");
     include!("ai_benchmark.rs");

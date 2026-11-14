@@ -6,4 +6,6 @@
 - Ask Knot reads the saved transcripts of YouTube cards and cites the moment, like ▶ 12:24. Play from 12:24 opens the video in the side panel at that point. Workspace search finds them too.
 - Every AI sparkle icon is now the same blue, including the one on each Ask Knot answer and in the editor toolbar.
 - Clearer labels under Ask Knot answers: "Add reply as one card" copies the answer as it is, and "Split into cards with AI" turns it into several connected cards.
+- Workspace search can find words inside images and scanned PDF pages (screenshots, photos of slides or whiteboards, scans). Windows reads the text on your computer, slowly and only while you're plugged in and away; citations highlight the lines the text came from. Turn it off or pause it in Settings → AI.
+- Fixed Ask Knot answers that searched your notes or looked at your images stopping with an "invalid args" error.
 - Your messages in Ask Knot now show what you sent with them (the note, selection, PDF, YouTube video, excerpt or website) as chips above the message. Click one to open it.

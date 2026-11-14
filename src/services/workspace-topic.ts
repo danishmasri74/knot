@@ -1,7 +1,12 @@
 import { budgetEvidence, localRelevance } from "./workspace-evidence";
 export { budgetEvidence } from "./workspace-evidence";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { getAiEnabled, getWorkspaceSearchEnabled } from "./ai-preferences";
+import { listen } from "@tauri-apps/api/event";
+import {
+  getAiEnabled,
+  getOcrPreferences,
+  getWorkspaceSearchEnabled,
+} from "./ai-preferences";
 import type {
   TopicCatalog,
   TopicSource,
@@ -10,7 +15,9 @@ import type {
   TopicEvidence,
 } from "./topic-types";
 import type { DeckCard, DeckData } from "../features/editor/blocksuite/card-deck";
-import type { TopicPdf, TopicVideo } from "./topic-extract";
+import type { TopicImage, TopicPdf, TopicVideo } from "./topic-extract";
+import { ocrPassages, type OcrLine } from "./ocr-passages";
+import { MAX_SCANNED_PAGES } from "./topic-pdf";
 import {
   loadTranscript,
   transcriptPassages,
@@ -33,6 +40,7 @@ export class TopicIndexer {
         semantic?: boolean;
         pdfs?: TopicPdf[];
         videos?: TopicVideo[];
+        images?: TopicImage[];
       }) => void;
       reject: (error: Error) => void;
     }
@@ -74,7 +82,13 @@ export class TopicIndexer {
     };
     this.ready = this.reconcile();
     window.addEventListener("knot-topic-sources-changed", this.changed);
+    // Background OCR read new images: re-index the sources holding them.
+    void listen("ocr-read", this.changed).then((unlisten) => {
+      if (this.stopped) unlisten();
+      else this.unlisten = unlisten;
+    });
   }
+  private unlisten?: () => void;
   private call(type: string, data: object) {
     if (this.stopped) return Promise.reject(Error("Search cancelled"));
     const id = ++this.next;
@@ -83,6 +97,7 @@ export class TopicIndexer {
       semantic?: boolean;
       pdfs?: TopicPdf[];
       videos?: TopicVideo[];
+      images?: TopicImage[];
     }>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
@@ -94,6 +109,7 @@ export class TopicIndexer {
   }
   private async reconcile() {
     clearTimeout(this.timer);
+    let held = false;
     try {
       this.catalog = await invoke<TopicCatalog>("topic_catalog");
       const activation = this.catalog.activation;
@@ -108,6 +124,11 @@ export class TopicIndexer {
           retryFailures,
         });
         if (!sources.length) break;
+        if (!held) {
+          // Background OCR waits while text is indexed.
+          held = true;
+          await invoke("ocr_hold", { hold: true }).catch(() => {});
+        }
         for (const source of sources) {
           if (this.stopped || !getAiEnabled() || !getWorkspaceSearchEnabled())
             return;
@@ -115,6 +136,10 @@ export class TopicIndexer {
           let passages: TopicPassage[] = [],
             failed = false;
           let failure: string | undefined;
+          let units: { key: string; page: number }[] = [];
+          const read: { key: string; page: number }[] = [];
+          // Pages of attached PDFs without a text layer, read by background OCR.
+          const scans: { ref: TopicPdf; pages: number[] }[] = [];
           try {
             const snapshot = await invoke<Snapshot | { card: DeckCard; questions?: DeckData } | null>(
               "topic_load",
@@ -141,6 +166,8 @@ export class TopicIndexer {
                   );
                   failed ||= pdf.partial;
                   if (pdf.partial) failure = "partial-pdf";
+                  if (pdf.scanned.length)
+                    scans.push({ ref, pages: pdf.scanned.slice(0, MAX_SCANNED_PAGES) });
                   let selected = pdf.passages;
                   try {
                     selected = (
@@ -199,6 +226,91 @@ export class TopicIndexer {
                 }
                 passages.push(...selected);
               }
+              // Text OCR already read from the source's images and scanned
+              // PDF pages. Unread ones are left to the background reader,
+              // which re-indexes this source once it has read them.
+              const refs = extracted.images ?? [];
+              units = [
+                ...refs.map((image) => ({ key: image.key, page: 0 })),
+                ...scans.flatMap(({ ref, pages }) =>
+                  pages.map((page) => ({ key: ref.key, page })),
+                ),
+              ];
+              const ocr = units.length > 0 && getOcrPreferences().enabled;
+              const readings = ocr
+                ? await invoke<(OcrLine[] | null)[]>("ocr_lookup", {
+                    activation,
+                    units,
+                  }).catch(() => [])
+                : [];
+              const lookup = (key: string, page: number) =>
+                readings[
+                  units.findIndex((u) => u.key === key && u.page === page)
+                ] ?? null;
+              let selected: TopicPassage[] = refs.flatMap((image) => {
+                const lines = lookup(image.key, 0);
+                if (!lines?.length) return [];
+                read.push({ key: image.key, page: 0 });
+                return ocrPassages(lines).map(({ text, rects }) => ({
+                  document: source.id,
+                  id: image.blockId,
+                  title: `${image.caption || "Image"} · text in image`,
+                  text,
+                  revision: source.revision,
+                  vector: [],
+                  image: {
+                    key: image.key,
+                    documentId: source.id,
+                    blockId: image.blockId,
+                    ...(image.caption ? { caption: image.caption } : {}),
+                    rects,
+                  },
+                }));
+              });
+              for (const { ref, pages } of scans) {
+                let unread = 0;
+                for (const page of pages) {
+                  const lines = lookup(ref.key, page);
+                  if (!lines?.length) {
+                    unread++;
+                    continue;
+                  }
+                  read.push({ key: ref.key, page });
+                  selected.push(
+                    ...ocrPassages(lines).map(({ text, rects }) => ({
+                      document: source.id,
+                      id: ref.blockId,
+                      title: `${ref.name} · p. ${page} · text in image`,
+                      text,
+                      revision: source.revision,
+                      vector: [],
+                      ocr: true as const,
+                      pdf: {
+                        key: ref.key,
+                        name: ref.name,
+                        documentId: source.id,
+                        blockId: ref.blockId,
+                        page,
+                        rects,
+                      },
+                    })),
+                  );
+                }
+                // A PDF is complete once its scanned pages have been read.
+                if (unread) {
+                  failed = true;
+                  failure = "partial-pdf";
+                }
+              }
+              if (selected.length)
+                try {
+                  selected = (
+                    await this.call("passages", { passages: selected })
+                  ).result as TopicPassage[];
+                } catch {
+                  this.semantic = false;
+                }
+              passages.push(...selected);
             }
           } catch {
             failed = true;
@@ -212,6 +324,8 @@ export class TopicIndexer {
             passages,
             failed,
             failure,
+            images: units,
+            read,
           });
           // Yield between bounded source batches; queries never run a document scan.
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -224,6 +338,7 @@ export class TopicIndexer {
     } catch {
       this.status = "Workspace index incomplete";
     } finally {
+      if (held) void invoke("ocr_hold", { hold: false }).catch(() => {});
       if (!this.stopped)
         this.timer = setTimeout(() => {
           this.ready = this.reconcile();
@@ -234,6 +349,8 @@ export class TopicIndexer {
     this.stopped = true;
     this.extractionAbort.abort();
     window.removeEventListener("knot-topic-sources-changed", this.changed);
+    this.unlisten?.();
+    void invoke("ocr_hold", { hold: false }).catch(() => {});
     clearTimeout(this.timer);
     this.worker.terminate();
     for (const p of this.pending.values()) {
@@ -340,8 +457,19 @@ export class TopicIndexer {
     );
   }
 }
+/** Sends the OCR preferences to the background reader. */
+export function configureOcr() {
+  if (!isTauri()) return;
+  const ocr = getOcrPreferences();
+  void invoke("ocr_configure", {
+    enabled: ocr.enabled && getAiEnabled() && getWorkspaceSearchEnabled(),
+    battery: ocr.battery,
+    paused: ocr.paused,
+  }).catch(() => {});
+}
 export function startTopicIndex() {
   if (!isTauri()) return;
+  configureOcr();
   void invoke("topic_enabled", {
     enabled: getAiEnabled() && getWorkspaceSearchEnabled(),
   });

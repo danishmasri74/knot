@@ -119,6 +119,23 @@ export function PdfReader({
   }));
   if (rects.length)
     marks.push({ rects, refs: [], active: true, color: "#ffd54f66" });
+  // A cited passage that isn't a saved highlight card, such as lines OCR read
+  // from a scanned page, is marked while it is shown.
+  else if (
+    !draft &&
+    saved &&
+    !saved.id &&
+    saved.key === key &&
+    saved.page === pageNumber &&
+    saved.rects.length &&
+    !pageMarks.some((c) => samePassage(c, saved))
+  )
+    marks.push({
+      rects: saved.rects,
+      refs: [],
+      active: true,
+      color: "#ffd54f66",
+    });
   function hitPassage(page: HTMLElement, clientX: number, clientY: number) {
     const bounds = page.getBoundingClientRect();
     const x = (clientX - bounds.left) / bounds.width,
