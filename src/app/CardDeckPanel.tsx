@@ -155,6 +155,8 @@ export function CardDeckPanel({
       index?.rows.filter((card) => {
         if (!card.searchable.includes(term)) return false;
         const state = cardPlacement(placements, card.id, canvas).state;
+        // Its notebook is in Trash: back in the deck when it's restored.
+        if (state === "trashed") return false;
         return (
           filter === filters[0] ||
           (filter === filters[1] && state === "here") ||

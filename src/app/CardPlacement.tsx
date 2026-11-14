@@ -10,6 +10,8 @@ import { ShellIcon } from "./ShellIcon";
 export type PlacementIndex = {
   owners: KnowledgeObject[];
   cards: Map<string, Set<string>>;
+  /** Cards placed in notebooks that are in Trash. */
+  trashed: Set<string>;
   complete: boolean;
 };
 
@@ -25,6 +27,7 @@ export function useCardPlacements(
     let owners: KnowledgeObject[] = [];
     const saved = new Map<string, string[]>();
     const revisions = new Map<string, number>();
+    let trashedOwners: string[] = [];
     let complete = false;
     let deckSnapshot: DeckData | undefined;
     const publish = () => {
@@ -34,13 +37,7 @@ export function useCardPlacements(
       );
       const cards = new Map<string, Set<string>>();
       const data = deck?.data ?? deckSnapshot;
-      for (const owner of owners) {
-        const doc = live.get(owner.id);
-        const ids = doc
-          ? liveCardPlacements(doc).map((id) =>
-              doc.getMap<string>("knot:card-links").get(id)!,
-            )
-          : (saved.get(owner.id) ?? []);
+      const usedBy = (ids: string[]) => {
         const used = new Set(ids);
         for (const id of ids) {
           const card = data?.[id];
@@ -48,26 +45,39 @@ export function useCardPlacements(
           for (const questionId of cardQuestionReferences(card.nodes))
             if (data[questionId] && !data[questionId].deleted) used.add(questionId);
         }
-        for (const id of used) {
+        return used;
+      };
+      for (const owner of owners) {
+        const doc = live.get(owner.id);
+        const ids = doc
+          ? liveCardPlacements(doc).map((id) =>
+              doc.getMap<string>("knot:card-links").get(id)!,
+            )
+          : (saved.get(owner.id) ?? []);
+        for (const id of usedBy(ids)) {
           if (!cards.has(id)) cards.set(id, new Set());
           cards.get(id)!.add(owner.id);
         }
       }
-      setIndex({ owners, cards, complete });
+      const trashed = new Set<string>();
+      for (const owner of trashedOwners)
+        for (const id of usedBy(saved.get(owner) ?? [])) trashed.add(id);
+      setIndex({ owners, cards, trashed, complete });
     };
     const refresh = async () => {
       const run = ++generation;
       complete = false;
       publish();
       try {
-        const [catalog, fallback] = await Promise.all([
+        const [catalog, fallback, inTrash] = await Promise.all([
           repository.catalog(),
           deck ? undefined : repository.loadCardDeck().then((raw) => JSON.parse(raw) as DeckData),
+          trashedNotebooks(),
         ]);
         const next = new Map<string, string[]>();
         let valid = true;
         const live = new Set(deck?.placementDocuments().map((doc) => doc.guid));
-        for (const owner of catalog) {
+        for (const owner of [...catalog, ...inTrash]) {
           if (!alive || run !== generation) return;
           if (live.has(owner.id)) continue;
           if (
@@ -89,11 +99,14 @@ export function useCardPlacements(
         }
         if (!alive || run !== generation) return;
         owners = catalog;
+        trashedOwners = inTrash.map((owner) => owner.id);
         deckSnapshot = fallback;
         saved.clear();
         next.forEach((ids, id) => saved.set(id, ids));
         revisions.clear();
-        catalog.forEach((owner) => revisions.set(owner.id, owner.updated_at));
+        [...catalog, ...inTrash].forEach((owner) =>
+          revisions.set(owner.id, owner.updated_at),
+        );
         complete = valid;
         publish();
       } catch {
@@ -119,12 +132,31 @@ export function useCardPlacements(
   return index;
 }
 
+/** Notebooks in Trash: their cards stay out of the deck until restored. */
+async function trashedNotebooks() {
+  const rows: { id: string; updated_at: number }[] = [];
+  for (let offset = 0; offset < 100000; ) {
+    const page = await repository.trash("", offset);
+    if (!page.length) break;
+    offset += page.length;
+    for (const row of page)
+      if (row.kind === "note" || row.kind === "whiteboard") rows.push(row);
+  }
+  return rows;
+}
+
 export function cardPlacement(
   index: PlacementIndex | undefined,
   id: string,
   canvas?: string,
 ) {
   const owners = index?.cards.get(id);
+  if (!owners?.size && index?.trashed.has(id))
+    return {
+      state: "trashed",
+      label: "In a notebook in Trash",
+      icon: "trash",
+    } as const;
   if (canvas && owners?.has(canvas))
     return { state: "here", label: "On this canvas", icon: "check" } as const;
   if (owners?.size) {

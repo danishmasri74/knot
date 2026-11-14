@@ -81,8 +81,11 @@ export function LibraryCardDeck({
   cardId,
   onSelect,
   onTrash,
+  onTrashMany,
 }: {
   cardId?: string;
+  /** Moves several cards to Trash at once (Delete with cards selected). */
+  onTrashMany?: (ids: string[]) => Promise<void>;
   /** Moves a card to Trash (restorable from Trash, like the sidebar's Card Deck). */
   onTrash: (id: string) => Promise<void>;
   onSelect?: (id?: string) => Promise<void>;
@@ -107,6 +110,9 @@ export function LibraryCardDeck({
   const [type, setType] = useState("All cards");
   const [page, setPage] = useState(0);
   const [localSelected, setLocalSelected] = useState<string>();
+  // Cards picked with Ctrl/Shift-click; Delete moves them to Trash.
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const anchor = useRef<string>(undefined);
   const selected = onSelect ? cardId : localSelected;
   const selectCard = async (id?: string) => {
     if (onSelect) await onSelect(id);
@@ -163,7 +169,48 @@ export function LibraryCardDeck({
         );
       });
   }, [data, query, sort, type]);
-  const pages = Math.ceil(cards.length / pageSize);
+  // Cards no canvas uses sit in their own section at the bottom, in the
+  // chosen order; cards whose notebook is in Trash stay out until restored.
+  const ordered = useMemo(() => {
+    const state = (id: string) => cardPlacement(placements, id).state;
+    const shown = cards.filter((row) => state(row.card.id) !== "trashed");
+    return [
+      ...shown.filter((row) => state(row.card.id) !== "unplaced"),
+      ...shown.filter((row) => state(row.card.id) === "unplaced"),
+    ];
+  }, [cards, placements]);
+  useEffect(() => {
+    // Forget picks that are no longer listed (trashed, filtered out).
+    setPicked((current) => {
+      const listed = new Set(ordered.map((row) => row.card.id));
+      const next = new Set([...current].filter((id) => listed.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [ordered]);
+  const pick = (id: string, range: boolean, toggle: boolean) => {
+    setPicked((current) => {
+      const next = new Set<string>(range && !toggle ? [] : current);
+      if (range && anchor.current) {
+        const ids = ordered.map((row) => row.card.id);
+        const [from, to] = [ids.indexOf(anchor.current), ids.indexOf(id)].sort(
+          (a, b) => a - b,
+        );
+        if (from >= 0) ids.slice(from, to + 1).forEach((each) => next.add(each));
+        else next.add(id);
+      } else if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (!range || !anchor.current) anchor.current = id;
+  };
+  const trashPicked = async () => {
+    const ids = [...picked];
+    if (!ids.length) return;
+    if (onTrashMany) await onTrashMany(ids);
+    else for (const id of ids) await onTrash(id);
+    setPicked(new Set());
+  };
+  const pages = Math.ceil(ordered.length / pageSize);
   const current = Math.min(page, Math.max(0, pages - 1));
   const card = selected ? data?.[selected] : undefined;
   if (card && !card.deleted)
@@ -198,6 +245,18 @@ export function LibraryCardDeck({
       className="library-card-deck"
       aria-label="Library Card Deck"
       aria-busy={!data && !error}
+      onKeyDown={(event) => {
+        if (!picked.size) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("input, textarea, [contenteditable]")) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setPicked(new Set());
+        } else if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          void trashPicked();
+        }
+      }}
     >
       <div className="library-toolbar">
         <label className="library-search">
@@ -233,7 +292,9 @@ export function LibraryCardDeck({
       </div>
       <div className="library-summary" role="status">
         {data
-          ? `${cards.length} ${cards.length === 1 ? "card" : "cards"}`
+          ? picked.size
+            ? `${picked.size} selected · Delete moves ${picked.size === 1 ? "it" : "them"} to Trash · Esc clears`
+            : `${ordered.length} ${ordered.length === 1 ? "card" : "cards"}`
           : error
             ? "Cards unavailable"
             : "Loading cards…"}
@@ -268,17 +329,32 @@ export function LibraryCardDeck({
                 <span />
               </div>
             ))}
-          {cards
-            .slice(current * pageSize, (current + 1) * pageSize)
-            .map(({ card, title }) => (
+          {(() => {
+            const visible = ordered.slice(
+              current * pageSize,
+              (current + 1) * pageSize,
+            );
+            const split = visible.findIndex(
+              (row) =>
+                cardPlacement(placements, row.card.id).state === "unplaced",
+            );
+            const item = ({ card, title }: (typeof visible)[number]) => (
               <button
                 className="library-note-card"
                 key={card.id}
                 data-library-card-id={card.id}
                 data-placement={cardPlacement(placements, card.id).state}
+                data-selected={picked.has(card.id) || undefined}
                 aria-label={`Edit ${title}`}
-                aria-description={cardPlacement(placements, card.id).label}
-                onClick={() => {
+                aria-description={`${cardPlacement(placements, card.id).label}${picked.has(card.id) ? ". Selected" : ""}`}
+                onClick={(event) => {
+                  const toggle = event.ctrlKey || event.metaKey;
+                  if (toggle || event.shiftKey) {
+                    event.preventDefault();
+                    pick(card.id, event.shiftKey, toggle);
+                    return;
+                  }
+                  if (picked.size) setPicked(new Set());
                   void selectCard(card.id);
                 }}
               >
@@ -295,15 +371,29 @@ export function LibraryCardDeck({
                           day: "numeric",
                           year: "numeric",
                         })
-                      : isMcqCard(card) ? "Multiple choice" : (mediaText(card)?.label ?? "Note card")}
+                      : isMcqCard(card)
+                        ? "Multiple choice"
+                        : (mediaText(card)?.label ?? "Note card")}
                   </span>
                   <ShellIcon name="expand" />
                 </span>
               </button>
-            ))}
+            );
+            if (split < 0) return visible.map(item);
+            return (
+              <>
+                {visible.slice(0, split).map(item)}
+                <h2 className="library-card-section">
+                  Not on any canvas
+                  <span>Last edited dates show which have gone unused.</span>
+                </h2>
+                {visible.slice(split).map(item)}
+              </>
+            );
+          })()}
         </div>
       )}
-      {data && !cards.length && (
+      {data && !ordered.length && (
         <div className="library-empty mascot-empty-state">
           <Mascot mood={query ? "search" : "library"} />
           <p>{query

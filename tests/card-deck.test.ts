@@ -99,6 +99,13 @@ describe("Card Deck", () => {
           .get("prop:text") as Y.Text
       ).toString(),
     ).toBe("Original edited");
+    // Long enough to keep: short cards go to Trash with their last note.
+    (
+      a
+        .getMap<Y.Map<unknown>>("blocks")
+        .get("paragraph")!
+        .get("prop:text") as Y.Text
+    ).insert(15, " and kept");
     a.getMap("blocks").delete("note");
     b.getMap("blocks").delete("note");
     expect(deck.data[id].deleted).toBeUndefined();
@@ -106,7 +113,7 @@ describe("Card Deck", () => {
       JSON.parse(JSON.stringify(deck.data)),
       () => {},
     );
-    expect(cardPreview(reloaded.data[id])).toBe("Original edited");
+    expect(cardPreview(reloaded.data[id])).toBe("Original edited and kept");
     expect(
       a
         .getMap<Y.Map<unknown>>("blocks")

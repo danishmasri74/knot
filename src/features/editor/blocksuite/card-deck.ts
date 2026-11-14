@@ -27,7 +27,10 @@ export interface DeckCard {
   /** Emptied from Trash: content is gone, the ID stays so old placements expire. */
   purged?: boolean;
   generation?: number;
-  /** A standalone canvas object (video, link, file, image or linked page):
+  /** Moved to Trash because its last note was deleted while it was empty or
+   * very short. A note that still (or again) shows it restores it. */
+  autoTrashed?: true;
+  /** A standalone canvas object (video, link, file or image):
    * `nodes` is that one block's shared content, not a note's children. */
   media?: true;
 }
@@ -177,6 +180,26 @@ export function isBlankCard(card: DeckCard): boolean {
       return blank(node.children);
     });
   return blank(card.nodes);
+}
+/** Longest text a note card can have and still go to Trash with its last note. */
+export const shortCardLength = 20;
+/** Blank, or a few characters of plain text: deleting its last note on a
+ * canvas means it isn't worth keeping in the deck. */
+export function isShortCard(card: DeckCard): boolean {
+  if (card.media || isMcqCard(card)) return false;
+  let length = 0;
+  const plain = (nodes: CardNode[]): boolean =>
+    nodes.every((node) => {
+      const flavour = node.props["sys:flavour"];
+      if (flavour?.type === "json" && !textOnly.has(String(flavour.value)))
+        return false;
+      const text = node.props["prop:text"];
+      if (text?.type === "text")
+        for (const run of text.delta as { insert?: unknown }[])
+          if (typeof run.insert === "string") length += run.insert.trim().length;
+      return length <= shortCardLength && plain(node.children);
+    });
+  return plain(card.nodes);
 }
 export function cardPreview(card: DeckCard, fallback = "Empty card", deck?: DeckData): string {
   const media = mediaText(card);
@@ -493,6 +516,7 @@ export class CardDeck {
             throw new Error(
               "Shared card is missing from Card Deck. Stored document preserved.",
             );
+          this.reclaim(card);
           if (this.expired(doc, id, card)) {
             this.removeInstance(doc, id);
             continue;
@@ -641,6 +665,8 @@ export class CardDeck {
       for (const [id, block] of doc.getMap<Y.Map<unknown>>("blocks")) {
         if (block.get("sys:flavour") !== "affine:note") continue;
         let cardId = links.get(id);
+        // Undo brought back a note whose card went to Trash with it.
+        if (cardId && this.data[cardId]) this.reclaim(this.data[cardId]);
         if (
           cardId &&
           this.data[cardId] &&
@@ -686,9 +712,13 @@ export class CardDeck {
           }
       }
       if (!this.editorDocs.has(doc)) this.scanMedia(doc, origin);
-      for (const id of links.keys()) {
-        if (!doc.getMap("blocks").has(id))
-          this.signatures.delete(doc.guid + id);
+      for (const [id, shared] of links) {
+        if (doc.getMap("blocks").has(id)) continue;
+        // A note shown until now was deleted: if it was its card's last
+        // placement and the card is empty or very short, Trash the card.
+        if (this.signatures.has(doc.guid + id) && !this.editorDocs.has(doc))
+          this.trashIfLeftover(shared);
+        this.signatures.delete(doc.guid + id);
       }
       this.notify();
     } finally {
@@ -759,7 +789,25 @@ export class CardDeck {
     if (!this.data[id]?.deleted || this.data[id].purged) return;
     this.contentVersion++;
     delete this.data[id].deleted;
+    delete this.data[id].autoTrashed;
     this.notify();
+  }
+  private trashIfLeftover(id: string) {
+    const card = this.data[id];
+    if (!card || card.deleted || !isShortCard(card)) return;
+    if (this.placements().has(id)) return;
+    // Its generation stays, so a note that still shows it (Undo, or a
+    // notebook not open now) can bring it back instead of being removed.
+    this.contentVersion++;
+    card.deleted = true;
+    card.autoTrashed = true;
+  }
+  /** A live note shows a card that went to Trash with its last note. */
+  private reclaim(card: DeckCard) {
+    if (!card.deleted || !card.autoTrashed || card.purged) return;
+    this.contentVersion++;
+    delete card.deleted;
+    delete card.autoTrashed;
   }
   /** Cards waiting in Trash (deleted, not yet emptied). */
   trashed() {

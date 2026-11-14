@@ -60,6 +60,8 @@ Schema 14 makes standalone canvas objects cards too: YouTube cards, links (bookm
 
 Deleting a placement retains its card. Explicit deck deletion removes live placements and retains a tombstone so restored or undone placements cannot resurrect it. Backups include the deck through the database. Trash purging retains attachment records referenced by deck content, including cards with no remaining placements.
 
+When the last note showing a blank or very short note card (at most 20 characters of plain text) is deleted, the card goes to Trash with `autoTrashed` set instead of staying unplaced. Its generation is not bumped, so a live note that still shows it (Undo, or a notebook that wasn't open) restores it rather than being removed. The deck lists neither blank cards nor cards whose only placements are in notebooks in Trash.
+
 Empty Trash also empties deleted cards: each becomes a content-free tombstone (`deleted` and `purged`, `nodes: []`) that keeps its ID and generation, so notebooks that still link to it drop the placement on open instead of failing. Its attachments are released by the same purge.
 
 ## UI preferences

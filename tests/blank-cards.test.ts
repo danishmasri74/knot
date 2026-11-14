@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { cardPlacement } from "../src/app/CardPlacement";
 import * as Y from "yjs";
 import {
   CardDeck,
   isBlankCard,
+  isShortCard,
   type CardNode,
   type DeckCard,
 } from "../src/features/editor/blocksuite/card-deck";
@@ -95,5 +97,116 @@ describe("blank cards", () => {
     deck.restore("leftover");
     expect(deck.data.leftover.deleted).toBeFalsy();
     deck.dispose();
+  });
+
+  it("trashes a short card with its last note, and Undo brings it back", () => {
+    const doc = new Y.Doc();
+    const blocks = doc.getMap<Y.Map<unknown>>("blocks");
+    const make = (
+      id: string,
+      flavour: string,
+      children: string[] = [],
+      text?: string,
+    ) => {
+      const block = new Y.Map<unknown>();
+      block.set("sys:id", id);
+      block.set("sys:flavour", flavour);
+      const list = new Y.Array<string>();
+      list.push(children);
+      block.set("sys:children", list);
+      if (text !== undefined) block.set("prop:text", new Y.Text(text));
+      blocks.set(id, block);
+    };
+    doc.transact(() => {
+      make("root", "affine:page", ["short", "long"]);
+      make("short", "affine:note", ["p1"]);
+      make("p1", "affine:paragraph", [], "ok");
+      make("long", "affine:note", ["p2"]);
+      make(
+        "p2",
+        "affine:paragraph",
+        [],
+        "A longer note that is worth keeping around",
+      );
+    });
+    const deck = new CardDeck({}, () => {});
+    deck.attach(doc);
+    const links = doc.getMap<string>("knot:card-links");
+    const short = links.get("short")!;
+    const long = links.get("long")!;
+    expect(isShortCard(deck.data[short])).toBe(true);
+    expect(isShortCard(deck.data[long])).toBe(false);
+    const undo = new Y.UndoManager(blocks);
+    const remove = (id: string, child: string) =>
+      doc.transact(() => {
+        const root = blocks.get("root")!.get("sys:children") as Y.Array<string>;
+        root.delete(root.toArray().indexOf(id), 1);
+        blocks.delete(child);
+        blocks.delete(id);
+      });
+    remove("short", "p1");
+    expect(deck.data[short].deleted).toBe(true);
+    undo.stopCapturing();
+    remove("long", "p2");
+    // Longer cards become unplaced, as before.
+    expect(deck.data[long].deleted).toBeFalsy();
+    undo.undo();
+    undo.undo();
+    expect(blocks.has("short")).toBe(true);
+    expect(deck.data[short].deleted).toBeFalsy();
+    expect(deck.data[short].autoTrashed).toBeUndefined();
+    deck.dispose();
+    undo.destroy();
+  });
+
+  it("keeps a short card that's still placed on another canvas", () => {
+    const deck = new CardDeck({}, () => {});
+    const canvas = () => {
+      const doc = new Y.Doc();
+      const blocks = doc.getMap<Y.Map<unknown>>("blocks");
+      doc.transact(() => {
+        for (const [id, flavour, children] of [
+          ["root", "affine:page", ["note"]],
+          ["note", "affine:note", []],
+        ] as const) {
+          const block = new Y.Map<unknown>();
+          block.set("sys:id", id);
+          block.set("sys:flavour", flavour);
+          const list = new Y.Array<string>();
+          list.push([...children]);
+          block.set("sys:children", list);
+          blocks.set(id, block);
+        }
+      });
+      return doc;
+    };
+    const a = canvas(),
+      b = canvas();
+    deck.attach(a);
+    deck.attach(b);
+    const id = a.getMap<string>("knot:card-links").get("note")!;
+    deck.place(b, id, () => {
+      const block = new Y.Map<unknown>();
+      block.set("sys:id", "copy");
+      block.set("sys:flavour", "affine:note");
+      block.set("sys:children", new Y.Array<string>());
+      b.getMap<Y.Map<unknown>>("blocks").set("copy", block);
+      return "copy";
+    });
+    a.transact(() => a.getMap("blocks").delete("note"));
+    expect(deck.data[id].deleted).toBeFalsy();
+    deck.dispose();
+  });
+
+  it("leaves cards from notebooks in Trash out until restored", () => {
+    const index = {
+      owners: [],
+      cards: new Map([["placed", new Set(["nb"])]]),
+      trashed: new Set(["placed", "hidden"]),
+      complete: true,
+    };
+    expect(cardPlacement(index, "hidden").state).toBe("trashed");
+    expect(cardPlacement(index, "placed").state).toBe("linked");
+    expect(cardPlacement(index, "other").state).toBe("unplaced");
   });
 });

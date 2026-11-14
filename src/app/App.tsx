@@ -1280,15 +1280,23 @@ export function App() {
     }
     return session.current;
   }
-  async function trashLibraryCard(id: string) {
+  async function trashLibraryCards(ids: string[]) {
     const owner = await ensureLibraryCardSession();
-    const card = owner.cardDeck.data[id];
-    if (!card || card.deleted) throw new Error("This card is unavailable.");
-    owner.cardDeck.delete(id);
+    const live = ids.filter((id) => {
+      const card = owner.cardDeck.data[id];
+      return card && !card.deleted;
+    });
+    if (!live.length) throw new Error("This card is unavailable.");
+    for (const id of live) owner.cardDeck.delete(id);
     await owner.flush();
     setLibraryRevision((value) => value + 1);
-    setNotice("Moved card to Trash.");
+    setNotice(
+      live.length === 1
+        ? "Moved card to Trash."
+        : `Moved ${live.length} cards to Trash.`,
+    );
   }
+  const trashLibraryCard = (id: string) => trashLibraryCards([id]);
   async function createLibraryCardEditor(id: string, host: HTMLElement) {
     return (await ensureLibraryCardSession()).createCardPageView(id, host);
   }
@@ -4064,6 +4072,7 @@ export function App() {
                 onOpen={openLibraryCard}
                 onPlace={placeLibraryCard}
                 onTrash={trashLibraryCard}
+                onTrashMany={(ids) => run(() => trashLibraryCards(ids), true)}
               />
             }
             catalog={catalog}
