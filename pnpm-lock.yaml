@@ -12,7 +12,7 @@ patchedDependencies:
     hash: 2378a5992d6d41b5a4d72f1c5457e9a6a9d04b5d69b3ce4cfe5970860b3063d3
     path: patches/@blocksuite__block-std@0.19.5.patch
   '@blocksuite/blocks@0.19.5':
-    hash: 1939ee0068ec8aaac5ea02f2685c11b738010214ce81c596b80ea3ef12f29a60
+    hash: cabbcb7ed80731c79d69e84e2b7d8cac66a83477efd54b98d391c9a3fe6a9ee5
     path: patches/@blocksuite__blocks@0.19.5.patch
   '@blocksuite/data-view@0.19.5':
     hash: 2ee78f7ae764e1e0f3215d801eb2605547cdb94d9dce7af7a9e6641dd7b36af2
@@ -30,7 +30,7 @@ importers:
         version: 0.19.5(patch_hash=2378a5992d6d41b5a4d72f1c5457e9a6a9d04b5d69b3ce4cfe5970860b3063d3)(yjs@13.6.33)
       '@blocksuite/blocks':
         specifier: 0.19.5
-        version: 0.19.5(patch_hash=1939ee0068ec8aaac5ea02f2685c11b738010214ce81c596b80ea3ef12f29a60)(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
+        version: 0.19.5(patch_hash=cabbcb7ed80731c79d69e84e2b7d8cac66a83477efd54b98d391c9a3fe6a9ee5)(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
       '@blocksuite/presets':
         specifier: 0.19.5
         version: 0.19.5(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
@@ -2898,7 +2898,7 @@ snapshots:
     transitivePeerDependencies:
       - yjs
 
-  '@blocksuite/blocks@0.19.5(patch_hash=1939ee0068ec8aaac5ea02f2685c11b738010214ce81c596b80ea3ef12f29a60)(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)':
+  '@blocksuite/blocks@0.19.5(patch_hash=cabbcb7ed80731c79d69e84e2b7d8cac66a83477efd54b98d391c9a3fe6a9ee5)(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)':
     dependencies:
       '@blocksuite/affine-block-embed': 0.19.5(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
       '@blocksuite/affine-block-list': 0.19.5(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
@@ -3006,7 +3006,7 @@ snapshots:
       '@blocksuite/affine-model': 0.19.5(lit@3.3.3)(yjs@13.6.33)
       '@blocksuite/affine-shared': 0.19.5(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
       '@blocksuite/block-std': 0.19.5(patch_hash=2378a5992d6d41b5a4d72f1c5457e9a6a9d04b5d69b3ce4cfe5970860b3063d3)(yjs@13.6.33)
-      '@blocksuite/blocks': 0.19.5(patch_hash=1939ee0068ec8aaac5ea02f2685c11b738010214ce81c596b80ea3ef12f29a60)(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
+      '@blocksuite/blocks': 0.19.5(patch_hash=cabbcb7ed80731c79d69e84e2b7d8cac66a83477efd54b98d391c9a3fe6a9ee5)(@types/react@18.3.31)(react@18.3.1)(yjs@13.6.33)
       '@blocksuite/global': 0.19.5
       '@blocksuite/inline': 0.19.5(lit@3.3.3)(yjs@13.6.33)
       '@blocksuite/store': 0.19.5(lit@3.3.3)(yjs@13.6.33)

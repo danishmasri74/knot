@@ -860,6 +860,7 @@ pub fn run() {
                 ocr::ocr_configure, ocr::ocr_hold, ocr::ocr_lookup, ocr::ocr_read_backlog, ocr::ocr_search, ocr::ocr_status, topic::topic_enabled, topic::topic_catalog, topic::topic_pending, topic::topic_load, topic::topic_replace, topic::topic_search, topic::topic_stale,
                 ai::ai_cancel,
                 web_sources::web_sources_fetch,
+                web_sources::link_preview_fetch,
                 web_sources::web_sources_cancel,
                 web_render::web_sources_render,
                 diagnostics::ai_diagnostics,

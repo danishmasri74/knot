@@ -920,3 +920,251 @@ index 6c3e987..16094bf 100644
            </div>
  
            <div class="divider"></div>
+diff --git a/dist/bookmark-block/components/bookmark-card.js b/dist/bookmark-block/components/bookmark-card.js
+index 01c9714de67d64e491e9e8bd52a4e67e289c3553..04d057409305f4bcff9da07de3ab4173722ea22b 100644
+--- a/dist/bookmark-block/components/bookmark-card.js
++++ b/dist/bookmark-block/components/bookmark-card.js
+@@ -121,19 +121,12 @@ let BookmarkCard = (() => {
+                     : title;
+             const theme = this.bookmark.std.get(ThemeProvider).theme;
+             const { LoadingIcon, EmbedCardBannerIcon } = getEmbedCardIcons(theme);
+-            const titleIconType = !icon?.split('.').pop() || icon?.split('.').pop() === 'svg'
+-                ? 'svg+xml'
+-                : icon?.split('.').pop();
+             const titleIcon = this.loading
+                 ? LoadingIcon
+                 : icon
+-                    ? html `<object
+-            type="image/${titleIconType}"
+-            data=${icon}
+-            draggable="false"
+-          >
+-            ${WebIcon16}
+-          </object>`
++                    ? html `<img src=${icon} alt="" referrerpolicy="no-referrer" draggable="false"
++            @error=${(event) => { (event.currentTarget).hidden = true; }}
++            @load=${(event) => { (event.currentTarget).hidden = false; }} />`
+                     : WebIcon16;
+             const descriptionText = this.loading
+                 ? ''
+@@ -143,9 +136,9 @@ let BookmarkCard = (() => {
+                         : url
+                     : (description ?? '');
+             const bannerImage = !this.loading && image
+-                ? html `<object type="image/webp" data=${image} draggable="false">
+-            ${EmbedCardBannerIcon}
+-          </object>`
++                ? html `<img src=${image} alt="" referrerpolicy="no-referrer" draggable="false"
++            @error=${(event) => { (event.currentTarget).hidden = true; }}
++            @load=${(event) => { (event.currentTarget).hidden = false; }} />`
+                 : EmbedCardBannerIcon;
+             return html `
+       <div
+diff --git a/dist/bookmark-block/styles.js b/dist/bookmark-block/styles.js
+index 4625a5d1be86b73ab4c0c1c56d98ff4da1e8f367..5c8ed875b7084842b56f06321f07231e0dce0159 100644
+--- a/dist/bookmark-block/styles.js
++++ b/dist/bookmark-block/styles.js
+@@ -274,10 +274,10 @@ export const styles = css `
+   }
+ 
+   @container affine-bookmark-card (width < 375px) {
+-    .affine-bookmark-content {
++    .affine-bookmark-card:not(.vertical) .affine-bookmark-content {
+       width: 100%;
+     }
+-    .affine-bookmark-banner {
++    .affine-bookmark-card:not(.vertical) .affine-bookmark-banner {
+       display: none;
+     }
+   }
+diff --git a/dist/bookmark-block/utils.js b/dist/bookmark-block/utils.js
+index 13592f4694fc1cc230422bdf902f28df48944612..ab97e261008930adb55f5c4ba5c47cd30faeda1a 100644
+--- a/dist/bookmark-block/utils.js
++++ b/dist/bookmark-block/utils.js
+@@ -1,35 +1,27 @@
+ import { isAbortError } from '@blocksuite/affine-shared/utils';
+ import { assertExists } from '@blocksuite/global/utils';
++
++const requests = new WeakMap();
+ export async function refreshBookmarkUrlData(bookmarkElement, signal) {
+-    let title = null, description = null, icon = null, image = null;
+-    try {
+-        bookmarkElement.loading = true;
+-        const queryUrlData = bookmarkElement.service?.queryUrlData;
+-        assertExists(queryUrlData);
+-        const bookmarkUrlData = await queryUrlData(bookmarkElement.model.url, signal);
+-        title = bookmarkUrlData.title ?? null;
+-        description = bookmarkUrlData.description ?? null;
+-        icon = bookmarkUrlData.icon ?? null;
+-        image = bookmarkUrlData.image ?? null;
+-        if (!title && !description && !icon && !image) {
+-            bookmarkElement.error = true;
+-        }
+-        if (signal?.aborted)
+-            return;
+-        bookmarkElement.doc.updateBlock(bookmarkElement.model, {
+-            title,
+-            description,
+-            icon,
+-            image,
+-        });
+-    }
+-    catch (error) {
+-        if (signal?.aborted || isAbortError(error))
+-            return;
+-        throw error;
+-    }
+-    finally {
+-        bookmarkElement.loading = false;
++  const request = {};
++  requests.set(bookmarkElement, request);
++  const url = bookmarkElement.model.url;
++  const current = () => requests.get(bookmarkElement) === request && bookmarkElement.model.url === url && !signal?.aborted;
++  try {
++    bookmarkElement.loading = true;
++    const queryUrlData = bookmarkElement.service?.queryUrlData;
++    assertExists(queryUrlData);
++    const data = await queryUrlData(url, signal);
++    if (!current()) return;
++    const { title = null, description = null, icon = null, image = null } = data;
++    bookmarkElement.error = !title && !description && !icon && !image;
++    if (!bookmarkElement.error && !bookmarkElement.doc.readonly) {
++      bookmarkElement.doc.updateBlock(bookmarkElement.model, { title, description, icon, image });
+     }
++  } catch (error) {
++    if (!current() || isAbortError(error)) return;
++    bookmarkElement.error = true;
++  } finally {
++    if (requests.get(bookmarkElement) === request) bookmarkElement.loading = false;
++  }
+ }
+-//# sourceMappingURL=utils.js.map
+\ No newline at end of file
+diff --git a/src/bookmark-block/components/bookmark-card.ts b/src/bookmark-block/components/bookmark-card.ts
+index 2e7bbff853410271e018451084e788b18f43bd35..3d8dfebc0ba45ac3462726b44bc33acf3bcbb09d 100644
+--- a/src/bookmark-block/components/bookmark-card.ts
++++ b/src/bookmark-block/components/bookmark-card.ts
+@@ -87,21 +87,13 @@ export class BookmarkCard extends WithDisposable(ShadowlessElement) {
+     const theme = this.bookmark.std.get(ThemeProvider).theme;
+     const { LoadingIcon, EmbedCardBannerIcon } = getEmbedCardIcons(theme);
+ 
+-    const titleIconType =
+-      !icon?.split('.').pop() || icon?.split('.').pop() === 'svg'
+-        ? 'svg+xml'
+-        : icon?.split('.').pop();
+ 
+     const titleIcon = this.loading
+       ? LoadingIcon
+       : icon
+-        ? html`<object
+-            type="image/${titleIconType}"
+-            data=${icon}
+-            draggable="false"
+-          >
+-            ${WebIcon16}
+-          </object>`
++        ? html`<img src=${icon} alt="" referrerpolicy="no-referrer" draggable="false"
++            @error=${(event: Event) => { (event.currentTarget as HTMLImageElement).hidden = true; }}
++            @load=${(event: Event) => { (event.currentTarget as HTMLImageElement).hidden = false; }} />`
+         : WebIcon16;
+ 
+     const descriptionText = this.loading
+@@ -114,9 +106,9 @@ export class BookmarkCard extends WithDisposable(ShadowlessElement) {
+ 
+     const bannerImage =
+       !this.loading && image
+-        ? html`<object type="image/webp" data=${image} draggable="false">
+-            ${EmbedCardBannerIcon}
+-          </object>`
++        ? html`<img src=${image} alt="" referrerpolicy="no-referrer" draggable="false"
++            @error=${(event: Event) => { (event.currentTarget as HTMLImageElement).hidden = true; }}
++            @load=${(event: Event) => { (event.currentTarget as HTMLImageElement).hidden = false; }} />`
+         : EmbedCardBannerIcon;
+ 
+     return html`
+diff --git a/src/bookmark-block/styles.ts b/src/bookmark-block/styles.ts
+index bdd264ea9bbba578742de557acc1d567fa462211..915ffeff0dd0c46e2c06ebd150c533da638d6635 100644
+--- a/src/bookmark-block/styles.ts
++++ b/src/bookmark-block/styles.ts
+@@ -276,10 +276,10 @@ export const styles = css`
+   }
+ 
+   @container affine-bookmark-card (width < 375px) {
+-    .affine-bookmark-content {
++    .affine-bookmark-card:not(.vertical) .affine-bookmark-content {
+       width: 100%;
+     }
+-    .affine-bookmark-banner {
++    .affine-bookmark-card:not(.vertical) .affine-bookmark-banner {
+       display: none;
+     }
+   }
+diff --git a/src/bookmark-block/utils.ts b/src/bookmark-block/utils.ts
+index aa7d69856b12190a920cff469f7389356ec6c0af..cb28cb8b69a9ada0f601329f4b5aeb31cd1198da 100644
+--- a/src/bookmark-block/utils.ts
++++ b/src/bookmark-block/utils.ts
+@@ -1,49 +1,27 @@
+ import { isAbortError } from '@blocksuite/affine-shared/utils';
+ import { assertExists } from '@blocksuite/global/utils';
+-
+ import type { BookmarkBlockComponent } from './bookmark-block.js';
+-
+-export async function refreshBookmarkUrlData(
+-  bookmarkElement: BookmarkBlockComponent,
+-  signal?: AbortSignal
+-) {
+-  let title = null,
+-    description = null,
+-    icon = null,
+-    image = null;
+-
++const requests = new WeakMap<BookmarkBlockComponent, object>();
++export async function refreshBookmarkUrlData(bookmarkElement: BookmarkBlockComponent, signal?: AbortSignal) {
++  const request = {};
++  requests.set(bookmarkElement, request);
++  const url = bookmarkElement.model.url;
++  const current = () => requests.get(bookmarkElement) === request && bookmarkElement.model.url === url && !signal?.aborted;
+   try {
+     bookmarkElement.loading = true;
+-
+     const queryUrlData = bookmarkElement.service?.queryUrlData;
+     assertExists(queryUrlData);
+-
+-    const bookmarkUrlData = await queryUrlData(
+-      bookmarkElement.model.url,
+-      signal
+-    );
+-
+-    title = bookmarkUrlData.title ?? null;
+-    description = bookmarkUrlData.description ?? null;
+-    icon = bookmarkUrlData.icon ?? null;
+-    image = bookmarkUrlData.image ?? null;
+-
+-    if (!title && !description && !icon && !image) {
+-      bookmarkElement.error = true;
++    const data = await queryUrlData(url, signal);
++    if (!current()) return;
++    const { title = null, description = null, icon = null, image = null } = data;
++    bookmarkElement.error = !title && !description && !icon && !image;
++    if (!bookmarkElement.error && !bookmarkElement.doc.readonly) {
++      bookmarkElement.doc.updateBlock(bookmarkElement.model, { title, description, icon, image });
+     }
+-
+-    if (signal?.aborted) return;
+-
+-    bookmarkElement.doc.updateBlock(bookmarkElement.model, {
+-      title,
+-      description,
+-      icon,
+-      image,
+-    });
+   } catch (error) {
+-    if (signal?.aborted || isAbortError(error)) return;
+-    throw error;
++    if (!current() || isAbortError(error)) return;
++    bookmarkElement.error = true;
+   } finally {
+-    bookmarkElement.loading = false;
++    if (requests.get(bookmarkElement) === request) bookmarkElement.loading = false;
+   }
+ }

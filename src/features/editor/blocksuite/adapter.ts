@@ -1,4 +1,5 @@
 import { observeMcqMenu } from "./mcq-menu";
+import { BookmarkPreviewSpec } from "./bookmark";
 import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
 import { getNoteView } from "../../../services/note-navigation";
@@ -648,6 +649,7 @@ export async function openEditor(
     const refExtension = RefNodeSlotsExtension();
     editor.pageSpecs = [
       ...editor.pageSpecs,
+      BookmarkPreviewSpec,
       NotebookLinkSpec,
       UnsharedSpec,
       ...CitedExcerptSpec,
@@ -658,6 +660,7 @@ export async function openEditor(
     ];
     editor.edgelessSpecs = [
       ...editor.edgelessSpecs,
+      BookmarkPreviewSpec,
       NotebookLinkSpec,
       UnsharedSpec,
       ...CitedExcerptSpec,

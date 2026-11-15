@@ -513,6 +513,15 @@ async fn fetch_with_policy(value: &str, total: &AtomicUsize, policy: &FetchPolic
     })
 }
 
+/// Bookmark previews share the bounded public fetcher, independently of AI batches.
+#[tauri::command]
+pub async fn link_preview_fetch(url: String) -> Result<Outcome, String> {
+    static SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(CONCURRENCY);
+    validate_public_url(&url)?;
+    let _permit = SLOTS.acquire().await.map_err(|_| "Preview fetch unavailable")?;
+    Ok(fetch(&url, &AtomicUsize::new(0)).await)
+}
+
 #[tauri::command]
 pub async fn web_sources_fetch(
     state: State<'_, Requests>,
@@ -598,6 +607,18 @@ pub fn web_sources_cancel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "Requires public internet; verifies the reported bookmark preview URL"]
+    async fn live_bookmark_preview() {
+        let result = link_preview_fetch("https://pitchmesg.com/".into()).await.unwrap();
+        assert!(result.code.is_none(), "{:?}", result.message);
+        assert_eq!(result.content_type.as_deref(), Some("text/html"));
+        let body = result.body.unwrap();
+        assert!(body.contains("og:image"));
+        assert!(body.contains("pitchMe"));
+    }
+
     #[test]
     fn destination_policy() {
         for value in [
