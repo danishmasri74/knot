@@ -351,6 +351,20 @@ describe("supporting workspace layout", () => {
         note.id,
       ]);
     });
+    it("never covers an expanded canvas: the collapsed column comes back", () => {
+      // Collapsing the tools column expands the canvas column.
+      let s = layoutReducer(two(), { type: "expand", id: canvas.id });
+      s = layoutReducer(s, { type: "open", tab: note });
+      expect(s.expandedGroupId).toBeNull();
+      expect(s.groups[0].activeTabId).toBe(canvas.id);
+      expect(s.groups[1].tabIds).toContain(note.id);
+      expect(s.groups[1].activeTabId).toBe(note.id);
+      // Beside the canvas (a note tab) lands in the same place.
+      let t = layoutReducer(two(), { type: "expand", id: canvas.id });
+      t = layoutReducer(t, { type: "open", tab: note, beside: canvas.id });
+      expect(t.expandedGroupId).toBeNull();
+      expect(t.groups[1].activeTabId).toBe(note.id);
+    });
     it("restores when a tab in another column is shown or tabs move", () => {
       const s = layoutReducer(two(), { type: "expand", id: pdf.id });
       expect(layoutReducer(s, { type: "activate", id: canvas.id }).expandedGroupId).toBeNull();

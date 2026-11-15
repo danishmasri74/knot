@@ -216,7 +216,16 @@ export function layoutReducer(
         if (action.tab.kind === "canvas") group.tabIds.unshift(action.tab.id);
         else group.tabIds.push(action.tab.id);
       }
-      if (!group && expanded) {
+      // ...except the canvas's column: a tool or note never covers the
+      // canvas, so the columns come back and it opens beside it.
+      if (
+        !group &&
+        expanded &&
+        action.tab.kind !== "canvas" &&
+        containsCanvas(next, expanded)
+      )
+        next.expandedGroupId = null;
+      else if (!group && expanded) {
         group = expanded;
         next.tabs[action.tab.id] = action.tab;
         group.tabIds.push(action.tab.id);

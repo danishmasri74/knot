@@ -285,3 +285,21 @@ export function createSearchReveal(editor: AffineEditorContainer) {
     },
   };
 }
+
+const reveals = new WeakMap<
+  AffineEditorContainer,
+  ReturnType<typeof createSearchReveal>
+>();
+/** Reveals a match in any editor, such as a note tab, reusing its reveal. */
+export function revealSearchIn(
+  editor: AffineEditorContainer,
+  query: string,
+  noteId?: string,
+) {
+  let reveal = reveals.get(editor);
+  if (!reveal) {
+    reveal = createSearchReveal(editor);
+    reveals.set(editor, reveal);
+  }
+  return reveal.reveal(query, noteId);
+}

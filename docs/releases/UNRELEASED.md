@@ -17,3 +17,6 @@
 - Each column has a Collapse button that folds it into a slim rail; clicking the rail or one of its tabs brings it back.
 - Note tabs show the same floating table of contents as the canvas, and no longer have a Multiple choice bar above the note (type / in a note to add one).
 - The "Opening Canvas…" screen covers only the canvas column, right under its tabs, instead of blanking every column and leaving a strip of the old page showing.
+- Search (Ctrl+K) works with note tabs: it can insert a found card into the note you were writing in, and it scrolls to and highlights the match inside a note tab.
+- Adding a found card to the canvas, or jumping to a card from a PDF, brings the Canvas tab forward so you see it.
+- After collapsing a column, opening a note or tool brings that column back instead of covering the canvas.

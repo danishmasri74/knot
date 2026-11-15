@@ -107,10 +107,16 @@ export function NotePagePane({
           let tries = 0;
           const restore = () => {
             const viewport = element.querySelector(".affine-page-viewport");
-            if (!alive || !top || !viewport) return;
-            viewport.scrollTop = top;
-            if (Math.abs(viewport.scrollTop - top) > 1 && ++tries < 30)
-              requestAnimationFrame(restore);
+            if (!alive) return;
+            if (top && viewport) {
+              viewport.scrollTop = top;
+              if (Math.abs(viewport.scrollTop - top) > 1 && ++tries < 30) {
+                requestAnimationFrame(restore);
+                return;
+              }
+            }
+            // Laid out at its scroll position: search may now move it.
+            next.editor.dataset.noteReady = "";
           };
           requestAnimationFrame(restore);
           if (

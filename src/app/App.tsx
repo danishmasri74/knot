@@ -1,5 +1,5 @@
 import type { McqEditRequest } from "../features/editor/blocksuite/mcq-block";
-import { restoreMcqTarget, type McqInsertionTarget } from "../features/editor/blocksuite/mcq-insertion";
+import { captureNoteMcqTarget, restoreMcqTarget, type McqInsertionTarget } from "../features/editor/blocksuite/mcq-insertion";
 import {
   getStartupDestination,
   setStartupDestination,
@@ -148,7 +148,10 @@ import { AnimatedTrash } from "./AnimatedTrash";
 import { AnimatedFavorite } from "./AnimatedFavorite";
 import { NotebookContents } from "./NotebookContents";
 import { GlobalSearch } from "./GlobalSearch";
-import { isSearchResultOnPage } from "../features/editor/blocksuite/search-reveal";
+import {
+  isSearchResultOnPage,
+  revealSearchIn,
+} from "../features/editor/blocksuite/search-reveal";
 import { TrashConfirmation } from "./TrashConfirmation";
 import {
   searchSavedDocuments,
@@ -674,6 +677,49 @@ export function App() {
   }
   const [showSearch, setShowSearch] = useState(false);
   const searchInsertion = useRef<McqInsertionTarget | undefined>(undefined);
+  /** Search was opened from a note: reused cards go into that note. */
+  const [searchInNote, setSearchInNote] = useState(false);
+  /** The open notebook's note tab for this note, if it is on screen. */
+  function visibleNoteEditor(noteId: string) {
+    const doc = session.current?.doc;
+    for (const editor of document.querySelectorAll<EditorSession["editor"]>(
+      `affine-editor-container[data-note-pane="${CSS.escape(noteId)}"]`,
+    ))
+      if (
+        editor.doc === doc &&
+        editor.getClientRects().length &&
+        !editor.closest("[hidden], [inert]")
+      )
+        return editor;
+    return null;
+  }
+  /** Waits for a note tab that is opening to finish laying out. */
+  async function waitForNoteEditor(noteId: string, timeout = 4000) {
+    const end = performance.now() + timeout;
+    while (performance.now() < end) {
+      const editor = visibleNoteEditor(noteId);
+      if (editor?.dataset.noteReady !== undefined) return editor;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    }
+    return null;
+  }
+  function openSearch() {
+    if (!showSearch) {
+      // Before search takes focus: where a reused card goes. The note tab
+      // last worked in, if it is still on screen; otherwise the canvas.
+      const editor = focusedEditor.current;
+      const noteId = editor?.dataset.notePane;
+      const note =
+        noteId && visibleNoteEditor(noteId) === editor ? editor : null;
+      searchInsertion.current =
+        (note && noteId ? captureNoteMcqTarget(note, noteId) : undefined) ??
+        session.current?.captureInsertionTarget();
+      setSearchInNote(!!(note && searchInsertion.current));
+    }
+    setShowSearch((open) => !open);
+  }
   // A card shown inside a note, open for editing ("Edit card").
   const [cardEdit, setCardEdit] = useState<string | null>(null);
   useEffect(() => {
@@ -1522,6 +1568,7 @@ export function App() {
         const placement = current.placeCard(cardId);
         if (!placement) throw Error("This card is no longer available.");
         await current.focusCanvasCard(placement);
+        showNotebookView(null);
       } else current.insertCard(cardId, searchInsertion.current);
       searchInsertion.current = undefined;
       await current.flush();
@@ -2206,17 +2253,14 @@ export function App() {
         if (document.querySelector("dialog[open]") && !showSearch) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!busy) {
-          // Before search takes focus: where a reused card goes in Page view.
-          if (!showSearch)
-            searchInsertion.current = session.current?.captureInsertionTarget();
-          setShowSearch((open) => !open);
-        }
+        if (!busy) openSearchRef.current();
       }
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [busy, showSearch]);
+  const openSearchRef = useRef(openSearch);
+  openSearchRef.current = openSearch;
   // Ctrl+Enter: the selected card opens in a note tab (kept current each render).
   const openSelected = useRef(() => {});
   openSelected.current = () => {
@@ -3138,7 +3182,7 @@ export function App() {
         <GlobalSearch
           reuse={
             !library && session.current && active
-              ? session.current.editor.mode === "edgeless"
+              ? !searchInNote && session.current.editor.mode === "edgeless"
                 ? {
                     label: "Add to this canvas",
                     // A note from this notebook is already on its canvas.
@@ -3156,7 +3200,10 @@ export function App() {
           preferredView={noteView}
           isResultOnCurrentPage={({ source, noteId }) =>
             !library &&
-            isSearchResultOnPage(session.current?.editor, source.id, noteId)
+            ((!!noteId &&
+              source.id === session.current?.doc.id &&
+              !!visibleNoteEditor(noteId)) ||
+              isSearchResultOnPage(session.current?.editor, source.id, noteId))
           }
           search={async (searchQuery, signal) => {
             const report = await scanSearch(searchQuery, signal);
@@ -3185,18 +3232,37 @@ export function App() {
           onClose={() => setShowSearch(false)}
           onOpen={async (source, noteId, view, query) => {
             let opened = false;
-            const reusePage =
+            // A note already open in a tab on screen shows the match there.
+            const tab =
               view !== "edgeless" &&
               !library &&
-              isSearchResultOnPage(session.current?.editor, source.id, noteId);
+              noteId &&
+              source.id === session.current?.doc.id
+                ? visibleNoteEditor(noteId)
+                : null;
+            const reusePage =
+              !!tab ||
+              (view !== "edgeless" &&
+                !library &&
+                isSearchResultOnPage(session.current?.editor, source.id, noteId));
             await run(async () => {
               setShowSearch(false);
               if (!reusePage) {
                 if (noteId) await openNote(source, noteId, view);
                 else await select(source);
               }
+              if (tab && noteId) {
+                await revealSearchIn(tab, query ?? "", noteId);
+                opened = true;
+                return;
+              }
               await session.current?.revealSearchMatch(query ?? "", noteId);
               opened = true;
+              // Opened as a note tab: show the match in the tab too.
+              if (noteId && !reusePage && (view ?? getNoteView()) === "page") {
+                const opening = await waitForNoteEditor(noteId);
+                if (opening) await revealSearchIn(opening, query ?? "", noteId);
+              }
             }, true);
             if (!opened)
               throw new Error(
@@ -3301,7 +3367,7 @@ export function App() {
           <button
             disabled={busy}
             aria-keyshortcuts="Control+k Meta+k"
-            onClick={() => setShowSearch(true)}
+            onClick={() => !showSearch && openSearch()}
           >
             <ShellIcon name="search" /> Search{" "}
             <kbd className="search-shortcut">Ctrl K</kbd>
@@ -3516,7 +3582,7 @@ export function App() {
           <button
             aria-label="Search"
             data-tooltip="Search (Ctrl+K)"
-            onClick={() => setShowSearch(true)}
+            onClick={() => !showSearch && openSearch()}
           >
             <ShellIcon name="search" />
           </button>
@@ -4866,6 +4932,7 @@ export function App() {
                           void run(async () => {
                             await session.current?.focusCanvasCard(id);
                             setMode("edgeless");
+                            showNotebookView(null);
                           })
                         }
                         initial={pdfReader.initial}
