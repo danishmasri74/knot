@@ -5614,6 +5614,15 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   width: var(--canvas-width, 100%);
   margin: 0;
 }
+/* Opening a notebook covers the canvas column only, never other columns. */
+.workspace-content > :is(.view-transition, .document-loading) {
+  inset: var(--pane-header-height) auto 0 var(--canvas-left, 0px);
+  width: var(--canvas-width, 100%);
+}
+.workspace-content[data-canvas="hidden"]
+  > :is(.view-transition, .document-loading) {
+  display: none;
+}
 /* A closed or covered canvas keeps its size, so its viewport survives. */
 .workspace-content[data-canvas="hidden"] > .editor-area {
   left: 0;

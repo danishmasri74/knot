@@ -4310,24 +4310,6 @@ export function App() {
             onTogglePin={sidebarPreferences.togglePin}
           />
         )}
-        {transition && <ViewTransition {...transition} />}
-        {documentLoading && (
-          <div
-            className="document-loading"
-            role="status"
-            aria-label="Loading notebook"
-          >
-            <div
-              className="document-page-skeleton library-skeleton"
-              aria-hidden="true"
-            >
-              <span className="library-skeleton-block document-page-title" />
-              <span className="library-skeleton-block document-page-line" />
-              <span className="library-skeleton-block document-page-line" />
-              <span className="library-skeleton-block document-page-line short" />
-            </div>
-          </div>
-        )}
         {aiEnabled && aiOpened && workspaceCatalog.active && (
           <>
             <div
@@ -4625,6 +4607,25 @@ export function App() {
           ref={contentArea}
           style={library ? { display: "none" } : undefined}
         >
+          {/* Loading covers only the canvas column, under its tab row. */}
+          {transition && <ViewTransition {...transition} />}
+          {documentLoading && (
+            <div
+              className="document-loading"
+              role="status"
+              aria-label="Loading notebook"
+            >
+              <div
+                className="document-page-skeleton library-skeleton"
+                aria-hidden="true"
+              >
+                <span className="library-skeleton-block document-page-title" />
+                <span className="library-skeleton-block document-page-line" />
+                <span className="library-skeleton-block document-page-line" />
+                <span className="library-skeleton-block document-page-line short" />
+              </div>
+            </div>
+          )}
           <div
             aria-busy={busy || navigating || documentLoading || !!transition}
             style={documentLoading ? { visibility: "hidden" } : undefined}
