@@ -79,16 +79,15 @@ try {
   await shell.getByLabel("Notebook name", { exact: true }).fill("Prototype");
   await shell.getByLabel("Notebook name", { exact: true }).press("Enter");
   await shell.waitForSelector("affine-editor-container", { timeout: 60000 });
-  await shell.getByRole("button", { name: "Page", exact: true }).click();
-  await shell.waitForFunction(
-    () => document.querySelector(".app-shell")?.getAttribute("aria-busy") === "false",
-  );
   await shell.evaluate((url) => {
     const doc = document.querySelector("affine-editor-container").doc;
     const note = doc.getBlocksByFlavour("affine:note")[0].model;
     doc.addBlock("affine:bookmark", { url, title: "Fixture" }, note.id);
   }, origin + "/first");
-  await shell.locator(".affine-bookmark-content-url").click();
+  // Open the note in its own tab, where the bookmark is a plain link.
+  await shell.locator('summary[aria-label="Pane actions"]').first().click();
+  await shell.getByRole("button", { name: "Note", exact: true }).click();
+  await shell.locator("[data-note-pane] .affine-bookmark-content-url").click();
   await shell.getByLabel("Mini browser", { exact: true }).waitFor();
   remoteBrowser = await connect(9295);
   results.initiallyVisible = (await timeUntil(true, 15000)) !== null;
@@ -168,7 +167,7 @@ try {
   await timeUntil(true);
 
   // A real ShellMenu: the header's Document actions menu.
-  const actions = shell.locator('summary[aria-label="Document actions"]');
+  const actions = shell.locator('summary[aria-label="Notebook actions"]');
   if (await actions.count()) {
     await actions.first().click();
     await wait(150);
