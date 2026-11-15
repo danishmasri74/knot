@@ -53,36 +53,28 @@ try {
   await shell.getByLabel("Notebook name", { exact: true }).press("Enter");
   await shell.waitForSelector("affine-editor-container", { timeout: 60000 });
   await ready();
-  await shell.getByRole("button", { name: "Canvas", exact: true }).click();
-  await ready();
-  await shot("1-canvas-only");
-
-  const openTool = async (name) => {
-    await shell.locator('summary[aria-label="Document actions"]').click();
-    await shell.getByRole("button", { name, exact: true }).click();
-    await ready();
-  };
-  await openTool("Card Deck");
-  await shot("2-canvas-and-card-deck");
-
-  // Separate a second tab into a third column.
-  await openTool("Links");
-  await shell.locator('.pane-group').last().locator('summary[aria-label="Pane actions"]').click();
-  await shell.getByRole("button", { name: "Separate tab to right", exact: true }).click();
-  await shot("3-three-columns");
-
-  // Move the canvas column to the right.
-  await shell.locator('.pane-group').first().locator('summary[aria-label="Pane actions"]').click();
-  await shell.getByRole("button", { name: "Move column right", exact: true }).click();
-  await shot("4-canvas-moved");
-
-  // Close the canvas tab, then reopen through the Page button.
-  await shell.getByRole("button", { name: "Close Canvas tab", exact: true }).click();
-  await shot("5-canvas-closed");
+  await shot("1-new-notebook");
+  // Page opens the note in a tab beside the canvas.
   await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await shell.locator("[data-note-pane]").waitFor();
+  await shot("2-page-opens-note-tab");
+  // Back to the canvas, then add a note from the sidebar.
+  await shell.getByRole("button", { name: "Canvas", exact: true }).click();
+  await shell.getByRole("button", { name: "Add note", exact: true }).first().click();
   await ready();
-  await shot("6-page-reopened");
+  await shot("3-add-note");
+  console.log(JSON.stringify(await shell.evaluate(() => {
+    const editor = document.querySelector(".editor-area affine-editor-container");
+    return {
+      mainMode: editor?.mode,
+      tabs: [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent),
+    };
+  })));
   console.log(JSON.stringify({ errors }, null, 2));
+} catch (error) {
+  console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));
+  if (shell) await shell.screenshot({ path: path.join(root, "failure.png") }).catch(() => {});
+  console.log("failure screenshot", path.join(root, "failure.png"));
 } finally {
   if (shell)
     await shell.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close")).catch(() => {});

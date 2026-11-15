@@ -50,6 +50,13 @@ export function NotePagePane({
     const refresh = () => {
       const model = session.doc.getBlock(noteId)?.model;
       setAvailable(!!model);
+      // An empty note keeps BlockSuite's "Type '/'" hint visible.
+      const only = model?.children.length === 1 ? model.children[0] : null;
+      const text = (only as { text?: { length: number } } | null)?.text;
+      element.toggleAttribute(
+        "data-knot-empty-note",
+        only?.flavour === "affine:paragraph" && !!text && text.length === 0,
+      );
       setLocked(
         !!(model as { isLocked?: () => boolean } | undefined)?.isLocked?.(),
       );

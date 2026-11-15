@@ -2,7 +2,7 @@ import { observeMcqMenu } from "./mcq-menu";
 import { BookmarkPreviewSpec } from "./bookmark";
 import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
-import { getNoteView, type NoteView } from "../../../services/note-navigation";
+import type { NoteView } from "../../../services/note-navigation";
 import { createSearchReveal } from "./search-reveal";
 import { createNotePageView } from "./note-page-view";
 import { waitForEditorView } from "../../../app/view-readiness";
@@ -670,11 +670,10 @@ export async function openEditor(
       ...CardEmbedSpec,
       refExtension,
     ];
-    editor.mode = deckOnly
-      ? "page"
-      : object.kind === "whiteboard"
-        ? "edgeless"
-        : (initialView ?? getNoteView());
+    // The notebook's main editor is its canvas. Notes open in their own
+    // Note tabs (createNotePageView); the Card Deck still uses page mode.
+    void initialView;
+    editor.mode = deckOnly ? "page" : "edgeless";
     const navigation = () =>
       editor.std
         .get(RefNodeSlotsProvider)
@@ -1057,7 +1056,8 @@ export async function openEditor(
         }
         return notes;
       },
-      async addNotebookNote() {
+      /** Adds a note and returns its id. */
+      async addNotebookNote(): Promise<string> {
         if (!doc.root) throw new Error("Document is unavailable");
         await persistence.flush();
         const notes: { x: number; y: number; w: number; h: number }[] = [];
@@ -1103,6 +1103,7 @@ export async function openEditor(
           focusEmptyNote();
         }
         await persistence.flush();
+        return id;
       },
       async focusCanvasCard(id: string) {
         const note = doc.getBlock(id)?.model as NoteBlockModel | undefined;
@@ -1588,10 +1589,8 @@ export async function openEditor(
         }
         while (parent && parent.flavour !== "affine:note")
           parent = doc.getParent(parent);
-        await showView("page", parent?.id);
-        await waitForEditorView(editor, "page", { targetId: id });
-        editor.querySelector(`[data-block-id="${CSS.escape(id)}"]`)
-          ?.scrollIntoView({ block: "center" });
+        // Inside a note: show that note's card on the canvas.
+        if (parent) await this.focusCanvasCard(parent.id);
       },
       async reference(id: string, shared: boolean) {
         if (id === object.id || !known.has(id))

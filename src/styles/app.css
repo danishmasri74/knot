@@ -6406,8 +6406,9 @@ knot-web-source { display: block; margin-block: 8px; }
   flex-shrink: 0;
 }
 
-/* Page view shows one note. While it's empty, keep BlockSuite's own hint
-   visible instead of a blank page (data-knot-empty-note: adapter.ts). */
+/* A note shown on its own (a Note tab) keeps BlockSuite's hint visible while
+   it is empty, instead of a blank page (data-knot-empty-note: adapter.ts,
+   NotePagePane.tsx). */
 [data-knot-empty-note] affine-page-root .affine-paragraph-placeholder {
   display: block;
 }

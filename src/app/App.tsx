@@ -135,7 +135,6 @@ import {
 } from "./ToolSurface";
 import { ShellMenu } from "./ShellMenu";
 import { ShellIcon } from "./ShellIcon";
-import { NoteCrumb } from "./NoteCrumb";
 import { AnimatedTrash } from "./AnimatedTrash";
 import { AnimatedFavorite } from "./AnimatedFavorite";
 import { NotebookContents } from "./NotebookContents";
@@ -502,6 +501,26 @@ export function App() {
   function showNotebookView(note: string | null) {
     setFocusedNote(note);
     revealCanvas();
+  }
+  /** What used to be Page view: the note in its own tab beside the canvas. */
+  function openNoteTab(noteId: string) {
+    const notebook = session.current?.doc.id;
+    const workspace = workspaceIdentity.current;
+    if (!notebook || !workspace) return;
+    setFocusedNote(noteId);
+    const canvas = canvasTab(workspace, notebook).id;
+    openPane("note", noteId, layoutRef.current.tabs[canvas] ? canvas : undefined);
+  }
+  /** The note "Page" opens: the selected card, else the note last opened,
+   * else the notebook's first note. */
+  function pageNote(current: EditorSession) {
+    const notes = current.notebookNotes();
+    return (
+      current.selectedCanvasNoteId() ??
+      notes.find((note) => note.id === focusedNote)?.id ??
+      notes[0]?.id ??
+      null
+    );
   }
   const paneActive = (kind: PaneKind) =>
     !layout.hidden &&
@@ -1723,18 +1742,9 @@ export function App() {
         note = model.id;
         break;
       }
-    if (opened.editor.mode === "edgeless") {
-      if (note) await opened.focusCanvasCard(note);
-    } else if (
-      note &&
-      opened.doc.spaceDoc.getMap<string>("knot:card-links").has(note)
-    )
-      await opened.focusNotebookNote(note);
-    else await opened.setMode("page");
+    if (note) await opened.focusCanvasCard(note);
     setMode(opened.editor.mode);
-    showNotebookView(
-      opened.editor.mode === "edgeless" ? null : (opened.revealedNoteId ?? null),
-    );
+    showNotebookView(null);
     if (session.current !== opened) return;
     requestAnimationFrame(() => {
       const element = session.current?.editor.querySelector(
@@ -1759,60 +1769,50 @@ export function App() {
     id: string,
     excerpt: string,
   ) {
-    const view = opened.editor.mode === "edgeless" ? "edgeless" : "page";
-    if (view === "edgeless") await opened.focusCanvasCard(id);
-    else await opened.focusNotebookNote(id);
+    await opened.focusCanvasCard(id);
     setMode(opened.editor.mode);
-    showNotebookView(view === "page" ? id : null);
+    showNotebookView(null);
     if (session.current !== opened) return;
     // Jump to the cited words inside the card and highlight them, as search does.
     await opened.revealSearchMatch(excerpt, id);
   }
   function select(item: KnowledgeObject, record = true) {
-    const view =
-      session.current?.doc.id === item.id
-        ? session.current.editor.mode
-        : item.kind === "whiteboard"
-          ? "edgeless"
-          : getNoteView();
-    return withDocumentLoader(
-      view,
-      () => openDocument(item, record),
-    );
+    return withDocumentLoader("edgeless", () => openDocument(item, record));
   }
   async function openNote(
     item: KnowledgeObject,
     id: string,
     view = getNoteView(),
   ) {
+    // "Open notes in: Page" opens the note in its own tab; either way the
+    // canvas shows its card.
     const currentCanvas =
-      view === "edgeless" &&
       !library &&
       session.current?.doc.id === item.id &&
-      session.current.editor.mode === "edgeless" &&
       !editorLoadFailed;
     if (currentCanvas) {
       await openDocument(item);
       await session.current!.focusCanvasCard(id);
       setMode("edgeless");
-      showNotebookView(null);
+      if (view === "page") openNoteTab(id);
+      else showNotebookView(null);
       return;
     }
-    await withDocumentLoader(view, async () => {
+    await withDocumentLoader("edgeless", async () => {
       await openDocument(item);
       const current = session.current;
       if (!current || current.doc.id !== item.id)
         throw new Error("This notebook is no longer available.");
-      if (view === "edgeless") {
-        await current.focusCanvasCard(id);
-      } else await current.focusNotebookNote(id);
+      await current.focusCanvasCard(id);
       setMode(current.editor.mode);
-      showNotebookView(view === "page" ? id : null);
     });
     // The loader prepares canvas previews, which can change card bounds.
     // Recenter after its final readiness pass.
-    if (view === "edgeless" && session.current?.doc.id === item.id)
+    if (session.current?.doc.id === item.id) {
       await session.current.focusCanvasCard(id);
+      if (view === "page") openNoteTab(id);
+      else showNotebookView(null);
+    }
   }
   async function selectCitation(item: KnowledgeObject) {
     if (session.current?.doc.id === item.id) return select(item);
@@ -2168,6 +2168,14 @@ export function App() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [busy, showSearch]);
   const pageModeButton = useRef<HTMLButtonElement>(null);
+  const lastTab =
+    layout.tabs[
+      layout.groups.find((g) => g.id === layout.lastUsedGroupId)?.activeTabId ??
+        ""
+    ];
+  const viewing: "page" | "edgeless" =
+    lastTab?.kind === "note" ? "page" : "edgeless";
+  const viewingNote = lastTab?.kind === "note" ? (lastTab.noteId ?? null) : null;
   useEffect(() => {
     const openSelectedCard = (event: KeyboardEvent) => {
       if (
@@ -2234,9 +2242,10 @@ export function App() {
       if (!current || !active) return;
       clearInactiveSurface(null);
       setSurface((value) => (value === "browser" ? value : null));
-      await current.addNotebookNote();
+      const added = await current.addNotebookNote();
       setMode(current.editor.mode);
-      showNotebookView(current.revealedNoteId);
+      if (getNoteView() === "page") openNoteTab(added);
+      else showNotebookView(null);
       setCollapsedNotebook(null);
     });
   useEffect(() => {
@@ -2490,19 +2499,21 @@ export function App() {
                 active?.id !== item.id ? foldingNotes[item.id] : undefined
               }
               busy={busy}
-              mode={mode}
-              focusedNote={focusedNote}
+              mode={viewing}
+              focusedNote={viewingNote}
               onView={(view) =>
                 void run(async () => {
                   clearInactiveSurface(null);
                   setSurface((current) =>
                     current === "browser" ? current : null,
                   );
-                  await withDocumentLoader(view, async () => {
+                  await withDocumentLoader("edgeless", async () => {
                     if (library) await openDocument(item);
-                    await session.current?.setMode(view);
-                    setMode(view);
-                    showNotebookView(session.current?.revealedNoteId ?? null);
+                    const current = session.current;
+                    if (!current) return;
+                    const note = view === "page" ? pageNote(current) : null;
+                    if (note) openNoteTab(note);
+                    else showNotebookView(null);
                   });
                 }, true)
               }
@@ -2868,9 +2879,10 @@ export function App() {
                     throw new Error("Could not open this notebook.");
                   clearInactiveSurface(null);
                   setSurface(null);
-                  await current.addNotebookNote();
+                  const added = await current.addNotebookNote();
                   setMode(current.editor.mode);
-                  showNotebookView(current.revealedNoteId);
+                  if (getNoteView() === "page") openNoteTab(added);
+                  else showNotebookView(null);
                   setCollapsedNotebook(null);
                   succeeded = true;
                 });
@@ -3195,9 +3207,6 @@ export function App() {
                       });
                   }}
                 />
-                {mode === "page" && focusedNote && session.current && (
-                  <NoteCrumb session={session.current} noteId={focusedNote} />
-                )}
                 <button
                   className="favorite-toggle icon-button"
                   aria-label={
@@ -3244,82 +3253,40 @@ export function App() {
                       m === "page" ? "Control+Enter" : undefined
                     }
                     title={
-                      m === "page" && mode === "edgeless"
-                        ? "Open selected card in Page view (Ctrl+Enter)"
+                      m === "page"
+                        ? "Open the selected card in a note tab (Ctrl+Enter)"
                         : undefined
                     }
                     disabled={!active || busy}
-                    aria-pressed={mode === m}
-                    className={mode === m ? "current" : ""}
+                    aria-pressed={viewing === m}
+                    className={viewing === m ? "current" : ""}
                     onClick={() => {
-                      // Inerting the canvas and painting the transition can blur
-                      // its editor. Capture the selected note before either.
-                      const origin = session.current;
-                      const selectedNote =
-                        m === "page" ? origin?.selectedCanvasNoteId() : null;
-                      void run(async () => {
-                        if (session.current) {
-                          if (
-                            surface &&
-                            [
-                              "settings",
-                              "editorSettings",
-                              "aiSettings",
-                              "updates",
-                              "workspaceSettings",
-                              "workspace",
-                              "backups",
-                              "trash",
-                              "integrity",
-                              "quarantine",
-                            ].includes(surface)
-                          ) {
-                            clearInactiveSurface(null);
-                            setSurface(null);
-                          }
-                          const current = session.current;
-                          const switching = current.editor.mode !== m;
-                          try {
-                            if (switching) {
-                              setTransition({ view: m, done: false });
-                              // Paint before BlockSuite starts mounting the destination.
-                              await new Promise<void>((resolve) =>
-                                requestAnimationFrame(() =>
-                                  requestAnimationFrame(() => resolve()),
-                                ),
-                              );
-                            }
-                            if (
-                              m === "page" &&
-                              selectedNote &&
-                              current === origin
-                            )
-                              await current.focusNotebookNote(selectedNote);
-                            else await current.setMode(m);
-                            if (
-                              session.current !== current ||
-                              current.editor.mode !== m
-                            )
-                              return;
-                            setMode(m);
-                            showNotebookView(current.revealedNoteId);
-                            if (switching) {
-                              await waitForReadyEditor();
-                              setTransition({ view: m, done: true });
-                              if (
-                                m !== "edgeless" &&
-                                !matchMedia("(prefers-reduced-motion: reduce)")
-                                  .matches
-                              )
-                                await new Promise((resolve) =>
-                                  setTimeout(resolve, 220),
-                                );
-                            }
-                          } finally {
-                            setTransition(null);
-                          }
-                        }
-                      }, true);
+                      const current = session.current;
+                      if (!current) return;
+                      if (
+                        surface &&
+                        [
+                          "settings",
+                          "editorSettings",
+                          "aiSettings",
+                          "updates",
+                          "workspaceSettings",
+                          "workspace",
+                          "backups",
+                          "trash",
+                          "integrity",
+                          "quarantine",
+                        ].includes(surface)
+                      ) {
+                        clearInactiveSurface(null);
+                        setSurface(null);
+                      }
+                      // Page opens the selected card (or the last note) in its
+                      // own tab beside the canvas; Canvas brings the canvas
+                      // forward.
+                      if (m === "edgeless") return showNotebookView(null);
+                      const note = pageNote(current);
+                      if (note) openNoteTab(note);
                     }}
                   >
                     <ShellIcon name={m === "page" ? "note" : "board"} />{" "}
@@ -3660,7 +3627,7 @@ export function App() {
                     updateNoteView(view);
                   }}
                 >
-                  <option value="page">Page</option>
+                  <option value="page">A note tab</option>
                   <option value="edgeless">Canvas</option>
                 </select>
               </div>
@@ -4537,11 +4504,7 @@ export function App() {
                     if (!opened || opened.doc.id !== document) return;
                     if (target.note)
                       await focusCitedCard(opened, target.note, text);
-                    else {
-                      await opened.setMode("page");
-                      setMode(opened.editor.mode);
-                      showNotebookView(opened.revealedNoteId);
-                    }
+                    else showNotebookView(null);
                     if (session.current !== opened) return;
                     requestAnimationFrame(() => {
                       const element = session.current?.editor.querySelector(
@@ -4738,15 +4701,10 @@ export function App() {
                       .find((note) => note.id === tab.noteId)?.title) ||
                   "Note"
                 : tab.kind === "canvas"
-                  ? mode === "page"
-                    ? "Page"
-                    : "Canvas"
+                  ? "Canvas"
                   : tab.kind === "video"
                     ? videoReader?.title || surfaceTitles.video
                     : surfaceTitles[tab.kind]
-            }
-            icon={(tab) =>
-              tab.kind === "canvas" && mode === "page" ? "note" : undefined
             }
             contentKey={(tab) => tab.id}
             render={(tab, _close, state) => (
