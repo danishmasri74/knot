@@ -13,3 +13,4 @@
 - Double-clicking a YouTube card now plays it in the Video panel instead of opening YouTube in the browser.
 - Click "On 3 canvases" on a card to see every notebook and note that uses it and jump there; a card's page in the Library lists them too.
 - Website cards now retrieve page titles, descriptions, and preview images, including on vertical canvas cards.
+- Website thumbnails now appear in the Card Deck panel and Library, using the same preview image as the canvas.

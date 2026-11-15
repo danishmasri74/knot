@@ -73,14 +73,15 @@ function thumbnail(key: string, type: string): Promise<string | null> {
   return job;
 }
 
-/** A media card's picture: the video's thumbnail, the image itself or a
- * PDF's first page. Other kinds (and files that can't be read) show the
+/** A media card's picture: the video's thumbnail, a link's saved preview,
+ * the image itself or a PDF's first page. Missing pictures show the
  * kind's icon. */
 export function CardThumbnail({ card }: { card: DeckCard }) {
   const media = cardMedia(card);
   const host = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [image, setImage] = useState<string | null>(null);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   const key =
     media?.kind === "image" || media?.kind === "pdf"
       ? String(media.get("prop:sourceId") ?? "")
@@ -115,13 +116,26 @@ export function CardThumbnail({ card }: { card: DeckCard }) {
   const videoId = media.identity?.startsWith("youtube:")
     ? media.identity.slice("youtube:".length)
     : "";
+  const linkImage =
+    media.kind === "link" ? String(media.get("prop:image") ?? "") : "";
   const src = videoId
     ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-    : image;
+    : media.kind === "link"
+      ? /^https?:\/\//i.test(linkImage)
+        ? linkImage
+        : null
+      : image;
   return (
     <span ref={host} className="card-media-thumb" data-kind={media.kind}>
-      {src ? (
-        <img src={src} alt="" loading="lazy" draggable={false} />
+      {src && src !== failedSource ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          referrerPolicy="no-referrer"
+          onError={() => setFailedSource(src)}
+        />
       ) : (
         <ShellIcon name={kindIcons[media.kind]} />
       )}

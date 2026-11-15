@@ -199,9 +199,64 @@ try {
     before,
     "saved metadata should reopen without refetching",
   );
+  // The Card Deck must reuse the canvas preview, including metadata changes.
+  await page.evaluate(async () => {
+    const React = (await import("/node_modules/.vite/deps/react.js")).default;
+    const { createRoot } = (
+      await import("/node_modules/.vite/deps/react-dom_client.js")
+    ).default;
+    const { CardDeckPanel } = await import("/src/app/CardDeckPanel.tsx");
+    const host = document.createElement("div");
+    host.id = "deck-test";
+    host.style.cssText =
+      "position:fixed;right:0;top:0;width:320px;height:850px;overflow:auto";
+    document.body.append(host);
+    window.deckRoot = createRoot(host);
+    window.deckRoot.render(
+      React.createElement(CardDeckPanel, {
+        deck: window.session.cardDeck,
+        canvas: "preview-board",
+        onPlace: async () => {},
+      }),
+    );
+  });
+  const deckImage = page.locator(
+    "#deck-test .card-media-thumb[data-kind=link] img",
+  );
+  await deckImage.waitFor({ state: "visible" });
+  assert.equal(
+    await deckImage.getAttribute("src"),
+    await banner.getAttribute("src"),
+  );
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#deck-test .card-media-thumb img")?.naturalWidth >
+      0,
+  );
+  if (!live) {
+    await page.route("https://preview.example/broken.png", (route) =>
+      route.fulfill({ status: 404, body: "Not found" }),
+    );
+    await page.evaluate(() => {
+      const doc = window.session.doc;
+      const model = doc.getBlocksByFlavour("affine:bookmark")[0].model;
+      window.savedPreviewImage = model.image;
+      doc.updateBlock(model, { image: "https://preview.example/broken.png" });
+    });
+    await page
+      .locator("#deck-test .card-media-thumb[data-kind=link] .shell-icon")
+      .waitFor({ state: "visible" });
+    await page.evaluate(() => {
+      const doc = window.session.doc;
+      doc.updateBlock(doc.getBlocksByFlavour("affine:bookmark")[0].model, {
+        image: window.savedPreviewImage,
+      });
+    });
+    await deckImage.waitFor({ state: "visible" });
+  }
   assert.deepEqual(errors, []);
   console.log(
-    `PASS: ${live ? "pitchmesg.com" : "fixture"} metadata, image CSP, vertical layout, retry, and saved preview`,
+    `PASS: ${live ? "pitchmesg.com" : "fixture"} metadata, image CSP, vertical layout, retry, saved preview, and Card Deck thumbnail`,
   );
 } finally {
   await browser.close();
