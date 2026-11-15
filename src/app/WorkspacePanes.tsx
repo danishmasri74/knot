@@ -315,6 +315,11 @@ export function WorkspacePanes({
   const activate = (id: string) => {
     dispatch({ type: "activate", id });
   };
+  // With two columns, collapsing one expands the other.
+  const collapse = (groupId: string) => {
+    const other = layout.groups.find((g) => g.id !== groupId);
+    if (other) dispatch({ type: "expand", group: other.id });
+  };
   const close = (id: string) => {
     dispatch({ type: "close", id });
     requestAnimationFrame(() => {
@@ -437,13 +442,11 @@ export function WorkspacePanes({
           {group.tabIds.map((id) => (
             <button
               key={id}
-              aria-label={`Choose ${label(layout.tabs[id])}`}
-              aria-pressed={id === group.activeTabId}
+              aria-label={`Show ${label(layout.tabs[id])}`}
               data-tooltip={label(layout.tabs[id])}
               data-active={id === group.activeTabId}
-              // Picks the tab this column shows when it comes back; the
-              // layout stays as it is.
-              onClick={() => dispatch({ type: "activate", id, stay: true })}
+              // Brings the column back showing this tab.
+              onClick={() => activate(id)}
             >
               <ShellIcon
                 name={icon?.(layout.tabs[id]) ?? icons[layout.tabs[id].kind]}
@@ -737,6 +740,16 @@ export function WorkspacePanes({
                 <ShellIcon name={expanded ? "columns" : "expand"} />
               </button>
             )}
+            {!expanded && layout.groups.length > 1 && !projection.collapsed && (
+              <button
+                className="pane-collapse"
+                aria-label="Collapse column"
+                data-tooltip="Collapse column"
+                onClick={() => collapse(group.id)}
+              >
+                <ShellIcon name="collapse" />
+              </button>
+            )}
             <ShellMenu
               label="Pane actions"
               icon={<ShellIcon name="more" />}
@@ -762,15 +775,7 @@ export function WorkspacePanes({
                     {expanded ? "Restore columns" : "Expand column"}
                   </button>
                   {!expanded && (
-                    <button
-                      onClick={() => {
-                        // With two columns, collapsing one expands the other.
-                        const other = layout.groups.find(
-                          (g) => g.id !== group.id,
-                        );
-                        if (other) dispatch({ type: "expand", group: other.id });
-                      }}
-                    >
+                    <button onClick={() => collapse(group.id)}>
                       Collapse column
                     </button>
                   )}

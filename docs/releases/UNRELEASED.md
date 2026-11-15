@@ -13,5 +13,5 @@
 - Back and Forward also step between the tabs you switched to in a notebook.
 - Expanding, restoring and rearranging columns now animate smoothly.
 - Export is now a dialog: pick Markdown, PNG or PDF and save.
-- Column headers are quieter: opening a tab moved into the column's ⋯ menu, which can also collapse a column.
-- A collapsed column stays collapsed when you pick a tab on its rail; its expand button brings it back.
+- Column headers are quieter: opening a tab moved into the column's ⋯ menu.
+- Columns have a Collapse button next to Expand; clicking a tab on a collapsed column's rail brings it back showing that tab.

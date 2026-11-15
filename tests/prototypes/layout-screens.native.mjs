@@ -63,18 +63,14 @@ try {
   await shell.getByRole("button", { name: "Note", exact: true }).click();
   await shell.locator("[data-note-pane]").waitFor();
   await shot("3-header");
-  // Collapse the tools column from its menu.
-  await shell.locator('summary[aria-label="Pane actions"]').last().click();
-  await shell.getByRole("button", { name: "Collapse column", exact: true }).click();
+  // Collapse the tools column from its header.
+  await shell.locator(".pane-header .pane-collapse").last().click();
   await shell.waitForTimeout(400);
-  // Choosing a tab on the rail keeps the layout.
-  await shell.getByRole("button", { name: "Choose Card Deck", exact: true }).click();
+  await shot("4-rail");
+  // Choosing a tab on the rail brings the column back showing it.
+  await shell.getByRole("button", { name: "Show Card Deck", exact: true }).click();
   await shell.waitForTimeout(400);
-  console.log("after rail click: rails", await shell.locator(".pane-rail").count(), "columns", await shell.locator(".pane-group").count());
-  await shot("4-rail-stays");
-  await shell.getByRole("button", { name: "Expand column", exact: true }).first().click();
-  await shell.waitForTimeout(400);
-  console.log("after toggle: rails", await shell.locator(".pane-rail").count(), "columns", await shell.locator(".pane-group").count(),
+  console.log("after rail click: rails", await shell.locator(".pane-rail").count(), "columns", await shell.locator(".pane-group").count(),
     "tools tab", JSON.stringify(await shell.locator('.pane-group').last().locator('[role="tab"][aria-selected="true"]').textContent()));
   // Export is a dialog.
   await shell.locator('summary[aria-label="Notebook actions"]').click();

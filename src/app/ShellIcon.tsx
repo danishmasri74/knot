@@ -6,6 +6,7 @@ export const shellIconPaths = {
     "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3c5 5 5 13 0 18 M12 3c-5 5-5 13 0 18",
   external: "M14 3h7v7 M21 3L10 14 M10 3H3v18h18v-7",
   expand: "M8 3H3v5 M16 3h5v5 M3 16v5h5 M21 16v5h-5",
+  collapse: "M3 8h5V3 M21 8h-5V3 M3 16h5v5 M21 16h-5v5",
   pin: "M16 3l5 5-4 1-4 4v4l-2 2-6-6 2-2h4l4-4 1-4z M8 16l-5 5",
   library: "M12 3L2 8l10 5 10-5-10-5z M2 12l10 5 10-5 M2 16l10 5 10-5",
   grid: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
