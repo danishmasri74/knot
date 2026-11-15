@@ -722,10 +722,10 @@ export function WorkspacePanes({
             {(expanded || layout.groups.length > 1) && (
               <button
                 className="pane-expand"
-                aria-label={expanded ? "Restore columns" : "Expand column"}
+                aria-label={expanded ? "Collapse column" : "Expand column"}
                 data-tooltip={
                   expanded
-                    ? "Restore columns (Esc)"
+                    ? "Collapse column (Esc)"
                     : "Expand column (Ctrl+Shift+Enter)"
                 }
                 aria-pressed={expanded}
@@ -737,17 +737,7 @@ export function WorkspacePanes({
                   )
                 }
               >
-                <ShellIcon name={expanded ? "columns" : "expand"} />
-              </button>
-            )}
-            {!expanded && layout.groups.length > 1 && !projection.collapsed && (
-              <button
-                className="pane-collapse"
-                aria-label="Collapse column"
-                data-tooltip="Collapse column"
-                onClick={() => collapse(group.id)}
-              >
-                <ShellIcon name="collapse" />
+                <ShellIcon name={expanded ? "collapse" : "expand"} />
               </button>
             )}
             <ShellMenu
