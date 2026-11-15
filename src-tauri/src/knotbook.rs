@@ -15,8 +15,9 @@ use std::{
 
 pub const FORMAT: &str = "knotbook";
 pub const FORMAT_VERSION: u32 = 1;
-/// Oldest Knot able to import this format (the release that adds import).
-pub const MIN_KNOT_VERSION: &str = "0.3.0";
+/// Oldest Knot able to import what this build exports. 0.6.0 added media
+/// cards and cards shown inside notes, which older builds can't open.
+pub const MIN_KNOT_VERSION: &str = "0.6.0";
 const MAX_NOTEBOOKS: usize = 500;
 const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
 
