@@ -79,8 +79,9 @@ export function WorkspacePanes({
   newTab,
   tools,
 }: {
-  /** Pinned first in the first column's tab row (the notebook pill). */
-  lead?: ReactNode;
+  /** Pinned first in the first column's tab row (the notebook pill). It gets
+   * that column's menu sections; when it renders, the column has no ⋯ menu. */
+  lead?: (columnMenu: ReactNode[]) => ReactNode;
   /** "Open in this column" items for a column's menu. */
   newTab?: (group: string) => ReactNode;
   /** Controls for a column's active tab, at the end of its tab row. */
@@ -397,11 +398,114 @@ export function WorkspacePanes({
     layout.groups.length < MAX_COLUMNS &&
     layout.groups.reduce((n, g) => n + minimumWidth(layout, g) + 1, 0) + 320 <=
       available;
+  /** A column's menu, in sections. The first column's sections join the
+   * notebook pill's menu (lead) instead of a ⋯ button. */
+  const columnSections = (group: (typeof layout.groups)[number]) => {
+    return [
+      newTab?.(group.id),
+      layout.groups.length > 1 && !projection.collapsed && (
+        <>
+          <button
+            onClick={() =>
+              dispatch(
+                expanded
+                  ? { type: "restore" }
+                  : { type: "expand", group: group.id },
+              )
+            }
+          >
+            {expanded ? "Show both columns" : "Expand column"}
+          </button>
+          {!expanded && (
+            <button onClick={() => collapse(group.id)}>Collapse column</button>
+          )}
+        </>
+      ),
+      <>
+        <button
+          disabled={!roomForColumn || group.tabIds.length < 2}
+          data-tooltip={
+            !roomForColumn ? "Widen the window to separate a tab" : undefined
+          }
+          onClick={() =>
+            move(
+              { type: "split", id: group.activeTabId, side: "left" },
+              "Tab separated to the left",
+            )
+          }
+        >
+          Separate tab to left
+        </button>
+        <button
+          disabled={!roomForColumn || group.tabIds.length < 2}
+          onClick={() =>
+            move(
+              { type: "split", id: group.activeTabId, side: "right" },
+              "Tab separated to the right",
+            )
+          }
+        >
+          Separate tab to right
+        </button>
+        {(["left", "right"] as const).map((side) => {
+          const at = layout.groups.findIndex((g) => g.id === group.id);
+          const neighbour = layout.groups[side === "left" ? at - 1 : at + 1];
+          if (at < 0 || !neighbour) return null;
+          return (
+            <Fragment key={side}>
+              <button
+                onClick={() =>
+                  move(
+                    {
+                      type: "move",
+                      id: group.activeTabId,
+                      group: neighbour.id,
+                    },
+                    `Tab moved to the ${side} column`,
+                  )
+                }
+              >
+                Move tab to {side} column
+              </button>
+              <button
+                onClick={() =>
+                  move(
+                    layout.groups.length === 2
+                      ? { type: "swap" }
+                      : {
+                          type: "moveColumn",
+                          group: group.id,
+                          index: side === "left" ? at - 1 : at + 1,
+                        },
+                    "Column moved",
+                  )
+                }
+              >
+                Move column {side}
+              </button>
+              <button
+                onClick={() =>
+                  move(
+                    { type: "merge", group: group.id, into: neighbour.id },
+                    "Columns merged",
+                  )
+                }
+              >
+                Merge with {side} column
+              </button>
+            </Fragment>
+          );
+        })}
+        <button onClick={() => close(group.activeTabId)}>Close tab</button>
+      </>,
+    ].filter(Boolean);
+  };
   const slots = projection.groups.map((g, index) => ({
     group: g,
     width: projection.widths[index],
     left: projection.lefts[index],
   }));
+  const leadNode = slots[0] && lead?.(columnSections(slots[0].group));
   return (
     <div
       ref={root}
@@ -579,7 +683,7 @@ export function WorkspacePanes({
               }
             }}
           >
-            {index === 0 && lead}
+            {index === 0 && leadNode}
             <TabStrip
               activeTab={group.activeTabId}
               role="tablist"
@@ -742,117 +846,20 @@ export function WorkspacePanes({
                 </button>
               )
             )}
-            <ShellMenu
-              label="Pane actions"
-              icon={<ShellIcon name="more" />}
-              className="pane-menu"
-            >
-              {newTab && (
-                <>
-                  {newTab(group.id)}
-                  <hr />
-                </>
-              )}
-              {layout.groups.length > 1 && !projection.collapsed && (
-                <>
-                  <button
-                    onClick={() =>
-                      dispatch(
-                        expanded
-                          ? { type: "restore" }
-                          : { type: "expand", group: group.id },
-                      )
-                    }
-                  >
-                    {expanded ? "Show both columns" : "Expand column"}
-                  </button>
-                  {!expanded && (
-                    <button onClick={() => collapse(group.id)}>
-                      Collapse column
-                    </button>
-                  )}
-                  <hr />
-                </>
-              )}
-              <button
-                disabled={!roomForColumn || group.tabIds.length < 2}
-                data-tooltip={
-                  !roomForColumn ? "Widen the window to separate a tab" : undefined
-                }
-                onClick={() =>
-                  move(
-                    { type: "split", id: group.activeTabId, side: "left" },
-                    "Tab separated to the left",
-                  )
-                }
+            {!(index === 0 && leadNode) && (
+              <ShellMenu
+                label="Pane actions"
+                icon={<ShellIcon name="more" />}
+                className="pane-menu"
               >
-                Separate tab to left
-              </button>
-              <button
-                disabled={!roomForColumn || group.tabIds.length < 2}
-                onClick={() =>
-                  move(
-                    { type: "split", id: group.activeTabId, side: "right" },
-                    "Tab separated to the right",
-                  )
-                }
-              >
-                Separate tab to right
-              </button>
-              {(["left", "right"] as const).map((side) => {
-                const at = layout.groups.findIndex((g) => g.id === group.id);
-                const neighbour =
-                  layout.groups[side === "left" ? at - 1 : at + 1];
-                if (at < 0 || !neighbour) return null;
-                return (
-                  <Fragment key={side}>
-                    <button
-                      onClick={() =>
-                        move(
-                          {
-                            type: "move",
-                            id: group.activeTabId,
-                            group: neighbour.id,
-                          },
-                          `Tab moved to the ${side} column`,
-                        )
-                      }
-                    >
-                      Move tab to {side} column
-                    </button>
-                    <button
-                      onClick={() =>
-                        move(
-                          layout.groups.length === 2
-                            ? { type: "swap" }
-                            : {
-                                type: "moveColumn",
-                                group: group.id,
-                                index: side === "left" ? at - 1 : at + 1,
-                              },
-                          "Column moved",
-                        )
-                      }
-                    >
-                      Move column {side}
-                    </button>
-                    <button
-                      onClick={() =>
-                        move(
-                          { type: "merge", group: group.id, into: neighbour.id },
-                          "Columns merged",
-                        )
-                      }
-                    >
-                      Merge with {side} column
-                    </button>
+                {columnSections(group).map((section, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && <hr />}
+                    {section}
                   </Fragment>
-                );
-              })}
-              <button onClick={() => close(group.activeTabId)}>
-                Close tab
-              </button>
-            </ShellMenu>
+                ))}
+              </ShellMenu>
+            )}
             <button
               className="pane-group-drag"
               draggable

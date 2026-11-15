@@ -181,6 +181,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -2635,7 +2636,9 @@ export function App() {
   }, [aiContext, workspaceCatalog.active, active?.id]);
   // Replaces the old header: the open notebook's name, favorite, save state
   // and actions, pinned first in the first column's tab row.
-  const notebookPill =
+  // Its menu leads with the first column's sections (open a tab, collapse,
+  // move), then the notebook's own actions.
+  const notebookPill = (columnMenu: ReactNode[]) =>
     active && !library ? (
       <div className="notebook-pill">
         <ShellIcon name="notebook" />
@@ -2701,10 +2704,15 @@ export function App() {
           icon={<ShellIcon name="chevron" />}
           className="document-menu"
         >
+                {columnMenu.map((section, i) => (
+                  <div key={i} className="document-action-group" role="group">
+                    {section}
+                  </div>
+                ))}
                 <div
                   className="document-action-group"
                   role="group"
-                  aria-label="Add content"
+                  aria-label="Read & export"
                 >
                   <button
                     aria-label="Attach"
@@ -2714,42 +2722,6 @@ export function App() {
                     <ShellIcon name="attach" />
                     <span>Attach</span>
                   </button>
-                  <button
-                    aria-label="Links"
-                    aria-pressed={paneActive("reference")}
-                    disabled={!active || busy}
-                    onClick={() => {
-                      setLinksView("add");
-                      openSurface("reference");
-                    }}
-                  >
-                    <ShellIcon name="link" />
-                    <span>Links</span>
-                  </button>
-                </div>
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Connections"
-                >
-                  <button
-                    aria-label="Backlinks"
-                    disabled={!active || busy}
-                    onClick={() => {
-                      openSurface("reference");
-                      setLinksView("backlinks");
-                      void run(scanBacklinks);
-                    }}
-                  >
-                    <ShellIcon name="backlinks" />
-                    <span>Backlinks</span>
-                  </button>
-                </div>
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Read & export"
-                >
                   <button
                     aria-label="Export"
                     disabled={!active || busy}

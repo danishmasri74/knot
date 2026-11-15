@@ -16,7 +16,8 @@ Most suites here still expect the layout from before the tabbed layout
   notebook…" appears in both the sidebar and the Library.
 - **Header controls are gone.** "Document actions" is now the notebook
   pill's "Notebook actions" menu; Browser, Card Deck and PDF reader open from
-  a column's ⋯ menu ("Pane actions" → "Open in this column"). There are no
+  its "Open in this column" section. The first column has no ⋯ menu (its
+  items are in the pill's menu); other columns keep "Pane actions". There are no
   Page/Canvas buttons: Page view is a Note tab, and the canvas is the Canvas
   tab. `.topbar` no longer exists.
 - **Export** is a dialog (radio buttons and an "Export…" button), not the
