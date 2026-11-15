@@ -429,8 +429,8 @@ export function WorkspacePanes({
         >
           <button
             className="pane-rail-toggle"
-            aria-label={expanded ? "Expand column" : "Show column"}
-            data-tooltip={expanded ? "Expand column (Esc)" : "Show column"}
+            aria-label="Show column"
+            data-tooltip={expanded ? "Show column (Esc)" : "Show column"}
             onClick={() =>
               expanded
                 ? dispatch({ type: "restore" })
@@ -719,26 +719,28 @@ export function WorkspacePanes({
                 {tools?.(layout.tabs[group.activeTabId])}
               </span>
             )}
-            {(expanded || layout.groups.length > 1) && (
+            {expanded ? (
               <button
                 className="pane-expand"
-                aria-label={expanded ? "Collapse column" : "Expand column"}
-                data-tooltip={
-                  expanded
-                    ? "Collapse column (Esc)"
-                    : "Expand column (Ctrl+Shift+Enter)"
-                }
-                aria-pressed={expanded}
-                onClick={() =>
-                  dispatch(
-                    expanded
-                      ? { type: "restore" }
-                      : { type: "expand", group: group.id },
-                  )
-                }
+                aria-label="Show both columns"
+                data-tooltip="Show both columns (Esc)"
+                onClick={() => dispatch({ type: "restore" })}
               >
-                <ShellIcon name={expanded ? "collapse" : "expand"} />
+                <ShellIcon name="columns" />
               </button>
+            ) : (
+              layout.groups.length > 1 &&
+              !projection.collapsed && (
+                // Side by side: fold this column into a rail.
+                <button
+                  className="pane-expand"
+                  aria-label="Collapse column"
+                  data-tooltip="Collapse column"
+                  onClick={() => collapse(group.id)}
+                >
+                  <ShellIcon name="collapse" />
+                </button>
+              )
             )}
             <ShellMenu
               label="Pane actions"
@@ -762,7 +764,7 @@ export function WorkspacePanes({
                       )
                     }
                   >
-                    {expanded ? "Restore columns" : "Expand column"}
+                    {expanded ? "Show both columns" : "Expand column"}
                   </button>
                   {!expanded && (
                     <button onClick={() => collapse(group.id)}>

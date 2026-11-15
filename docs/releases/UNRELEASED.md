@@ -14,4 +14,4 @@
 - Expanding, restoring and rearranging columns now animate smoothly.
 - Export is now a dialog: pick Markdown, PNG or PDF and save.
 - Column headers are quieter: opening a tab moved into the column's ⋯ menu.
-- A column's expand button turns into a collapse button while it is expanded; clicking a tab on a collapsed column's rail brings it back showing that tab.
+- Each column has a Collapse button that folds it into a slim rail; clicking the rail or one of its tabs brings it back.

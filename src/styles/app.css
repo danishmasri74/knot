@@ -7105,9 +7105,6 @@ knot-web-source { display: block; margin-block: 8px; }
   font-size: 12px;
   color: var(--shell-muted);
 }
-.pane-header > .pane-expand[aria-pressed="true"] {
-  background: var(--shell-selected);
-}
 
 /* No app header: back, forward and the sidebar toggle live in the sidebar's
    top row, or on a slim rail while the sidebar is collapsed. */

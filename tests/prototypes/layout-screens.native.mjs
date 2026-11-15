@@ -63,9 +63,8 @@ try {
   await shell.getByRole("button", { name: "Note", exact: true }).click();
   await shell.locator("[data-note-pane]").waitFor();
   await shot("3-header");
-  // Collapse the tools column from its menu.
-  await shell.locator('summary[aria-label="Pane actions"]').last().click();
-  await shell.getByRole("button", { name: "Collapse column", exact: true }).click();
+  // Collapse the tools column from its header.
+  await shell.locator('.pane-header button[aria-label="Collapse column"]').last().click();
   await shell.waitForTimeout(400);
   await shot("4-rail");
   // Choosing a tab on the rail brings the column back showing it.
