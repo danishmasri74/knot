@@ -171,6 +171,36 @@ export function WorkspacePanes({
     document.addEventListener("keydown", toggle);
     return () => document.removeEventListener("keydown", toggle);
   }, [dispatch]);
+  // Esc shows both columns again from anywhere that doesn't use Esc itself:
+  // a rail, the page after Collapse, a column's controls. Headers handle
+  // their own Esc; editors, fields and open menus keep theirs.
+  const expandedNow = useRef(expanded);
+  expandedNow.current = expanded;
+  useEffect(() => {
+    const restore = (e: KeyboardEvent) => {
+      if (
+        e.key !== "Escape" ||
+        e.defaultPrevented ||
+        e.isComposing ||
+        !expandedNow.current ||
+        root.current?.inert ||
+        document.documentElement.hasAttribute("data-pane-gesture") ||
+        document.querySelector(".shell-menu[open], :popover-open, dialog[open]")
+      )
+        return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (
+        target?.closest(
+          "input, textarea, select, [contenteditable], affine-editor-container, .ask-knot, .pane-header",
+        )
+      )
+        return;
+      e.preventDefault();
+      dispatch({ type: "restore" });
+    };
+    document.addEventListener("keydown", restore);
+    return () => document.removeEventListener("keydown", restore);
+  }, [dispatch]);
   const root = useRef<HTMLDivElement>(null);
   const gestureFocus = useRef<HTMLElement | null>(null);
   const resizeStart = useRef<{ x: number; widths: number[] } | null>(null);

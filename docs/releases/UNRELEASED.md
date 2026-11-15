@@ -20,3 +20,5 @@
 - Search (Ctrl+K) works with note tabs: it can insert a found card into the note you were writing in, and it scrolls to and highlights the match inside a note tab.
 - Adding a found card to the canvas, or jumping to a card from a PDF, brings the Canvas tab forward so you see it.
 - After collapsing a column, opening a note or tool brings that column back instead of covering the canvas.
+- Esc shows both columns again after collapsing one, wherever you are (except while typing).
+- Ask Knot follows the note tab you're working in, so it offers to insert answers into that note.

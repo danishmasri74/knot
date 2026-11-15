@@ -443,6 +443,8 @@ export function App() {
   // the open notebook was last opened from; only that copy expands.
   const [notebookPlace, setNotebookPlace] = useState<string | null>(null);
   const focusedEditor = useRef<EditorSession["editor"] | null>(null);
+  /** The note tab last worked in (null: the canvas); Ask Knot follows it. */
+  const [focusedPane, setFocusedPane] = useState<string | null>(null);
   const [, setDocumentUndo] = useState(true);
   useEffect(() => {
     const track = (event: Event) => {
@@ -458,6 +460,7 @@ export function App() {
       );
       if (editor) {
         focusedEditor.current = editor;
+        setFocusedPane(editor.dataset.notePane ?? null);
         setDocumentUndo(true);
       } else if (
         target.closest(
@@ -2665,10 +2668,35 @@ export function App() {
       </div>
     );
   };
+  // Ask Knot's ambient context: the note tab last worked in while it's
+  // showing, else the canvas.
+  const ambientNote =
+    focusedPane &&
+    layout.groups.some((g) => {
+      const tab = layout.tabs[g.activeTabId];
+      return tab?.kind === "note" && tab.noteId === focusedPane;
+    })
+      ? focusedPane
+      : null;
+  // A context picked in one editor (the AI toolbar) gives way to the
+  // ambient one once work moves to another editor.
+  useEffect(() => setAiContext(null), [focusedPane]);
   const stableAiContext = useMemo(() => {
     const current = session.current;
     if (!current || !workspaceCatalog.active) return null;
     if (aiContext?.instance === current.doc) return aiContext;
+    const noteEditor = ambientNote
+      ? [
+          ...document.querySelectorAll<EditorSession["editor"]>(
+            `affine-editor-container[data-note-pane="${CSS.escape(ambientNote)}"]`,
+          ),
+        ].find((editor) => editor.doc === current.doc)
+      : undefined;
+    if (ambientNote && noteEditor)
+      return {
+        ...captureAiContext(noteEditor, workspaceCatalog.active, ambientNote),
+        sourceIntent: "ambient" as const,
+      };
     return {
       ...captureAiContext(
         current.editor,
@@ -2677,7 +2705,7 @@ export function App() {
       ),
       sourceIntent: "ambient" as const,
     };
-  }, [aiContext, workspaceCatalog.active, active?.id]);
+  }, [aiContext, workspaceCatalog.active, active?.id, ambientNote]);
   // Replaces the old header: the open notebook's name, favorite, save state
   // and actions, pinned first in the first column's tab row.
   // Its menu leads with the first column's sections (open a tab, collapse,
