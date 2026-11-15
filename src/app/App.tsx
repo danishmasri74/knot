@@ -1,5 +1,12 @@
 import type { McqEditRequest } from "../features/editor/blocksuite/mcq-block";
 import { restoreMcqTarget, type McqInsertionTarget } from "../features/editor/blocksuite/mcq-insertion";
+import {
+  getStartupDestination,
+  setStartupDestination,
+  readLastNotebook,
+  rememberLastNotebook,
+  type StartupDestination,
+} from "../services/startup";
 import type { NewMcqRequest } from "../features/editor/blocksuite/mcq-menu";
 import { LinksPanel, type LinksView } from "./LinksPanel";
 import { dismissLaunchSplash } from "../services/launch";
@@ -507,6 +514,8 @@ export function App() {
   const [browserExpanded, setBrowserExpanded] = useState(false);
   const [linkPreference, updateLinkPreference] = useState(getLinkPreference);
   const [noteView, updateNoteView] = useState(getNoteView);
+  const [startupDestination, updateStartupDestination] =
+    useState(getStartupDestination);
   useEffect(() => {
     if (!isTauri()) return;
     const off = listen<string>("browser-cleanup-error", (event) =>
@@ -940,6 +949,12 @@ export function App() {
     [notice, updateNoticeText] = useState(""),
     [busy, setBusy] = useState(false),
     [title, setTitle] = useState("");
+  const activeNotebookId = active?.id;
+  useEffect(() => {
+    const workspace = workspaceCatalog.active;
+    if (workspace && activeNotebookId && session.current?.doc.id === activeNotebookId)
+      rememberLastNotebook(workspace, activeNotebookId, mode);
+  }, [workspaceCatalog.active, activeNotebookId, mode]);
   const citationContinuation = useRef<{
     workspace: string;
     notebook: string;
@@ -950,17 +965,20 @@ export function App() {
     citationContinuation,
   );
   const aiWorkspace = useRef(workspaceCatalog.active);
+  const hasOpenedWorkspace = useRef(false);
   if (aiWorkspace.current !== workspaceCatalog.active) {
     aiWorkspace.current = workspaceCatalog.active;
     let restored: "page" | "panel" | "hidden" = "hidden";
     try {
-      const saved = localStorage.getItem(
-        `knot.ai.placement.v1:${workspaceCatalog.active}`,
-      );
+      // On launch, the startup destination owns the main view.
+      const saved = hasOpenedWorkspace.current
+        ? localStorage.getItem(`knot.ai.placement.v1:${workspaceCatalog.active}`)
+        : null;
       if (saved === "page" || saved === "panel") restored = saved;
     } catch {
       /* Preferences are optional. */
     }
+    if (workspaceCatalog.active) hasOpenedWorkspace.current = true;
     setAiPlacement(restored);
     setAiOpened(restored !== "hidden");
   }
@@ -1783,7 +1801,11 @@ export function App() {
       throw error;
     }
   }
-  async function openDocument(item: KnowledgeObject, record = true) {
+  async function openDocument(
+    item: KnowledgeObject,
+    record = true,
+    initialView?: NoteView,
+  ) {
     // "Not shared" titles change only on import; refreshing here keeps every
     // newly opened notebook current. A failure just leaves the old titles.
     await knotbooks
@@ -1837,6 +1859,7 @@ export function App() {
       (location) => void run(() => openPdf(location)),
       false,
       workspaceIdentity.current ?? undefined,
+      initialView,
     );
     if (record || active?.id !== item.id) {
       clearInactiveSurface(null);
@@ -1951,14 +1974,6 @@ export function App() {
     }
     void run(async () => {
       const workspace = await workspaces.catalog();
-      let savedAiPlacement: string | null = null;
-      try {
-        savedAiPlacement = localStorage.getItem(
-          `knot.ai.placement.v1:${workspace.active}`,
-        );
-      } catch {
-        /* Optional preference. */
-      }
       setWorkspaceCatalog(workspace);
       setCatalog(await collections.catalog());
       const nextTour = await tourStatus();
@@ -1967,12 +1982,23 @@ export function App() {
         await createGettingStarted();
         setTour(await tourStatus());
       }
-      await refresh("");
-      await openLibrary(defaultLibrary);
-      if (savedAiPlacement === "page" || savedAiPlacement === "panel")
-        showAi(savedAiPlacement);
+      const rows = await refresh("");
       // Opened by double-clicking a .knotbook while Knot was closed.
       const launched = await knotbooks.pending().catch(() => null);
+      const last =
+        !launched && workspace.active && getStartupDestination() === "last-notebook"
+          ? readLastNotebook(workspace.active)
+          : null;
+      const notebook = last && rows.find((row) => row.id === last.id);
+      if (notebook && last) {
+        try {
+          await openDocument(notebook, true, last.view);
+          return;
+        } catch (error) {
+          report(error);
+        }
+      }
+      await openLibrary(defaultLibrary);
       if (launched) setImportToken(launched);
     }).finally(dismissLaunchSplash);
     let off: (() => void) | undefined;
@@ -3565,6 +3591,27 @@ export function App() {
               <p className="settings-description">
                 Make Knot feel like your space.
               </p>
+
+              <div className="settings-row">
+                <div>
+                  <label htmlFor="startup-destination">
+                    <strong>On startup</strong>
+                  </label>
+                  <p>Choose where Knot opens when you launch it.</p>
+                </div>
+                <select
+                  id="startup-destination"
+                  value={startupDestination}
+                  onChange={(event) => {
+                    const destination = event.target.value as StartupDestination;
+                    setStartupDestination(destination);
+                    updateStartupDestination(destination);
+                  }}
+                >
+                  <option value="library">Open Library</option>
+                  <option value="last-notebook">Reopen last notebook</option>
+                </select>
+              </div>
 
               <div className="settings-row">
                 <div>

@@ -2,7 +2,7 @@ import { observeMcqMenu } from "./mcq-menu";
 import { BookmarkPreviewSpec } from "./bookmark";
 import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
-import { getNoteView } from "../../../services/note-navigation";
+import { getNoteView, type NoteView } from "../../../services/note-navigation";
 import { createSearchReveal } from "./search-reveal";
 import { createNotePageView } from "./note-page-view";
 import { waitForEditorView } from "../../../app/view-readiness";
@@ -103,6 +103,7 @@ export async function openEditor(
   onPdfNavigate: (location: PdfLocation) => void = () => {},
   deckOnly = false,
   workspace = "knot-workspace",
+  initialView?: NoteView,
 ) {
   const catalog = await repository.catalog();
   if (deckOnly) catalog.push(object);
@@ -673,7 +674,7 @@ export async function openEditor(
       ? "page"
       : object.kind === "whiteboard"
         ? "edgeless"
-        : getNoteView();
+        : (initialView ?? getNoteView());
     const navigation = () =>
       editor.std
         .get(RefNodeSlotsProvider)
