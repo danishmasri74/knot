@@ -91,26 +91,31 @@ export function BrowserPanel({
       if (panel.dataset.singlePane !== single)
         panel.dataset.singlePane = single;
       const bounds = browserBounds(element);
-      const covered = [
-        ...document.querySelectorAll<HTMLElement>(
-          'dialog[open], .shell-menu[open], select:open, .global-search, .error-banner, .notice-banner, :popover-open, affine-link-popup, [role="menu"], [role="dialog"]',
-        ),
-      ].some((node) => {
-        if (
-          !node.getClientRects().length ||
-          getComputedStyle(node).visibility === "hidden"
-        )
-          return false;
-        if (!node.matches(".shell-tooltip")) return true;
-        const tip = node.getBoundingClientRect();
-        const page = element.getBoundingClientRect();
-        return (
-          tip.left < page.right &&
-          tip.right > page.left &&
-          tip.top < page.bottom &&
-          tip.bottom > page.top
-        );
-      });
+      // Dialogs, native pickers, search and banners always hide the native
+      // page (a picker's list is drawn outside its control's box). Menus and
+      // popovers hide it only when their box overlaps it, so a menu in
+      // another column leaves the page visible. Closed ShellMenus keep their
+      // content laid out, so match open ones only.
+      const page = element.getBoundingClientRect();
+      const overlaps = (box: DOMRect) =>
+        box.left < page.right &&
+        box.right > page.left &&
+        box.top < page.bottom &&
+        box.bottom > page.top;
+      const shown = (node: HTMLElement) =>
+        node.getClientRects().length > 0 &&
+        getComputedStyle(node).visibility !== "hidden";
+      const covered =
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            'dialog[open], select:open, .global-search, .error-banner, .notice-banner, affine-link-popup, [role="dialog"]',
+          ),
+        ].some(shown) ||
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '.shell-menu[open] .shell-menu-content, :popover-open, [role="menu"]',
+          ),
+        ].some((node) => shown(node) && overlaps(node.getBoundingClientRect()));
       const visible =
         !!status &&
         !document.hidden &&
