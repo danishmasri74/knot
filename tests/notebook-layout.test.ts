@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  canvasTab,
   emptyLayout,
   layoutReducer,
   tabIdentity,
+  withCanvas,
   type PaneTab,
 } from "../src/app/workspace-layout";
 import {
@@ -63,7 +65,7 @@ describe("notebook pane preferences", () => {
       ),
     ).toEqual(state);
     expect(validatedNotebookLayout(emptyLayout(), "workspace", "oop")).toEqual(
-      emptyLayout(),
+      withCanvas(emptyLayout(), canvasTab("workspace", "oop")),
     );
   });
   it("isolates notebook and workspace keys, including ambiguous identifiers", () => {
@@ -77,7 +79,7 @@ describe("notebook pane preferences", () => {
       notebookLayoutKey("a", "b.c"),
     );
     expect(validatedNotebookLayout(layout(), "other", "testing")).toEqual(
-      emptyLayout(),
+      withCanvas(emptyLayout(), canvasTab("other", "testing")),
     );
     const restored = validatedNotebookLayout(layout(), "workspace", "oop");
     expect(Object.values(restored.tabs)).toEqual([browser]);
@@ -112,15 +114,17 @@ describe("notebook pane preferences", () => {
     expect(restored.lastUsedGroupId).toBe(restored.groups[1].id);
   });
   it("ignores invalid versions, malformed records and unknown tab kinds", () => {
+    // Anything unusable falls back to the default: the Canvas tab alone.
+    const fallback = withCanvas(emptyLayout(), canvasTab("workspace", "testing"));
     for (const value of [
       null,
       [],
       {},
-      { ...layout(), version: 2 },
+      { ...layout(), version: 3 },
       { ...layout(), tabs: [] },
     ]) {
       expect(validatedNotebookLayout(value, "workspace", "testing")).toEqual(
-        emptyLayout(),
+        fallback,
       );
     }
     const state = layout();
@@ -134,14 +138,30 @@ describe("notebook pane preferences", () => {
       ),
     };
     expect(validatedNotebookLayout(invalid, "workspace", "testing")).toEqual(
-      emptyLayout(),
+      fallback,
+    );
+  });
+  it("gives layouts saved before the canvas was a tab a canvas column on the left", () => {
+    const legacy = { ...layout(), version: 1 };
+    const migrated = validatedNotebookLayout(legacy, "workspace", "testing");
+    expect(migrated.groups).toHaveLength(3);
+    expect(migrated.groups[0].tabIds).toEqual([
+      canvasTab("workspace", "testing").id,
+    ]);
+    expect(migrated.groups.slice(1).map((g) => g.tabIds)).toEqual(
+      layout().groups.map((g) => g.tabIds),
+    );
+    // A saved version 2 layout whose canvas was closed stays closed.
+    expect(validatedNotebookLayout(layout(), "workspace", "testing")).toEqual(
+      layout(),
     );
   });
   it("falls back safely when storage is unavailable or contains invalid JSON", () => {
     // No browser storage in this test environment.
-    expect(readNotebookLayout("workspace", "testing")).toEqual(emptyLayout());
+    const fallback = withCanvas(emptyLayout(), canvasTab("workspace", "testing"));
+    expect(readNotebookLayout("workspace", "testing")).toEqual(fallback);
     vi.stubGlobal("localStorage", { getItem: () => "invalid JSON" });
-    expect(readNotebookLayout("workspace", "testing")).toEqual(emptyLayout());
+    expect(readNotebookLayout("workspace", "testing")).toEqual(fallback);
     vi.stubGlobal("localStorage", { getItem: () => JSON.stringify(layout()) });
     expect(readNotebookLayout("workspace", "testing")).toEqual(layout());
   });

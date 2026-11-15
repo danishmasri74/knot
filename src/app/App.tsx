@@ -35,6 +35,8 @@ import { useNotebookLayout } from "./useNotebookLayout";
 import { NotePagePane } from "./NotePagePane";
 import {
   supportingKinds,
+  canvasTab,
+  projectLayout,
   tabIdentity,
   type PaneKind,
   type PaneTab,
@@ -483,6 +485,23 @@ export function App() {
         (kind === "browser" ? getBrowserWidth() : kind === "pdf" ? 640 : 480),
     });
     pendingPaneFocus.current = id;
+  }
+  /** Brings the notebook's main view (the Canvas tab) to the front, opening
+   * it again if it was closed. Navigation to a card or note calls this. */
+  function revealCanvas() {
+    const notebook = session.current?.doc.id;
+    const workspace = workspaceIdentity.current;
+    if (!notebook || !workspace) return;
+    const tab = canvasTab(workspace, notebook);
+    dispatchLayout(
+      layoutRef.current.tabs[tab.id]
+        ? { type: "activate", id: tab.id }
+        : { type: "open", tab },
+    );
+  }
+  function showNotebookView(note: string | null) {
+    setFocusedNote(note);
+    revealCanvas();
   }
   const paneActive = (kind: PaneKind) =>
     !layout.hidden &&
@@ -1134,10 +1153,18 @@ export function App() {
       window.removeEventListener("drop", preventFileNavigation);
     };
   }, []);
+  // Same rule as WorkspacePanes: the canvas shows when its tab is the active
+  // tab of a projected column.
+  const canvasVisible =
+    !(browserExpanded && paneActive("browser")) &&
+    projectLayout(layout, contentWidth).groups.some(
+      (g) => layout.tabs[g.activeTabId]?.kind === "canvas",
+    );
   useLayoutEffect(() => {
     const wasLocked = host.current?.inert;
     if (host.current)
       host.current.inert =
+        !canvasVisible ||
         busy ||
         navigating ||
         documentLoading ||
@@ -1153,6 +1180,7 @@ export function App() {
     )
       performance.mark("knot:canvas-input-unlocked");
   }, [
+    canvasVisible,
     busy,
     navigating,
     documentLoading,
@@ -1484,7 +1512,7 @@ export function App() {
       if (!placement) throw Error("Could not add this card to the notebook.");
       await current.focusCanvasCard(placement);
       setMode("edgeless");
-      setFocusedNote(null);
+      showNotebookView(null);
       await current.flush();
       completed = true;
     }, true);
@@ -1704,7 +1732,7 @@ export function App() {
       await opened.focusNotebookNote(note);
     else await opened.setMode("page");
     setMode(opened.editor.mode);
-    setFocusedNote(
+    showNotebookView(
       opened.editor.mode === "edgeless" ? null : (opened.revealedNoteId ?? null),
     );
     if (session.current !== opened) return;
@@ -1735,7 +1763,7 @@ export function App() {
     if (view === "edgeless") await opened.focusCanvasCard(id);
     else await opened.focusNotebookNote(id);
     setMode(opened.editor.mode);
-    setFocusedNote(view === "page" ? id : null);
+    showNotebookView(view === "page" ? id : null);
     if (session.current !== opened) return;
     // Jump to the cited words inside the card and highlight them, as search does.
     await opened.revealSearchMatch(excerpt, id);
@@ -1767,7 +1795,7 @@ export function App() {
       await openDocument(item);
       await session.current!.focusCanvasCard(id);
       setMode("edgeless");
-      setFocusedNote(null);
+      showNotebookView(null);
       return;
     }
     await withDocumentLoader(view, async () => {
@@ -1779,7 +1807,7 @@ export function App() {
         await current.focusCanvasCard(id);
       } else await current.focusNotebookNote(id);
       setMode(current.editor.mode);
-      setFocusedNote(view === "page" ? id : null);
+      showNotebookView(view === "page" ? id : null);
     });
     // The loader prepares canvas previews, which can change card bounds.
     // Recenter after its final readiness pass.
@@ -2208,7 +2236,7 @@ export function App() {
       setSurface((value) => (value === "browser" ? value : null));
       await current.addNotebookNote();
       setMode(current.editor.mode);
-      setFocusedNote(current.revealedNoteId);
+      showNotebookView(current.revealedNoteId);
       setCollapsedNotebook(null);
     });
   useEffect(() => {
@@ -2263,7 +2291,7 @@ export function App() {
       await openDocument(target);
       await session.current?.setMode("edgeless");
       setMode("edgeless");
-      setFocusedNote(null);
+      showNotebookView(null);
       await focusTourStart();
     });
   }
@@ -2474,7 +2502,7 @@ export function App() {
                     if (library) await openDocument(item);
                     await session.current?.setMode(view);
                     setMode(view);
-                    setFocusedNote(session.current?.revealedNoteId ?? null);
+                    showNotebookView(session.current?.revealedNoteId ?? null);
                   });
                 }, true)
               }
@@ -2633,7 +2661,7 @@ export function App() {
                   if (current.editor.mode === "edgeless") await current.focusCanvasCard(placement);
                   else await current.focusNotebookNote(placement);
                   setMode(current.editor.mode);
-                  setFocusedNote(current.revealedNoteId);
+                  showNotebookView(current.revealedNoteId);
                 } catch (error) {
                   report(error);
                 }
@@ -2842,7 +2870,7 @@ export function App() {
                   setSurface(null);
                   await current.addNotebookNote();
                   setMode(current.editor.mode);
-                  setFocusedNote(current.revealedNoteId);
+                  showNotebookView(current.revealedNoteId);
                   setCollapsedNotebook(null);
                   succeeded = true;
                 });
@@ -3274,7 +3302,7 @@ export function App() {
                             )
                               return;
                             setMode(m);
-                            setFocusedNote(current.revealedNoteId);
+                            showNotebookView(current.revealedNoteId);
                             if (switching) {
                               await waitForReadyEditor();
                               setTransition({ view: m, done: true });
@@ -4512,7 +4540,7 @@ export function App() {
                     else {
                       await opened.setMode("page");
                       setMode(opened.editor.mode);
-                      setFocusedNote(opened.revealedNoteId);
+                      showNotebookView(opened.revealedNoteId);
                     }
                     if (session.current !== opened) return;
                     requestAnimationFrame(() => {
@@ -4572,6 +4600,17 @@ export function App() {
             style={documentLoading ? { visibility: "hidden" } : undefined}
             className={`editor-area${draggingFiles ? " file-drop-active" : ""}`}
             ref={host}
+            onPointerDownCapture={() => {
+              // Clicking the canvas makes its column the one new tabs join.
+              const tab = Object.values(layoutRef.current.tabs).find(
+                (t) => t.kind === "canvas",
+              );
+              const group = layoutRef.current.groups.find((g) =>
+                g.tabIds.includes(tab?.id ?? ""),
+              );
+              if (tab && group && layoutRef.current.lastUsedGroupId !== group.id)
+                dispatchLayout({ type: "activate", id: tab.id });
+            }}
             onDragEnterCapture={(event) => {
               if (!event.dataTransfer.types.includes("Files")) return;
               event.preventDefault();
@@ -4647,6 +4686,26 @@ export function App() {
                 </div>
               </section>
             )}
+          {active &&
+            !library &&
+            !busy &&
+            !documentLoading &&
+            !layout.groups.length &&
+            aiPlacement !== "page" && (
+              <section
+                className="welcome"
+                aria-labelledby="empty-notebook-heading"
+              >
+                <Mascot mood="write" />
+                <h1 id="empty-notebook-heading">No tabs open</h1>
+                <p>Open the canvas to keep working in this notebook.</p>
+                <div className="welcome-actions">
+                  <button type="button" onClick={revealCanvas}>
+                    <ShellIcon name="board" /> Open canvas
+                  </button>
+                </div>
+              </section>
+            )}
           <WorkspacePanes
             expanded={browserExpanded && paneActive("browser")}
             layout={layout}
@@ -4678,9 +4737,16 @@ export function App() {
                       ?.notebookNotes()
                       .find((note) => note.id === tab.noteId)?.title) ||
                   "Note"
-                : tab.kind === "video"
-                  ? videoReader?.title || surfaceTitles.video
-                  : surfaceTitles[tab.kind]
+                : tab.kind === "canvas"
+                  ? mode === "page"
+                    ? "Page"
+                    : "Canvas"
+                  : tab.kind === "video"
+                    ? videoReader?.title || surfaceTitles.video
+                    : surfaceTitles[tab.kind]
+            }
+            icon={(tab) =>
+              tab.kind === "canvas" && mode === "page" ? "note" : undefined
             }
             contentKey={(tab) => tab.id}
             render={(tab) => (
@@ -4898,7 +4964,7 @@ export function App() {
                           if (location && session.current?.doc.id === source.id) {
                             await session.current.revealNotebookLink(location);
                             setMode(session.current.editor.mode);
-                            setFocusedNote(session.current.revealedNoteId);
+                            showNotebookView(session.current.revealedNoteId);
                           }
                         }, true)
                       }

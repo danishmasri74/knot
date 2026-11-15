@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
+  MAX_COLUMNS,
+  canvasTab,
   edgeMove,
   emptyLayout,
   layoutReducer,
   projectLayout,
   tabIdentity,
   validatedWidths,
+  withCanvas,
   type WorkspaceLayout,
   type PaneTab,
 } from "../src/app/workspace-layout";
@@ -32,7 +35,7 @@ const invariant = (s: WorkspaceLayout) => {
   const ids = s.groups.flatMap((g) => g.tabIds);
   expect(new Set(ids).size).toBe(ids.length);
   expect(ids.sort()).toEqual(Object.keys(s.tabs).sort());
-  expect(s.groups.length).toBeLessThanOrEqual(2);
+  expect(s.groups.length).toBeLessThanOrEqual(MAX_COLUMNS);
   for (const g of s.groups) {
     expect(g.tabIds.length).toBeGreaterThan(0);
     expect(g.tabIds).toContain(g.activeTabId);
@@ -163,7 +166,8 @@ describe("supporting workspace layout", () => {
     });
     const before = JSON.stringify(s);
     expect(projectLayout(s, 1500).groups).toHaveLength(2);
-    expect(projectLayout(s, 1000).collapsed).toBe(true);
+    expect(projectLayout(s, 1000).collapsed).toBe(false);
+    expect(projectLayout(s, 650).collapsed).toBe(true);
     expect(projectLayout(s, 650).single).toBe(true);
     for (const available of [360, 650, 760, 850, 1082, 1200, 1600]) {
       const p = projectLayout(s, available);
@@ -236,5 +240,70 @@ describe("supporting workspace layout", () => {
       width: 99999,
     });
     expect(s.groups[0].preferredWidth).toBe(1000);
+  });
+  describe("canvas tab", () => {
+    const canvas = canvasTab("w", "d");
+    const withTools = () =>
+      [pdf, browser].reduce(
+        (s, tab) => layoutReducer(s, { type: "open", tab }),
+        withCanvas(emptyLayout(), canvas),
+      );
+    it("fills the space the other columns leave", () => {
+      const s = withTools();
+      expect(s.groups[0].tabIds).toEqual([canvas.id]);
+      const p = projectLayout(s, 1400);
+      expect(p.widths.reduce((a, b) => a + b, 0) + p.groups.length - 1).toBe(
+        1400,
+      );
+      expect(p.widths[0]).toBeGreaterThan(p.widths[1]);
+    });
+    it("opens tools beside the canvas instead of covering it", () => {
+      let s = withCanvas(emptyLayout(), canvas);
+      s = layoutReducer(s, { type: "open", tab: pdf });
+      expect(s.groups).toHaveLength(2);
+      expect(s.groups[0].activeTabId).toBe(canvas.id);
+      s = layoutReducer(s, { type: "activate", id: canvas.id });
+      s = layoutReducer(s, { type: "open", tab: note });
+      expect(s.groups[0].tabIds).toEqual([canvas.id]);
+      expect(s.groups[1].tabIds).toEqual([pdf.id, note.id]);
+    });
+    it("splits up to three columns and moves columns", () => {
+      let s = withTools();
+      s = layoutReducer(s, { type: "split", id: pdf.id, side: "right" });
+      expect(s.groups).toHaveLength(3);
+      const full = layoutReducer(s, { type: "split", id: browser.id, side: "left" });
+      expect(full.groups).toHaveLength(3);
+      const moved = layoutReducer(s, {
+        type: "moveColumn",
+        group: s.groups[0].id,
+        index: 2,
+      });
+      expect(moved.groups[2].tabIds).toEqual([canvas.id]);
+      invariant(moved);
+    });
+    it("reopens a closed canvas in its own column on the left", () => {
+      let s = withTools();
+      s = layoutReducer(s, { type: "close", id: canvas.id });
+      expect(s.groups).toHaveLength(1);
+      s = layoutReducer(s, { type: "open", tab: canvas });
+      expect(s.groups[0].tabIds).toEqual([canvas.id]);
+      expect(s.groups).toHaveLength(2);
+    });
+    it("moves to an edge, splitting while there is room", () => {
+      let s = withTools();
+      expect(edgeMove(s, canvas.id, "left")).toBeNull();
+      s = layoutReducer(s, { type: "split", id: pdf.id, side: "right" });
+      expect(edgeMove(s, canvas.id, "right")).toEqual({
+        type: "moveColumn",
+        group: s.groups[0].id,
+        index: 2,
+      });
+    });
+    it("hiding columns leaves only the canvas column", () => {
+      const s = layoutReducer(withTools(), { type: "visibility", hidden: true });
+      const p = projectLayout(s, 1200);
+      expect(p.groups.map((g) => g.tabIds)).toEqual([[canvas.id]]);
+      expect(p.widths).toEqual([1200]);
+    });
   });
 });

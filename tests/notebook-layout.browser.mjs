@@ -58,15 +58,20 @@ async function hydrate(page) {
         React.Fragment,
         null,
         React.createElement(ColumnVisibilityToggle, { layout, dispatch }),
-        React.createElement(WorkspacePanes, {
-          layout,
-          dispatch,
-          available: 1600,
-          blocked: false,
-          label: (tab) => tab.noteId ?? tab.kind,
-          render: (tab) => React.createElement("p", null, tab.kind),
-          onReturn: () => {},
-        }),
+        // Columns cover the content row, as .workspace-content does in Knot.
+        React.createElement(
+          "div",
+          { style: { position: "relative", height: "600px" } },
+          React.createElement(WorkspacePanes, {
+            layout,
+            dispatch,
+            available: 1600,
+            blocked: false,
+            label: (tab) => tab.noteId ?? tab.kind,
+            render: (tab) => React.createElement("p", null, tab.kind),
+            onReturn: () => {},
+          }),
+        ),
       );
     }
     createRoot(document.querySelector("#root")).render(
@@ -91,14 +96,15 @@ try {
   const context = await browser.newContext();
   const page = await mount(context);
   await hydrate(page);
-  assert.equal((await snapshot(page)).groups.length, 0);
+  // A notebook starts with its Canvas tab as the only column.
+  assert.equal((await snapshot(page)).groups.length, 1);
   await page.evaluate(() =>
     window.toolbarDispatch({ type: "open", tab: window.tab("pdf") }),
   );
   await page.evaluate(() => new Promise(requestAnimationFrame));
   assert.equal(
     (await snapshot(page)).groups.length,
-    1,
+    2,
     "retained PDF toolbar callback opens the active notebook's pane",
   );
   await page.evaluate(() =>
@@ -113,19 +119,19 @@ try {
     ])
       window.dispatch({ type: "open", tab: t });
     window.dispatch({ type: "split", id: window.tab("pdf").id, side: "left" });
-    window.dispatch({ type: "resize", group: "pane-2", width: 620 });
+    window.dispatch({ type: "resize", group: "pane-3", width: 620 });
     window.dispatch({
       type: "activate",
       id: window.tab("note", "First note").id,
     });
   });
-  await page.waitForFunction(() => window.layout.groups.length === 2);
+  await page.waitForFunction(() => window.layout.groups.length === 3);
   const testing = await snapshot(page);
-  assert.equal(await page.locator(".pane-header").count(), 2);
+  assert.equal(await page.locator(".pane-header").count(), 3);
   assert.equal(testing.groups[0].preferredWidth, 620);
   const strip = page.locator(".pane-tabs").last();
   await strip.evaluate((element) => {
-    element.style.maxWidth = "100px";
+    element.style.maxWidth = "40px";
     element.scrollLeft = 0;
   });
   await strip.hover();
@@ -182,11 +188,8 @@ try {
     });
   await page.getByRole("button", { name: "Hide columns", exact: true }).click();
   assert.deepEqual(await snapshot(page), { ...testing, hidden: true });
-  assert.equal(await page.locator(".workspace-panes").isVisible(), false);
-  assert.equal(
-    await page.locator(".workspace-panes").evaluate((element) => element.inert),
-    true,
-  );
+  // Only the canvas column stays.
+  assert.equal(await page.locator(".pane-header").count(), 1);
   assert.equal(
     await page.evaluate(() => window.retainedPanel.isConnected),
     true,
@@ -207,22 +210,22 @@ try {
   await page.reload();
   await hydrate(page);
   assert.equal((await snapshot(page)).hidden, true);
-  assert.equal(await page.locator(".workspace-panes").isVisible(), false);
+  assert.equal(await page.locator(".pane-header").count(), 1);
   await page.getByRole("button", { name: "Show columns", exact: true }).click();
   assert.deepEqual(await snapshot(page), testing);
   await switchTo(page, "oop");
-  assert.equal((await snapshot(page)).groups.length, 0);
-  assert.equal(await page.getByRole("tab").count(), 0);
+  assert.equal((await snapshot(page)).groups.length, 1);
+  assert.equal(await page.getByRole("tab").count(), 1);
   await switchTo(page, "testing");
   assert.deepEqual(await snapshot(page), testing);
   await switchTo(page, "testing", "other-workspace");
-  assert.equal((await snapshot(page)).groups.length, 0);
+  assert.equal((await snapshot(page)).groups.length, 1);
   await switchTo(page, "testing");
   assert.deepEqual(await snapshot(page), testing);
   await page.reload();
   await hydrate(page);
   assert.deepEqual(await snapshot(page), testing);
-  assert.equal(await page.getByRole("tab", { selected: true }).count(), 2);
+  assert.equal(await page.getByRole("tab", { selected: true }).count(), 3);
 
   const stored = await context.storageState();
   await context.close();
@@ -231,7 +234,7 @@ try {
   await hydrate(fresh);
   assert.deepEqual(await snapshot(fresh), testing);
   await switchTo(fresh, "oop");
-  assert.equal((await snapshot(fresh)).groups.length, 0);
+  assert.equal((await snapshot(fresh)).groups.length, 1);
   await switchTo(fresh, "testing");
   await fresh.evaluate(() => {
     for (const id of Object.keys(window.layout.tabs))
@@ -240,7 +243,8 @@ try {
   await fresh.waitForFunction(() => window.layout.groups.length === 0);
   await fresh.reload();
   await hydrate(fresh);
-  assert.equal((await snapshot(fresh)).groups.length, 0);
+  // A notebook with nothing open comes back with its canvas.
+  assert.equal((await snapshot(fresh)).groups.length, 1);
   // Invalid stored JSON must recover without breaking the app.
   await fresh.evaluate(() => {
     const key = Object.keys(localStorage).find((k) =>
@@ -250,10 +254,10 @@ try {
   });
   await fresh.reload();
   await hydrate(fresh);
-  assert.equal((await snapshot(fresh)).groups.length, 0);
+  assert.equal((await snapshot(fresh)).groups.length, 1);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS per-notebook/workspace isolation, two-column order/widths/active tabs, refresh, fresh session, closed layout, malformed storage, StrictMode",
+    "PASS per-notebook/workspace isolation, canvas plus two-column order/widths/active tabs, refresh, fresh session, closed layout, malformed storage, StrictMode",
   );
   await freshContext.close();
 } finally {

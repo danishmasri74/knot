@@ -5,11 +5,14 @@ import {
   type MutableRefObject,
 } from "react";
 import {
+  MAX_COLUMNS,
+  canvasTab,
   emptyLayout,
   layoutReducer,
   supportingKinds,
   tabIdentity,
   validatedWidths,
+  withCanvas,
   type LayoutAction,
   type PaneTab,
   type WorkspaceLayout,
@@ -21,8 +24,21 @@ export const notebookLayoutKey = (workspace: string, notebook: string) =>
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Restore only valid membership belonging to this workspace and notebook. */
+/** Restore only valid membership belonging to this workspace and notebook.
+ * Layouts saved before the canvas was a tab (version 1), notebooks with no
+ * saved layout and empty layouts get the Canvas tab as their leftmost column. */
 export function validatedNotebookLayout(
+  value: unknown,
+  workspace: string,
+  notebook: string,
+): WorkspaceLayout {
+  const restored = restoredLayout(value, workspace, notebook);
+  // A notebook with nothing open comes back with its canvas.
+  return record(value) && value.version === 2 && restored.groups.length
+    ? restored
+    : withCanvas(restored, canvasTab(workspace, notebook));
+}
+function restoredLayout(
   value: unknown,
   workspace: string,
   notebook: string,
@@ -30,7 +46,7 @@ export function validatedNotebookLayout(
   const next = emptyLayout();
   if (
     !record(value) ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     !record(value.tabs) ||
     !Array.isArray(value.groups)
   )
@@ -61,7 +77,7 @@ export function validatedNotebookLayout(
   }
   const used = new Set<string>();
   for (const group of value.groups) {
-    if (next.groups.length === 2) break;
+    if (next.groups.length === MAX_COLUMNS) break;
     if (
       !record(group) ||
       typeof group.id !== "string" ||
@@ -105,7 +121,7 @@ export function readNotebookLayout(workspace: string, notebook: string) {
       notebook,
     );
   } catch {
-    return emptyLayout();
+    return validatedNotebookLayout(null, workspace, notebook);
   }
 }
 

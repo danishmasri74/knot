@@ -1,6 +1,14 @@
 export type PaneKind =
-  "note" | "pdf" | "browser" | "cardDeck" | "ask" | "reference" | "video";
+  | "canvas"
+  | "note"
+  | "pdf"
+  | "browser"
+  | "cardDeck"
+  | "ask"
+  | "reference"
+  | "video";
 export const supportingKinds = new Set<string>([
+  "canvas",
   "note",
   "pdf",
   "browser",
@@ -9,6 +17,24 @@ export const supportingKinds = new Set<string>([
   "reference",
   "video",
 ]);
+/** Up to three content columns sit beside the sidebar. */
+export const MAX_COLUMNS = 3;
+/** What each kind of tab does when it isn't visible, and how narrow it gets.
+ * Identity (tabIdentity) already keeps one Canvas, Ask, Card Deck, Browser
+ * and Links tab per notebook; notes, PDFs and videos are one per item. */
+export const tabPolicy: Record<
+  PaneKind,
+  { idle: "alive" | "sleep" | "unmount"; minWidth: number }
+> = {
+  canvas: { idle: "alive", minWidth: 360 },
+  note: { idle: "sleep", minWidth: 360 },
+  pdf: { idle: "sleep", minWidth: 360 },
+  video: { idle: "sleep", minWidth: 320 },
+  browser: { idle: "alive", minWidth: 320 },
+  ask: { idle: "alive", minWidth: 320 },
+  cardDeck: { idle: "alive", minWidth: 320 },
+  reference: { idle: "unmount", minWidth: 320 },
+};
 export type PaneTab = {
   id: string;
   kind: PaneKind;
@@ -23,14 +49,14 @@ export type PaneGroup = {
   preferredWidth: number;
 };
 export type WorkspaceLayout = {
-  version: 1;
+  version: 2;
   hidden: boolean;
   tabs: Record<string, PaneTab>;
   groups: PaneGroup[];
   lastUsedGroupId: string | null;
 };
 export const emptyLayout = (): WorkspaceLayout => ({
-  version: 1,
+  version: 2,
   hidden: false,
   tabs: {},
   groups: [],
@@ -42,8 +68,9 @@ export type LayoutAction =
   | { type: "activate" | "close"; id: string }
   | { type: "move"; id: string; group: string; index?: number }
   | { type: "split"; id: string; side: "left" | "right" }
-  | { type: "merge"; group: string }
+  | { type: "merge"; group: string; into?: string }
   | { type: "swap"; slotWidths?: number[] }
+  | { type: "moveColumn"; group: string; index: number }
   | {
       type: "resizePair";
       left: string;
@@ -62,10 +89,53 @@ export function tabIdentity(tab: Omit<PaneTab, "id">) {
     tab.noteId ?? "",
   ]);
 }
+export function canvasTab(workspace: string, notebook: string): PaneTab {
+  const tab = {
+    kind: "canvas" as const,
+    workspaceId: workspace,
+    documentId: notebook,
+  };
+  return { ...tab, id: tabIdentity(tab) };
+}
+export const hasCanvas = (state: WorkspaceLayout) =>
+  Object.values(state.tabs).some((tab) => tab.kind === "canvas");
+/** Before tabs, the canvas was a fixed area left of the supporting columns.
+ * Put it back in that place as the leftmost column. */
+export function withCanvas(
+  state: WorkspaceLayout,
+  tab: PaneTab,
+): WorkspaceLayout {
+  if (hasCanvas(state)) return state;
+  const next: WorkspaceLayout = {
+    ...state,
+    tabs: { ...state.tabs, [tab.id]: tab },
+    groups: state.groups.map((g) => ({ ...g, tabIds: [...g.tabIds] })),
+  };
+  if (next.groups.length < MAX_COLUMNS)
+    next.groups.unshift({
+      id: unusedGroupId(next),
+      tabIds: [tab.id],
+      activeTabId: tab.id,
+      preferredWidth: 480,
+    });
+  else {
+    next.groups[0].tabIds.unshift(tab.id);
+    next.groups[0].activeTabId = tab.id;
+  }
+  next.lastUsedGroupId ??= next.groups[0].id;
+  return next;
+}
+function unusedGroupId(state: WorkspaceLayout) {
+  for (let n = 1; ; n++)
+    if (!state.groups.some((g) => g.id === `pane-${n}`)) return `pane-${n}`;
+}
+const containsCanvas = (state: WorkspaceLayout, group: PaneGroup) =>
+  group.tabIds.some((id) => state.tabs[id]?.kind === "canvas");
 export const minimumWidth = (state: WorkspaceLayout, group: PaneGroup) =>
-  group.tabIds.some((id) => ["note", "pdf"].includes(state.tabs[id].kind))
-    ? 360
-    : 320;
+  Math.max(
+    320,
+    ...group.tabIds.map((id) => tabPolicy[state.tabs[id]?.kind]?.minWidth ?? 320),
+  );
 export function validatedWidths(value: unknown): number[] {
   if (!Array.isArray(value)) return [480, 480];
   return [0, 1].map((index) =>
@@ -94,6 +164,16 @@ export function layoutReducer(
     if (group.activeTabId === id)
       group.activeTabId = group.tabIds[index] ?? group.tabIds[index - 1];
   };
+  const newGroup = (width: number | undefined, at: number) => {
+    const group: PaneGroup = {
+      id: unusedGroupId(next),
+      tabIds: [],
+      activeTabId: "",
+      preferredWidth: width ?? 480,
+    };
+    next.groups.splice(at, 0, group);
+    return group;
+  };
   switch (action.type) {
     case "visibility":
       next.hidden = action.hidden;
@@ -102,24 +182,38 @@ export function layoutReducer(
       next.hidden = false;
       let group = containing(action.tab.id);
       if (!group) {
+        const canvas = action.tab.kind === "canvas";
+        // Opening a tool never covers the canvas while there's another
+        // column or room for one.
+        const free = (g: PaneGroup) => canvas || !containsCanvas(next, g);
         const source = action.beside ? containing(action.beside) : undefined;
-        group = source
-          ? next.groups.find((g) => g.id !== source.id)
-          : (next.groups.find((g) => g.id === next.lastUsedGroupId) ??
-            next.groups.at(-1));
-        if (!group) {
-          group = {
-            id: next.groups.some((g) => g.id === "pane-1")
-              ? "pane-2"
-              : "pane-1",
-            tabIds: [],
-            activeTabId: action.tab.id,
-            preferredWidth: action.width ?? 480,
-          };
-          next.groups.push(group);
+        if (source) {
+          const at = next.groups.indexOf(source);
+          group =
+            next.groups.find((g, i) => i > at && free(g)) ??
+            next.groups.find((g) => g !== source && free(g)) ??
+            (next.groups.length < MAX_COLUMNS
+              ? newGroup(action.width, at + 1)
+              : next.groups.find((g) => g !== source));
+        } else if (canvas) {
+          // A reopened canvas returns to its own column on the left.
+          group =
+            next.groups.length < MAX_COLUMNS
+              ? newGroup(action.width, 0)
+              : next.groups[0];
+        } else {
+          const last = next.groups.find((g) => g.id === next.lastUsedGroupId);
+          group =
+            (last && free(last) ? last : undefined) ??
+            [...next.groups].reverse().find(free) ??
+            (next.groups.length && next.groups.length < MAX_COLUMNS
+              ? newGroup(action.width, canvas ? 0 : next.groups.length)
+              : (last ?? next.groups.at(-1)));
         }
+        group ??= newGroup(action.width, 0);
         next.tabs[action.tab.id] = action.tab;
-        group.tabIds.push(action.tab.id);
+        if (action.tab.kind === "canvas") group.tabIds.unshift(action.tab.id);
+        else group.tabIds.push(action.tab.id);
       }
       group.activeTabId = action.tab.id;
       next.lastUsedGroupId = group.id;
@@ -156,31 +250,39 @@ export function layoutReducer(
     }
     case "split": {
       const source = containing(action.id);
-      if (next.groups.length >= 2 || !source || source.tabIds.length < 2) break;
+      if (
+        next.groups.length >= MAX_COLUMNS ||
+        !source ||
+        source.tabIds.length < 2
+      )
+        break;
       remove(action.id);
-      const group = {
-        id: source.id === "pane-1" ? "pane-2" : "pane-1",
-        tabIds: [action.id],
-        activeTabId: action.id,
-        preferredWidth: source.preferredWidth,
-      };
-      if (action.side === "left") next.groups.unshift(group);
-      else next.groups.push(group);
+      const group = newGroup(
+        source.preferredWidth,
+        action.side === "left" ? 0 : next.groups.length,
+      );
+      group.tabIds.push(action.id);
+      group.activeTabId = action.id;
       next.lastUsedGroupId = group.id;
       break;
     }
     case "merge": {
-      const source = next.groups.find((g) => g.id === action.group);
-      const target = next.groups.find((g) => g.id !== action.group);
+      const index = next.groups.findIndex((g) => g.id === action.group);
+      const source = next.groups[index];
+      const target =
+        next.groups.find((g) => g.id === action.into && g !== source) ??
+        next.groups[index > 0 ? index - 1 : index + 1];
       if (source && target) {
         target.tabIds.push(...source.tabIds);
         target.activeTabId = source.activeTabId;
-        next.groups = [target];
+        next.groups.splice(index, 1);
         next.lastUsedGroupId = target.id;
       }
       break;
     }
     case "swap": {
+      // Two columns trade places; their slots keep the widths they had.
+      if (next.groups.length !== 2) break;
       const widths =
         action.slotWidths?.length === next.groups.length &&
         action.slotWidths.every((width) => Number.isFinite(width) && width > 0)
@@ -193,6 +295,18 @@ export function layoutReducer(
           widths[index],
         );
       });
+      break;
+    }
+    case "moveColumn": {
+      const index = next.groups.findIndex((g) => g.id === action.group);
+      if (index < 0) break;
+      const [group] = next.groups.splice(index, 1);
+      next.groups.splice(
+        Math.max(0, Math.min(action.index, next.groups.length)),
+        0,
+        group,
+      );
+      next.lastUsedGroupId = group.id;
       break;
     }
     case "resizePair": {
@@ -236,13 +350,29 @@ export function layoutReducer(
     next.lastUsedGroupId = next.groups.at(-1)?.id ?? null;
   return next;
 }
+/** The column that takes the space the others leave: the canvas column, or
+ * the first column when no canvas is open. */
+export function fillIndex(state: WorkspaceLayout, groups = state.groups) {
+  const index = groups.findIndex((g) => containsCanvas(state, g));
+  return index < 0 ? 0 : index;
+}
 /** Responsive projection never mutates membership or preferred widths. */
 export function projectLayout(state: WorkspaceLayout, available: number) {
   let groups = state.groups;
+  if (state.hidden) {
+    // "Hide columns" leaves only the canvas column.
+    groups = groups.filter((g) => containsCanvas(state, g));
+    return {
+      groups,
+      widths: groups.map(() => available),
+      single: true,
+      collapsed: false,
+    };
+  }
   const minimums = groups.map((g) => minimumWidth(state, g));
   const collapsed =
-    groups.length === 2 &&
-    available < 362 + minimums.reduce((a, b) => a + b, 0);
+    groups.length > 1 &&
+    available < minimums.reduce((a, b) => a + b, 0) + groups.length - 1;
   if (collapsed) {
     const focused =
       groups.find((g) => g.id === state.lastUsedGroupId) ?? groups[0];
@@ -254,52 +384,54 @@ export function projectLayout(state: WorkspaceLayout, available: number) {
       },
     ];
   }
-  const single =
-    groups.length > 0 && available < 361 + minimumWidth(state, groups[0]);
-  const budget = Math.max(0, available - (single ? 0 : 360) - groups.length);
-  const desired = groups.reduce(
-    (n, g) => n + Math.max(minimumWidth(state, g), g.preferredWidth),
-    0,
+  const single = groups.length === 1;
+  if (single || !groups.length)
+    return { groups, widths: groups.map(() => available), single, collapsed };
+  const fill = fillIndex(state, groups);
+  const mins = groups.map((g) => minimumWidth(state, g));
+  const budget = available - (groups.length - 1) - mins[fill];
+  const others = groups.map((g, i) => (i === fill ? 0 : 1));
+  const wanted = groups.map((g, i) =>
+    others[i] ? Math.max(mins[i], g.preferredWidth) : 0,
   );
-  const surplus = Math.max(
-    0,
-    budget - groups.reduce((n, g) => n + minimumWidth(state, g), 0),
+  const minOthers = mins.reduce((n, m, i) => n + (others[i] ? m : 0), 0);
+  const wantedSurplus = wanted.reduce((n, w, i) => n + w - (others[i] ? mins[i] : 0), 0);
+  const surplus = Math.max(0, budget - minOthers);
+  const widths = groups.map((g, i) =>
+    others[i]
+      ? wantedSurplus <= surplus
+        ? wanted[i]
+        : mins[i] + (surplus * (wanted[i] - mins[i])) / wantedSurplus
+      : 0,
   );
-  const wantedSurplus =
-    desired - groups.reduce((n, g) => n + minimumWidth(state, g), 0);
-  const widths = groups.map((g) =>
-    single
-      ? available
-      : Math.min(
-          Math.max(minimumWidth(state, g), g.preferredWidth),
-          minimumWidth(state, g) +
-            (wantedSurplus
-              ? (surplus *
-                  Math.max(0, g.preferredWidth - minimumWidth(state, g))) /
-                wantedSurplus
-              : 0),
-        ),
-  );
+  widths[fill] =
+    available - (groups.length - 1) - widths.reduce((a, b) => a + b, 0);
   return { groups, widths, single, collapsed };
 }
 
-/** A sole tab already on the requested side is an unchanged drop. */
+/** Where a tab dropped on the left or right edge goes. Null when the drop
+ * would change nothing. */
 export function edgeMove(
   state: WorkspaceLayout,
   id: string,
   side: "left" | "right",
 ): LayoutAction | null {
-  if (state.groups.length === 2) {
-    const index = state.groups.findIndex((g) => g.tabIds.includes(id));
-    return index < 0 || index === (side === "left" ? 0 : 1)
+  const groups = state.groups;
+  const index = groups.findIndex((g) => g.tabIds.includes(id));
+  if (index < 0) return null;
+  const edge = side === "left" ? 0 : groups.length - 1;
+  const source = groups[index];
+  if (source.tabIds.length === 1)
+    return index === edge
       ? null
-      : { type: "swap" };
-  }
-  return { type: "split", id, side };
+      : groups.length === 2
+        ? { type: "swap" }
+        : { type: "moveColumn", group: source.id, index: edge };
+  if (groups.length < MAX_COLUMNS) return { type: "split", id, side };
+  return index === edge ? null : { type: "move", id, group: groups[edge].id };
 }
 
-/** Preview the destination using the same transition and sizing as the drop.
- * Right offsets stay valid when the supporting area grows into the canvas. */
+/** Preview the destination using the same transition and sizing as the drop. */
 export function edgeDropPreview(
   state: WorkspaceLayout,
   id: string,
@@ -307,11 +439,7 @@ export function edgeDropPreview(
   available: number,
 ) {
   const source = state.groups.find((g) => g.tabIds.includes(id));
-  if (
-    !source ||
-    (state.groups.length === 1 && source.tabIds.length < 2) ||
-    (state.groups.length === 2 && source.tabIds.length !== 1)
-  )
+  if (!source || (state.groups.length === 1 && source.tabIds.length < 2))
     return null;
   const move = edgeMove(state, id, side);
   if (!move) return null;
@@ -320,7 +448,7 @@ export function edgeDropPreview(
       ? { ...move, slotWidths: projectLayout(state, available).widths }
       : move;
   const next = projectLayout(layoutReducer(state, action), available);
-  if (next.single || next.collapsed || next.groups.length !== 2) return null;
+  if (next.collapsed || next.groups.length < 2) return null;
   const index = next.groups.findIndex((g) => g.tabIds.includes(id));
   return {
     action,
@@ -331,11 +459,11 @@ export function edgeDropPreview(
 function dropBounds(widths: number[], index: number) {
   return {
     width: widths[index],
-    right: 1 + widths.slice(index + 1).reduce((n, width) => n + width + 1, 0),
+    left: widths.slice(0, index).reduce((n, width) => n + width + 1, 0),
   };
 }
 
-/** Moving a column preserves its tabs while respecting the resized destination. */
+/** Moving a column to an edge keeps its tabs. */
 export function columnDropPreview(
   state: WorkspaceLayout,
   group: string,
@@ -343,18 +471,14 @@ export function columnDropPreview(
   available: number,
 ) {
   const source = state.groups.findIndex((g) => g.id === group);
-  if (
-    state.groups.length !== 2 ||
-    source < 0 ||
-    source === (side === "left" ? 0 : 1)
-  )
-    return null;
-  const action = {
-    type: "swap",
-    slotWidths: projectLayout(state, available).widths,
-  } as const;
+  const edge = side === "left" ? 0 : state.groups.length - 1;
+  if (state.groups.length < 2 || source < 0 || source === edge) return null;
+  const action: LayoutAction =
+    state.groups.length === 2
+      ? { type: "swap", slotWidths: projectLayout(state, available).widths }
+      : { type: "moveColumn", group, index: edge };
   const next = projectLayout(layoutReducer(state, action), available);
-  if (next.single || next.collapsed) return null;
+  if (next.collapsed) return null;
   return {
     action,
     ...dropBounds(

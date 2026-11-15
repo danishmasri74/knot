@@ -118,30 +118,19 @@ try {
   await page.locator("[data-note-pane] affine-paragraph").waitFor();
   await page.waitForFunction(() => {
     const panes = document.querySelector(".workspace-panes");
-    return (
-      panes.dataset.collapsed === "false" &&
-      getComputedStyle(panes).getPropertyValue("--pane-open") === "1"
-    );
+    return panes.dataset.collapsed === "false";
   });
   const host = await page.locator("[data-note-pane]").elementHandle();
   await host.evaluate((element) => {
     element.dataset.visibilitySentinel = "retained";
   });
-  const toggleColumns = async (hidden) => {
-    await page.evaluate((hidden) => {
-      window.columnTransitionStarted = false;
-      const panes = document.querySelector(".workspace-panes");
-      const onTransition = (event) => {
-        if (event.target === panes && event.propertyName === "--pane-open") {
-          panes.removeEventListener("transitionrun", onTransition);
-          window.columnTransitionStarted = true;
-        }
-      };
-      panes.addEventListener("transitionrun", onTransition);
-      window.dispatch({ type: "visibility", hidden });
-    }, hidden);
-    await page.waitForFunction(() => window.columnTransitionStarted);
-  };
+  // "Hide columns" leaves only the canvas column; this harness has no canvas
+  // tab, so every column hides while the hosts stay mounted.
+  const toggleColumns = (hidden) =>
+    page.evaluate(
+      (hidden) => window.dispatch({ type: "visibility", hidden }),
+      hidden,
+    );
   await toggleColumns(true);
   await page.locator(".workspace-panes").waitFor({ state: "hidden" });
   assert.equal(
@@ -183,7 +172,7 @@ try {
   );
   await page.getByLabel("Pane actions", { exact: true }).click();
   await page
-    .getByRole("button", { name: "Show beside current tab", exact: true })
+    .getByRole("button", { name: "Separate tab to left", exact: true })
     .click();
   assert.equal(await page.locator(".pane-group").count(), 2);
   assert.equal(await host.evaluate((e) => e.isConnected), true);
@@ -199,7 +188,8 @@ try {
     () => document.querySelectorAll(".pane-group").length,
   );
   assert.equal(membership, 2);
-  await page.setViewportSize({ width: 850, height: 640 });
+  // Two 360px columns no longer fit: they share one column.
+  await page.setViewportSize({ width: 700, height: 640 });
   await page.waitForTimeout(100);
   assert.equal(await page.locator(".pane-group").count(), 1);
   await page.setViewportSize({ width: 1400, height: 900 });

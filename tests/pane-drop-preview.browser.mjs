@@ -215,9 +215,12 @@ try {
     await page.setViewportSize({ width: 1600, height: 700 });
     await page.evaluate(() => window.configure(true));
     await frame();
+    const startWidth = (
+      await page.locator(".pane-group").first().boundingBox()
+    ).width;
     const divider = await page
       .getByRole("separator", {
-        name: "Resize supporting columns",
+        name: "Resize columns",
         exact: true,
       })
       .boundingBox();
@@ -234,7 +237,7 @@ try {
       .boundingBox();
     const resized = await page.locator(".pane-group").first().boundingBox();
     assert.ok(
-      Math.abs(resized.width - 560) < 1,
+      Math.abs(resized.width - (startWidth - 80)) < 1,
       "pointer resize changes column width",
     );
     const dataTransfer = await startColumn(source);
@@ -371,7 +374,8 @@ try {
   await start();
   await page.keyboard.press("Escape");
   assert.equal(await page.locator(".pane-split-target").count(), 0);
-  await page.setViewportSize({ width: 900, height: 700 });
+  // A 360px PDF column and a 320px Ask column need 681px.
+  await page.setViewportSize({ width: 650, height: 700 });
   await frame();
   await start();
   assert.equal(

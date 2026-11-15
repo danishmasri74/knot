@@ -1,8 +1,10 @@
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type Dispatch,
   type HTMLAttributes,
@@ -16,11 +18,14 @@ import {
   edgeDropPreview,
   projectLayout,
   minimumWidth,
+  MAX_COLUMNS,
+  hasCanvas,
   type WorkspaceLayout,
   type LayoutAction,
   type PaneTab,
 } from "./workspace-layout";
 const icons = {
+  canvas: "board",
   note: "note",
   pdf: "highlight",
   browser: "globe",
@@ -39,13 +44,16 @@ export function ColumnVisibilityToggle({
   disabled?: boolean;
 }) {
   const label = layout.hidden ? "Show columns" : "Hide columns";
+  // Hiding leaves only the canvas column, so it needs a canvas and something
+  // else to hide.
+  const others = Object.values(layout.tabs).some((t) => t.kind !== "canvas");
   return (
     <button
       aria-label={label}
       data-tooltip={label}
-      aria-pressed={!layout.hidden && !!layout.groups.length}
+      aria-pressed={!layout.hidden && others}
       aria-controls="supporting-columns"
-      disabled={disabled || !layout.groups.length}
+      disabled={disabled || !others || !hasCanvas(layout)}
       onClick={() => dispatch({ type: "visibility", hidden: !layout.hidden })}
     >
       <ShellIcon name="columns" />
@@ -62,8 +70,11 @@ export function WorkspacePanes({
   contentKey = (tab) => tab.id,
   onReturn,
   expanded = false,
+  icon,
 }: {
   expanded?: boolean;
+  /** Overrides the kind's icon, e.g. the canvas tab while it shows a page. */
+  icon?: (tab: PaneTab) => ComponentProps<typeof ShellIcon>["name"] | undefined;
   layout: WorkspaceLayout;
   dispatch: Dispatch<LayoutAction>;
   available: number;
@@ -81,10 +92,10 @@ export function WorkspacePanes({
     projection.groups = [
       { ...activeGroup, tabIds: layout.groups.flatMap((g) => g.tabIds) },
     ];
-    projection.widths = [Math.max(0, available - 1)];
+    projection.widths = [Math.max(0, available)];
     projection.single = true;
   }
-  const hidden = layout.hidden || !layout.groups.length;
+  const hidden = !projection.groups.length;
   const [announcement, setAnnouncement] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropSide, setDropSide] = useState<"left" | "right" | null>(null);
@@ -147,16 +158,27 @@ export function WorkspacePanes({
         .querySelectorAll<HTMLDetailsElement>(".shell-menu[open]")
         .forEach((menu) => (menu.open = false));
   }, [blocked, hidden]);
-  const total = projection.widths.reduce((n, w) => n + w + 1, 0);
+  // The canvas editor lives outside the panes (it must never change parents),
+  // so publish where its column is and let the editor area follow.
+  const canvasIndex = projection.groups.findIndex(
+    (g) => layout.tabs[g.activeTabId]?.kind === "canvas",
+  );
+  const canvasShown = canvasIndex >= 0;
+  const canvasLeft = canvasShown
+    ? projection.widths.slice(0, canvasIndex).reduce((n, w) => n + w + 1, 0)
+    : 0;
+  const canvasWidth = canvasShown ? projection.widths[canvasIndex] : 0;
   useLayoutEffect(() => {
     const parent = root.current?.parentElement;
     if (!parent) return;
-    parent.dataset.singleContent = String(projection.single && !hidden);
-    parent.style.setProperty("--support-width", `${hidden ? 0 : total}px`);
-    parent
-      .closest("main")
-      ?.style.setProperty("--support-width", `${hidden ? 0 : total}px`);
-  }, [total, projection.single, hidden]);
+    parent.dataset.canvas = canvasShown ? "visible" : "hidden";
+    parent.dataset.singleContent = String(!canvasShown && !hidden);
+    parent.style.setProperty("--canvas-left", `${canvasLeft}px`);
+    parent.style.setProperty("--canvas-width", `${canvasWidth}px`);
+    const right = canvasShown ? available - canvasLeft - canvasWidth : 0;
+    parent.style.setProperty("--support-width", `${right}px`);
+    parent.closest("main")?.style.setProperty("--support-width", `${right}px`);
+  }, [canvasShown, canvasLeft, canvasWidth, available, hidden]);
   const endGesture = () => {
     setDragging(null);
     setDropSide(null);
@@ -279,32 +301,22 @@ export function WorkspacePanes({
         strip.scrollLeft,
     };
   };
+  // Dividers sit between columns: index is the column to the divider's right.
   const resize = (index: number, value: number, widths = projection.widths) => {
     const group = projection.groups[index];
-    if (index && !projection.collapsed)
-      dispatch({
-        type: "resizePair",
-        left: projection.groups[index - 1].id,
-        right: group.id,
-        leftWidth: widths[index - 1] + widths[index] - value,
-        total: widths[index - 1] + widths[index],
-      });
-    else
-      dispatch({
-        type: "resize",
-        group: group.id,
-        width: Math.min(
-          Math.max(
-            minimumWidth(layout, group),
-            available -
-              360 -
-              widths.slice(1).reduce((a, b) => a + b, 0) -
-              widths.length,
-          ),
-          value,
-        ),
-      });
+    if (!index || projection.single) return;
+    dispatch({
+      type: "resizePair",
+      left: projection.groups[index - 1].id,
+      right: group.id,
+      leftWidth: widths[index - 1] + widths[index] - value,
+      total: widths[index - 1] + widths[index],
+    });
   };
+  const roomForColumn =
+    layout.groups.length < MAX_COLUMNS &&
+    layout.groups.reduce((n, g) => n + minimumWidth(layout, g) + 1, 0) + 320 <=
+      available;
   const slots = projection.groups.map((g, index) => ({
     group: g,
     width: projection.widths[index],
@@ -316,7 +328,7 @@ export function WorkspacePanes({
       id="supporting-columns"
       className="workspace-panes"
       data-collapsed={hidden}
-      style={{ "--pane-width": `${total}px` } as CSSProperties}
+      style={{ "--pane-width": `${available}px` } as CSSProperties}
       data-dragging={!!dragging}
       onCompositionStart={() => {
         composing.current = true;
@@ -330,19 +342,14 @@ export function WorkspacePanes({
       </span>
       {slots.map(({ group, width, left }, index) => (
         <div className="pane-group" key={group.id} style={{ left, width }}>
-          <div
+          {index > 0 && <div
             className="pane-divider"
             role="separator"
             tabIndex={0}
-            aria-label={
-              index ? "Resize supporting columns" : "Resize supporting pane"
-            }
+            aria-label="Resize columns"
             aria-orientation="vertical"
             aria-valuemin={minimumWidth(layout, group)}
-            aria-valuemax={Math.max(
-              minimumWidth(layout, group),
-              available - 360,
-            )}
+            aria-valuemax={Math.max(minimumWidth(layout, group), available)}
             aria-valuenow={Math.round(width)}
             onKeyDown={(e) => {
               if (["ArrowLeft", "ArrowRight"].includes(e.key)) {
@@ -375,7 +382,7 @@ export function WorkspacePanes({
             }}
             onPointerCancel={endGesture}
             onLostPointerCapture={endGesture}
-          />
+          />}
           <header
             className="pane-header"
             onKeyDown={(e) => {
@@ -389,19 +396,19 @@ export function WorkspacePanes({
               ) {
                 e.preventDefault();
                 e.stopPropagation();
-                close(group.activeTabId);
+                if (layout.tabs[group.activeTabId]?.kind !== "canvas")
+                  close(group.activeTabId);
               }
             }}
             onDragOver={(e) => {
               if (!dragging) return;
               if (dragging.startsWith("group:")) {
-                const side = index === 0 ? "left" : "right";
-                if (
-                  expanded ||
-                  !columnDropPreview(layout, dragging.slice(6), side, available)
-                )
-                  return;
-                setDropSide(side);
+                if (expanded || projection.single) return;
+                const source = layout.groups.findIndex(
+                  (g) => g.id === dragging.slice(6),
+                );
+                if (source < 0 || source === index) return;
+                setDropSide(index < source ? "left" : "right");
               } else {
                 const strip =
                   e.currentTarget.querySelector<HTMLElement>(".pane-tabs");
@@ -415,8 +422,7 @@ export function WorkspacePanes({
                 e.currentTarget.contains(e.relatedTarget)
               )
                 return;
-              const side = index === 0 ? "left" : "right";
-              setDropSide((current) => (current === side ? null : current));
+              setDropSide(null);
               setTabDrop((current) =>
                 current?.strip === group.id ? null : current,
               );
@@ -425,15 +431,14 @@ export function WorkspacePanes({
               e.preventDefault();
               if (!dragging) return;
               if (dragging.startsWith("group:")) {
-                const preview =
-                  !expanded &&
-                  columnDropPreview(
-                    layout,
-                    dragging.slice(6),
-                    index === 0 ? "left" : "right",
-                    available,
+                const source = dragging.slice(6);
+                if (!expanded && !projection.single && source !== group.id)
+                  move(
+                    layout.groups.length === 2
+                      ? { type: "swap" }
+                      : { type: "moveColumn", group: source, index },
+                    "Column moved",
                   );
-                if (preview) move(preview.action, "Columns swapped");
                 else endGesture();
               } else {
                 const strip =
@@ -454,15 +459,12 @@ export function WorkspacePanes({
               }
             }}
           >
-            {projection.single && (
+            {expanded && (
               <button
                 className="pane-return"
-                aria-label="Back to canvas or page"
-                data-tooltip="Back to canvas or page"
-                onClick={() => {
-                  dispatch({ type: "visibility", hidden: true });
-                  onReturn();
-                }}
+                aria-label="Restore columns"
+                data-tooltip="Restore columns"
+                onClick={() => onReturn()}
               >
                 <ShellIcon name="back" />
               </button>
@@ -470,7 +472,7 @@ export function WorkspacePanes({
             <TabStrip
               activeTab={group.activeTabId}
               role="tablist"
-              aria-label="Supporting content"
+              aria-label="Tabs"
               className="pane-tabs"
               onDragOver={(e) => {
                 if (!dragging || dragging.startsWith("group:")) return;
@@ -578,7 +580,9 @@ export function WorkspacePanes({
                       }
                     }}
                   >
-                    <ShellIcon name={icons[layout.tabs[id].kind]} />
+                    <ShellIcon
+                      name={icon?.(layout.tabs[id]) ?? icons[layout.tabs[id].kind]}
+                    />
                     <span>{label(layout.tabs[id])}</span>
                   </button>
                   <button
@@ -611,15 +615,9 @@ export function WorkspacePanes({
               ))}
               <hr />
               <button
-                disabled={
-                  layout.groups.length >= 2 ||
-                  group.tabIds.length < 2 ||
-                  available < 1082
-                }
+                disabled={!roomForColumn || group.tabIds.length < 2}
                 data-tooltip={
-                  available < 1082
-                    ? "Widen the window to separate a tab"
-                    : undefined
+                  !roomForColumn ? "Widen the window to separate a tab" : undefined
                 }
                 onClick={() =>
                   move(
@@ -628,14 +626,10 @@ export function WorkspacePanes({
                   )
                 }
               >
-                Show beside current tab
+                Separate tab to left
               </button>
               <button
-                disabled={
-                  layout.groups.length >= 2 ||
-                  group.tabIds.length < 2 ||
-                  available < 1082
-                }
+                disabled={!roomForColumn || group.tabIds.length < 2}
                 onClick={() =>
                   move(
                     { type: "split", id: group.activeTabId, side: "right" },
@@ -645,58 +639,56 @@ export function WorkspacePanes({
               >
                 Separate tab to right
               </button>
-              {layout.groups.length === 2 && (
-                <>
-                  <button
-                    onClick={() =>
-                      move(
-                        {
-                          type: "move",
-                          id: group.activeTabId,
-                          group: layout.groups.find(
-                            (g) => !g.tabIds.includes(group.activeTabId),
-                          )!.id,
-                        },
-                        "Tab moved to other column",
-                      )
-                    }
-                  >
-                    {layout.groups.findIndex((g) =>
-                      g.tabIds.includes(group.activeTabId),
-                    ) === 0
-                      ? "Move to right pane"
-                      : "Move to left pane"}
-                  </button>
-                  <button
-                    onClick={() => move({ type: "swap" }, "Columns swapped")}
-                  >
-                    {layout.groups.findIndex((g) =>
-                      g.tabIds.includes(group.activeTabId),
-                    ) === 0
-                      ? "Move pane right"
-                      : "Move pane left"}
-                  </button>
-                  <button
-                    onClick={() =>
-                      move(
-                        {
-                          type: "merge",
-                          group: layout.groups.find((g) =>
-                            g.tabIds.includes(group.activeTabId),
-                          )!.id,
-                        },
-                        "Columns merged",
-                      )
-                    }
-                  >
-                    {layout.groups.findIndex((g) =>
-                      g.tabIds.includes(group.activeTabId),
-                    ) === 0
-                      ? "Merge with right pane"
-                      : "Merge with left pane"}
-                  </button>
-                </>
-              )}
+              {(["left", "right"] as const).map((side) => {
+                const at = layout.groups.findIndex((g) => g.id === group.id);
+                const neighbour =
+                  layout.groups[side === "left" ? at - 1 : at + 1];
+                if (at < 0 || !neighbour) return null;
+                return (
+                  <Fragment key={side}>
+                    <button
+                      onClick={() =>
+                        move(
+                          {
+                            type: "move",
+                            id: group.activeTabId,
+                            group: neighbour.id,
+                          },
+                          `Tab moved to the ${side} column`,
+                        )
+                      }
+                    >
+                      Move tab to {side} column
+                    </button>
+                    <button
+                      onClick={() =>
+                        move(
+                          layout.groups.length === 2
+                            ? { type: "swap" }
+                            : {
+                                type: "moveColumn",
+                                group: group.id,
+                                index: side === "left" ? at - 1 : at + 1,
+                              },
+                          "Column moved",
+                        )
+                      }
+                    >
+                      Move column {side}
+                    </button>
+                    <button
+                      onClick={() =>
+                        move(
+                          { type: "merge", group: group.id, into: neighbour.id },
+                          "Columns merged",
+                        )
+                      }
+                    >
+                      Merge with {side} column
+                    </button>
+                  </Fragment>
+                );
+              })}
               <button onClick={() => close(group.activeTabId)}>
                 Close tab
               </button>
@@ -734,7 +726,7 @@ export function WorkspacePanes({
               key={side}
               className={`pane-split-target ${side}`}
               data-drop-active={dropSide === side}
-              style={{ right: preview.right, width: preview.width }}
+              style={{ left: preview.left, width: preview.width }}
               onDragEnter={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -769,8 +761,15 @@ export function WorkspacePanes({
         })}
       {/* Flat, stable parents keep live editor/PDF controllers mounted when membership changes. */}
       {Object.values(layout.tabs).map((tab) => {
-        const slot = slots.find((s) => s.group.tabIds.includes(tab.id))!;
-        const visible = slot.group.activeTabId === tab.id;
+        // The canvas editor is positioned from outside (see canvasLeft).
+        if (tab.kind === "canvas") return null;
+        // Hidden columns keep their hosts mounted, just out of view.
+        const slot = slots.find((s) => s.group.tabIds.includes(tab.id)) ?? {
+          group: null,
+          left: 0,
+          width: available,
+        };
+        const visible = slot.group?.activeTabId === tab.id;
         return (
           <section
             key={contentKey(tab)}
@@ -808,6 +807,7 @@ function TabStrip({
   ...props
 }: { activeTab: string | null } & HTMLAttributes<HTMLDivElement>) {
   const strip = useRef<HTMLDivElement>(null);
+  // Wheel scrolling over the strip is handled once, by WorkspacePanes.
   useEffect(() => {
     const el = strip.current;
     if (!el) return;
@@ -818,24 +818,16 @@ function TabStrip({
       if (start || end) el.dataset.overflow = start && end ? "both" : start ? "start" : "end";
       else delete el.dataset.overflow;
     };
-    const wheel = (event: WheelEvent) => {
-      if (el.scrollWidth <= el.clientWidth) return;
-      if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-      el.scrollLeft += event.deltaY;
-      event.preventDefault();
-    };
     const resize = new ResizeObserver(update);
     resize.observe(el);
     const tabs = new MutationObserver(update);
     tabs.observe(el, { childList: true, subtree: true, characterData: true });
     el.addEventListener("scroll", update, { passive: true });
-    el.addEventListener("wheel", wheel, { passive: false });
     update();
     return () => {
       resize.disconnect();
       tabs.disconnect();
       el.removeEventListener("scroll", update);
-      el.removeEventListener("wheel", wheel);
     };
   }, []);
   useEffect(() => {

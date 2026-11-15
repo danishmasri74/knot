@@ -5587,8 +5587,12 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   flex: 1;
 }
 
-/* Supporting panes share one measured content row. Panel hosts never change parents. */
+/* Every column is a tab strip over one measured content row. Panel hosts and
+   the canvas editor never change parents: WorkspacePanes publishes where the
+   Canvas tab's column is (--canvas-left, --canvas-width) and the editor area
+   follows it. */
 .workspace-content {
+  --pane-header-height: 40px;
   position: relative;
   display: flex;
   flex: 1;
@@ -5596,48 +5600,40 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   min-height: 0;
   overflow: hidden;
 }
-.workspace-content > .editor-area {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-}
-/* Animate visibility without delaying width changes from resizing or drops. */
-@property --pane-open {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 1;
-}
-.workspace-panes {
-  --pane-header-height: 40px;
-  --shell-width-transition: --pane-open;
-  position: relative;
-  flex: none;
-  width: calc(var(--pane-width) * var(--pane-open));
-  min-height: 0;
-  background: var(--shell-surface);
-  color: var(--shell-text);
-  font-size: 13px;
-}
 @media (forced-colors: active) {
-  .workspace-panes {
+  .workspace-content {
     /* Leave room for the larger native high-contrast scrollbar. */
     --pane-header-height: 52px;
   }
 }
+.workspace-content > .editor-area {
+  position: absolute;
+  top: var(--pane-header-height);
+  bottom: 0;
+  left: var(--canvas-left, 0px);
+  width: var(--canvas-width, 100%);
+  margin: 0;
+}
+/* A closed or covered canvas keeps its size, so its viewport survives. */
+.workspace-content[data-canvas="hidden"] > .editor-area {
+  left: 0;
+  right: 0;
+  width: auto;
+  visibility: hidden;
+}
+.workspace-panes {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  pointer-events: none;
+  color: var(--shell-text);
+  font-size: 13px;
+}
 .workspace-panes[data-collapsed="true"] {
-  --pane-open: 0;
   visibility: hidden;
 }
 .note-page-host[hidden] {
   display: none;
-}
-.workspace-content[data-single-content="true"] > .editor-area {
-  position: absolute;
-  inset: 0;
-  visibility: hidden;
-}
-.workspace-content[data-single-content="true"] .workspace-panes {
-  margin-left: auto;
 }
 .pane-group {
   position: absolute;
@@ -5646,7 +5642,12 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   border-left: 1px solid var(--shell-border);
   pointer-events: none;
 }
+.pane-group:first-child,
+.workspace-panes > .sr-only + .pane-group {
+  border-left: 0;
+}
 .pane-header {
+  background: var(--shell-surface);
   height: var(--pane-header-height);
   display: flex;
   align-items: center;
@@ -5784,6 +5785,8 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   padding: 16px;
   overflow: auto;
   border-left: 1px solid var(--shell-border);
+  background: var(--shell-surface);
+  pointer-events: auto;
 }
 .pane-content:has(.pdf-reader, .browser-panel, .ask-knot, .note-page-pane, .video-reader) {
   padding: 0;
