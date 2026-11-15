@@ -19,6 +19,8 @@ export const supportingKinds = new Set<string>([
 ]);
 /** Up to three content columns sit beside the sidebar. */
 export const MAX_COLUMNS = 3;
+/** Width of a collapsed column while another column is expanded. */
+export const RAIL_WIDTH = 40;
 /** What each kind of tab does when it isn't visible, and how narrow it gets.
  * "sleep" tabs drop their editor when hidden (WorkspacePanes passes them
  * "asleep"); "alive" tabs keep running.
@@ -56,6 +58,8 @@ export type WorkspaceLayout = {
   tabs: Record<string, PaneTab>;
   groups: PaneGroup[];
   lastUsedGroupId: string | null;
+  /** One column can fill the width; the others shrink to rails. */
+  expandedGroupId: string | null;
 };
 export const emptyLayout = (): WorkspaceLayout => ({
   version: 2,
@@ -63,6 +67,7 @@ export const emptyLayout = (): WorkspaceLayout => ({
   tabs: {},
   groups: [],
   lastUsedGroupId: null,
+  expandedGroupId: null,
 });
 export type LayoutAction =
   | { type: "visibility"; hidden: boolean }
@@ -73,6 +78,9 @@ export type LayoutAction =
   | { type: "merge"; group: string; into?: string }
   | { type: "swap"; slotWidths?: number[] }
   | { type: "moveColumn"; group: string; index: number }
+  /** Expand a column (by its id, or the column holding a tab). */
+  | { type: "expand"; group?: string; id?: string }
+  | { type: "restore" }
   | {
       type: "resizePair";
       left: string;
@@ -183,6 +191,15 @@ export function layoutReducer(
     case "open": {
       next.hidden = false;
       let group = containing(action.tab.id);
+      const expanded = next.groups.find((g) => g.id === next.expandedGroupId);
+      // While a column is expanded, new tabs open in it. An existing tab in
+      // another column brings the columns back.
+      if (expanded && group && group !== expanded) next.expandedGroupId = null;
+      if (!group && expanded) {
+        group = expanded;
+        next.tabs[action.tab.id] = action.tab;
+        group.tabIds.push(action.tab.id);
+      }
       if (!group) {
         const canvas = action.tab.kind === "canvas";
         // Opening a tool never covers the canvas while there's another
@@ -225,6 +242,8 @@ export function layoutReducer(
       const group = containing(action.id);
       if (group) {
         next.hidden = false;
+        if (next.expandedGroupId && next.expandedGroupId !== group.id)
+          next.expandedGroupId = null;
         group.activeTabId = action.id;
         next.lastUsedGroupId = group.id;
       }
@@ -299,6 +318,21 @@ export function layoutReducer(
       });
       break;
     }
+    case "expand": {
+      const group = action.id
+        ? containing(action.id)
+        : next.groups.find((g) => g.id === action.group);
+      if (group) {
+        next.hidden = false;
+        next.expandedGroupId = group.id;
+        next.lastUsedGroupId = group.id;
+        if (action.id) group.activeTabId = action.id;
+      }
+      break;
+    }
+    case "restore":
+      next.expandedGroupId = null;
+      break;
     case "moveColumn": {
       const index = next.groups.findIndex((g) => g.id === action.group);
       if (index < 0) break;
@@ -347,9 +381,17 @@ export function layoutReducer(
         }
       break;
   }
+  // Moving tabs or columns ends an expand.
+  if (["move", "split", "merge", "swap", "moveColumn"].includes(action.type))
+    next.expandedGroupId = null;
   next.groups = next.groups.filter((g) => g.tabIds.length);
   if (!next.groups.some((g) => g.id === next.lastUsedGroupId))
     next.lastUsedGroupId = next.groups.at(-1)?.id ?? null;
+  if (
+    next.groups.length < 2 ||
+    !next.groups.some((g) => g.id === next.expandedGroupId)
+  )
+    next.expandedGroupId = null;
   return next;
 }
 /** The column that takes the space the others leave: the canvas column, or
@@ -358,8 +400,47 @@ export function fillIndex(state: WorkspaceLayout, groups = state.groups) {
   const index = groups.findIndex((g) => containsCanvas(state, g));
   return index < 0 ? 0 : index;
 }
-/** Responsive projection never mutates membership or preferred widths. */
-export function projectLayout(state: WorkspaceLayout, available: number) {
+export type Rail = { group: PaneGroup; left: number };
+/** Responsive projection never mutates membership or preferred widths.
+ * offset is where the first projected column starts (after any rails). */
+export function projectLayout(
+  state: WorkspaceLayout,
+  available: number,
+): {
+  groups: PaneGroup[];
+  widths: number[];
+  single: boolean;
+  collapsed: boolean;
+  offset: number;
+  rails: Rail[];
+} {
+  const expanded = state.groups.findIndex(
+    (g) => g.id === state.expandedGroupId,
+  );
+  if (expanded >= 0 && !state.hidden && state.groups.length > 1) {
+    const others = state.groups.length - 1;
+    const width = Math.max(0, available - others * (RAIL_WIDTH + 1));
+    const rails: Rail[] = [];
+    let left = 0;
+    state.groups.forEach((group, index) => {
+      if (index === expanded) left += width + 1;
+      else {
+        rails.push({ group, left });
+        left += RAIL_WIDTH + 1;
+      }
+    });
+    return {
+      groups: [state.groups[expanded]],
+      widths: [width],
+      single: true,
+      collapsed: false,
+      offset: expanded * (RAIL_WIDTH + 1),
+      rails,
+    };
+  }
+  return { ...projectColumns(state, available), offset: 0, rails: [] };
+}
+function projectColumns(state: WorkspaceLayout, available: number) {
   let groups = state.groups;
   if (state.hidden) {
     // "Hide columns" leaves only the canvas column.

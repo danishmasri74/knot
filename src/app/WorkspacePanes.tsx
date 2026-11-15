@@ -19,6 +19,7 @@ import {
   projectLayout,
   minimumWidth,
   MAX_COLUMNS,
+  RAIL_WIDTH,
   tabPolicy,
   hasCanvas,
   type WorkspaceLayout,
@@ -73,10 +74,8 @@ export function WorkspacePanes({
   render,
   contentKey = (tab) => tab.id,
   onReturn,
-  expanded = false,
   icon,
 }: {
-  expanded?: boolean;
   /** Overrides the kind's icon, e.g. the canvas tab while it shows a page. */
   icon?: (tab: PaneTab) => ComponentProps<typeof ShellIcon>["name"] | undefined;
   layout: WorkspaceLayout;
@@ -89,16 +88,7 @@ export function WorkspacePanes({
   onReturn: () => void;
 }) {
   const projection = projectLayout(layout, available);
-  if (expanded && layout.groups.length) {
-    const activeGroup =
-      layout.groups.find((g) => g.id === layout.lastUsedGroupId) ??
-      layout.groups[0];
-    projection.groups = [
-      { ...activeGroup, tabIds: layout.groups.flatMap((g) => g.tabIds) },
-    ];
-    projection.widths = [Math.max(0, available)];
-    projection.single = true;
-  }
+  const expanded = projection.rails.length > 0;
   const hidden = !projection.groups.length;
   const [announcement, setAnnouncement] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
@@ -148,6 +138,28 @@ export function WorkspacePanes({
     left: number;
   } | null>(null);
   const composing = useRef(false);
+  const toggleTarget = useRef({ expanded, group: layout.lastUsedGroupId, count: layout.groups.length });
+  toggleTarget.current = { expanded, group: layout.lastUsedGroupId, count: layout.groups.length };
+  useEffect(() => {
+    const toggle = (e: KeyboardEvent) => {
+      if (
+        e.key !== "Enter" ||
+        !e.ctrlKey ||
+        !e.shiftKey ||
+        e.altKey ||
+        e.metaKey ||
+        e.isComposing ||
+        root.current?.inert
+      )
+        return;
+      const { expanded, group, count } = toggleTarget.current;
+      if (!group || count < 2) return;
+      e.preventDefault();
+      dispatch(expanded ? { type: "restore" } : { type: "expand", group });
+    };
+    document.addEventListener("keydown", toggle);
+    return () => document.removeEventListener("keydown", toggle);
+  }, [dispatch]);
   const root = useRef<HTMLDivElement>(null);
   const gestureFocus = useRef<HTMLElement | null>(null);
   const resizeStart = useRef<{ x: number; widths: number[] } | null>(null);
@@ -207,7 +219,8 @@ export function WorkspacePanes({
   );
   const canvasShown = canvasIndex >= 0;
   const canvasLeft = canvasShown
-    ? projection.widths.slice(0, canvasIndex).reduce((n, w) => n + w + 1, 0)
+    ? projection.offset +
+      projection.widths.slice(0, canvasIndex).reduce((n, w) => n + w + 1, 0)
     : 0;
   const canvasWidth = canvasShown ? projection.widths[canvasIndex] : 0;
   useLayoutEffect(() => {
@@ -362,7 +375,9 @@ export function WorkspacePanes({
   const slots = projection.groups.map((g, index) => ({
     group: g,
     width: projection.widths[index],
-    left: projection.widths.slice(0, index).reduce((n, w) => n + w + 1, 0),
+    left:
+      projection.offset +
+      projection.widths.slice(0, index).reduce((n, w) => n + w + 1, 0),
   }));
   return (
     <div
@@ -382,6 +397,31 @@ export function WorkspacePanes({
       <span className="sr-only" role="status">
         {announcement}
       </span>
+      {projection.rails.map(({ group, left }) => (
+        <nav
+          key={group.id}
+          className="pane-rail"
+          style={{ left, width: RAIL_WIDTH }}
+          aria-label="Collapsed column"
+        >
+          {group.tabIds.map((id) => (
+            <button
+              key={id}
+              aria-label={`Show ${label(layout.tabs[id])}`}
+              data-tooltip={label(layout.tabs[id])}
+              data-active={id === group.activeTabId}
+              onClick={() => activate(id)}
+            >
+              <ShellIcon
+                name={icon?.(layout.tabs[id]) ?? icons[layout.tabs[id].kind]}
+              />
+            </button>
+          ))}
+          <span className="pane-rail-label" aria-hidden="true">
+            {label(layout.tabs[group.activeTabId])}
+          </span>
+        </nav>
+      ))}
       {slots.map(({ group, width, left }, index) => (
         <div className="pane-group" key={group.id} style={{ left, width }}>
           {index > 0 && <div
@@ -438,7 +478,9 @@ export function WorkspacePanes({
               ) {
                 e.preventDefault();
                 e.stopPropagation();
-                if (layout.tabs[group.activeTabId]?.kind !== "canvas")
+                // Esc first restores an expanded column, then closes tabs.
+                if (expanded) dispatch({ type: "restore" });
+                else if (layout.tabs[group.activeTabId]?.kind !== "canvas")
                   close(group.activeTabId);
               }
             }}
@@ -501,16 +543,6 @@ export function WorkspacePanes({
               }
             }}
           >
-            {expanded && (
-              <button
-                className="pane-return"
-                aria-label="Restore columns"
-                data-tooltip="Restore columns"
-                onClick={() => onReturn()}
-              >
-                <ShellIcon name="back" />
-              </button>
-            )}
             <TabStrip
               activeTab={group.activeTabId}
               role="tablist"
@@ -645,6 +677,27 @@ export function WorkspacePanes({
                 />
               )}
             </TabStrip>
+            {(expanded || layout.groups.length > 1) && (
+              <button
+                className="pane-expand"
+                aria-label={expanded ? "Restore columns" : "Expand column"}
+                data-tooltip={
+                  expanded
+                    ? "Restore columns (Esc)"
+                    : "Expand column (Ctrl+Shift+Enter)"
+                }
+                aria-pressed={expanded}
+                onClick={() =>
+                  dispatch(
+                    expanded
+                      ? { type: "restore" }
+                      : { type: "expand", group: group.id },
+                  )
+                }
+              >
+                <ShellIcon name={expanded ? "columns" : "expand"} />
+              </button>
+            )}
             <ShellMenu
               label="Pane actions"
               icon={<ShellIcon name="more" />}

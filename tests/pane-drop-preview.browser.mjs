@@ -66,7 +66,6 @@ try {
         initial(false),
       );
       const [width, setWidth] = React.useState(innerWidth);
-      const [expanded, setExpanded] = React.useState(false);
       React.useEffect(() => {
         const resize = () => setWidth(innerWidth);
         addEventListener("resize", resize);
@@ -83,7 +82,9 @@ try {
           dispatch({ type: "resize", group: "pane-1", width: 370 });
         }
       };
-      window.setExpanded = setExpanded;
+      // Expanding is layout state: the first column fills, the rest are rails.
+      window.expandFirst = () =>
+        dispatch({ type: "expand", group: window.layout.groups[0].id });
       window.addColumnTab = () =>
         dispatch({
           type: "open",
@@ -100,7 +101,6 @@ try {
         layout,
         dispatch,
         available: width,
-        expanded,
         blocked: false,
         label: (tab) => tab.id,
         render: (tab) => React.createElement("p", null, tab.id),
@@ -385,7 +385,9 @@ try {
   );
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1280, height: 700 });
-  await page.evaluate(() => window.setExpanded(true));
+  await page.evaluate(() => window.configure(true));
+  await frame();
+  await page.evaluate(() => window.expandFirst());
   await frame();
   await start();
   assert.equal(

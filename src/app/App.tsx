@@ -295,6 +295,20 @@ export function App() {
   const aiPageHost = useRef<HTMLDivElement>(null);
   function showAi(placement: "page" | "panel", record = true) {
     setAiOpened(true);
+    if (placement === "page" && session.current && !library) {
+      // With a notebook open, Ask Knot "as a page" is its tab, expanded.
+      setAiPlacement("panel");
+      setSurface(null);
+      const id = openPane("ask");
+      dispatchLayout({ type: "expand", id });
+      if (record) history.current.visit({ id: "ask-knot", ai: true });
+      requestAnimationFrame(() =>
+        document
+          .querySelector<HTMLTextAreaElement>(".ask-knot textarea")
+          ?.focus(),
+      );
+      return;
+    }
     setAiPlacement(placement);
     if (placement === "panel") {
       setLibrary(null);
@@ -484,7 +498,13 @@ export function App() {
         (kind === "browser" ? getBrowserWidth() : kind === "pdf" ? 640 : 480),
     });
     pendingPaneFocus.current = id;
+    return id;
   }
+  /** Whether this tab's column is the expanded one. */
+  const expandedTab = (id: string) =>
+    !!layout.groups
+      .find((g) => g.id === layout.expandedGroupId)
+      ?.tabIds.includes(id);
   /** Brings the notebook's main view (the Canvas tab) to the front, opening
    * it again if it was closed. Navigation to a card or note calls this. */
   function revealCanvas() {
@@ -549,7 +569,6 @@ export function App() {
     null,
   );
   const browserSequence = useRef(0);
-  const [browserExpanded, setBrowserExpanded] = useState(false);
   const [linkPreference, updateLinkPreference] = useState(getLinkPreference);
   const [noteView, updateNoteView] = useState(getNoteView);
   const [startupDestination, updateStartupDestination] =
@@ -1032,6 +1051,10 @@ export function App() {
     }
   }, [workspaceCatalog.active, aiPlacement]);
   useLayoutEffect(() => {
+    if (aiPlacement === "page" && session.current && active && !library) {
+      showAi("page", false);
+      return;
+    }
     const ask = Object.values(layout.tabs).find((tab) => tab.kind === "ask");
     if (ask && aiPlacement !== "page") {
       setAiOpened(true);
@@ -1175,7 +1198,6 @@ export function App() {
   // Same rule as WorkspacePanes: the canvas shows when its tab is the active
   // tab of a projected column.
   const canvasVisible =
-    !(browserExpanded && paneActive("browser")) &&
     projectLayout(layout, contentWidth).groups.some(
       (g) => layout.tabs[g.activeTabId]?.kind === "canvas",
     );
@@ -1210,7 +1232,6 @@ export function App() {
   ]);
   useEffect(() => {
     pendingPaneFocus.current = null;
-    setBrowserExpanded(false);
     setBrowserRequest(null);
     setSuggestion(null);
     const current = session.current;
@@ -1941,7 +1962,6 @@ export function App() {
     // must not leave the editor attached to the previous workspace.
     await browserApi.dispose().catch(report);
     setBrowserRequest(null);
-    setBrowserExpanded(false);
     setLibrary(defaultLibrary);
     setSurface(null);
     setShowSearch(false);
@@ -4544,10 +4564,23 @@ export function App() {
                       dispatchLayout({ type: "close", id: tab.id });
                   setAiPlacement("hidden");
                 }}
-                placement={aiPlacement === "panel" ? "panel" : "page"}
-                onPlacementChange={() =>
-                  showAi(aiPlacement === "page" ? "panel" : "page")
+                placement={
+                  aiPlacement === "page" ||
+                  Object.values(layout.tabs).some(
+                    (t) => t.kind === "ask" && expandedTab(t.id),
+                  )
+                    ? "page"
+                    : "panel"
                 }
+                onPlacementChange={() => {
+                  const ask = Object.values(layout.tabs).find(
+                    (t) => t.kind === "ask",
+                  );
+                  if (aiPlacement === "page") showAi("panel");
+                  else if (ask && expandedTab(ask.id))
+                    dispatchLayout({ type: "restore" });
+                  else showAi("page");
+                }}
               />,
               aiContainer,
             )}
@@ -4670,7 +4703,6 @@ export function App() {
               </section>
             )}
           <WorkspacePanes
-            expanded={browserExpanded && paneActive("browser")}
             layout={layout}
             dispatch={dispatchPaneAction}
             available={contentWidth}
@@ -4684,7 +4716,6 @@ export function App() {
               !!surface
             }
             onReturn={() => {
-              setBrowserExpanded(false);
               const el = invoker.current;
               if (el?.isConnected) el.focus();
               else
@@ -4736,8 +4767,14 @@ export function App() {
                     workspace={workspaceCatalog.active}
                     request={browserRequest}
                     onNavigate={navigateBrowser}
-                    expanded={browserExpanded}
-                    onExpand={() => setBrowserExpanded((value) => !value)}
+                    expanded={expandedTab(tab.id)}
+                    onExpand={() =>
+                      dispatchLayout(
+                        expandedTab(tab.id)
+                          ? { type: "restore" }
+                          : { type: "expand", id: tab.id },
+                      )
+                    }
                     onClose={() => closePane(tab.id)}
                   />
                 )}

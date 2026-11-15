@@ -63,13 +63,22 @@ try {
   await shell.getByRole("button", { name: "Add note", exact: true }).first().click();
   await ready();
   await shot("3-add-note");
-  console.log(JSON.stringify(await shell.evaluate(() => {
-    const editor = document.querySelector(".editor-area affine-editor-container");
-    return {
-      mainMode: editor?.mode,
-      tabs: [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent),
-    };
-  })));
+  // Expand the note column; the canvas shrinks to a rail.
+  await shell.locator(".pane-group").last().getByRole("button", { name: "Expand column", exact: true }).click();
+  await shot("4-note-expanded");
+  // The canvas rail brings the columns back.
+  await shell.getByRole("button", { name: "Show Canvas", exact: true }).click();
+  await shot("5-restored");
+  // Ask Knot "Open as page" is the Ask tab expanded.
+  await shell.getByRole("button", { name: "Ask Knot", exact: true }).first().click();
+  await shell.locator(".ask-knot textarea").waitFor();
+  const asPage = shell.getByRole("button", { name: "Open as page", exact: true });
+  if (await asPage.count()) await asPage.click();
+  await shot("6-ask-expanded");
+  console.log(JSON.stringify(await shell.evaluate(() => ({
+    rails: document.querySelectorAll(".pane-rail").length,
+    tabs: [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent),
+  }))));
   console.log(JSON.stringify({ errors }, null, 2));
 } catch (error) {
   console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));

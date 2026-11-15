@@ -108,6 +108,10 @@ function restoredLayout(
     next.groups.find((g) => g.id === value.lastUsedGroupId)?.id ??
     next.groups.at(-1)?.id ??
     null;
+  next.expandedGroupId =
+    next.groups.length > 1
+      ? (next.groups.find((g) => g.id === value.expandedGroupId)?.id ?? null)
+      : null;
   return next;
 }
 

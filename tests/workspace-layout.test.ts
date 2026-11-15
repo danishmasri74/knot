@@ -306,4 +306,50 @@ describe("supporting workspace layout", () => {
       expect(p.widths).toEqual([1200]);
     });
   });
+  describe("expanding a column", () => {
+    const canvas = canvasTab("w", "d");
+    const three = () => {
+      let s = [pdf, browser].reduce(
+        (s, tab) => layoutReducer(s, { type: "open", tab }),
+        withCanvas(emptyLayout(), canvas),
+      );
+      s = layoutReducer(s, { type: "split", id: browser.id, side: "right" });
+      return s;
+    };
+    it("fills the width and shrinks the other columns to rails", () => {
+      const s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      const p = projectLayout(s, 1200);
+      expect(p.groups.map((g) => g.tabIds)).toEqual([[pdf.id]]);
+      expect(p.rails.map((r) => r.group.tabIds)).toEqual([
+        [canvas.id],
+        [browser.id],
+      ]);
+      expect(p.offset).toBe(41);
+      expect(p.widths[0] + 2 * 41).toBe(1200);
+    });
+    it("opens new tabs in the expanded column", () => {
+      let s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      s = layoutReducer(s, { type: "open", tab: note });
+      expect(s.groups.find((g) => g.id === s.expandedGroupId)?.tabIds).toEqual([
+        pdf.id,
+        note.id,
+      ]);
+    });
+    it("restores when a tab in another column is shown or tabs move", () => {
+      const s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      expect(layoutReducer(s, { type: "activate", id: canvas.id }).expandedGroupId).toBeNull();
+      expect(layoutReducer(s, { type: "open", tab: browser }).expandedGroupId).toBeNull();
+      expect(
+        layoutReducer(s, { type: "move", id: browser.id, group: s.groups[0].id })
+          .expandedGroupId,
+      ).toBeNull();
+      expect(layoutReducer(s, { type: "restore" }).expandedGroupId).toBeNull();
+    });
+    it("ends when only one column is left", () => {
+      let s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      s = layoutReducer(s, { type: "close", id: canvas.id });
+      s = layoutReducer(s, { type: "close", id: browser.id });
+      expect(s.expandedGroupId).toBeNull();
+    });
+  });
 });
