@@ -15,3 +15,4 @@
 - Export is now a dialog: pick Markdown, PNG or PDF and save.
 - Column headers are quieter: the notebook's ▾ menu now also opens tabs and arranges the first column, so that column no longer has a separate ⋯ button.
 - Each column has a Collapse button that folds it into a slim rail; clicking the rail or one of its tabs brings it back.
+- Note tabs show the same floating table of contents as the canvas, and no longer have a Multiple choice bar above the note (type / in a note to add one).

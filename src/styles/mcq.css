@@ -477,23 +477,6 @@ knot-mcq-reference {
   color: var(--shell-muted);
 }
 
-.note-page-pane:has(.note-page-insert) {
-  display: flex;
-  flex-direction: column;
-}
-.note-page-pane:has(.note-page-insert) > .note-page-host {
-  flex: 1;
-  height: auto;
-}
-.note-page-insert {
-  display: flex;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--shell-border);
-}
-.note-page-insert > button {
-  padding: 4px 8px;
-}
-
 /* A Card Deck card shown inside a note (knot:card-embed). */
 knot-card-embed {
   display: block;

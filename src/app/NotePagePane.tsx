@@ -1,4 +1,3 @@
-import { captureNoteMcqTarget, requestMcqInsertion, type McqInsertionTarget } from "../features/editor/blocksuite/mcq-insertion";
 import { observeAiToolbar } from "../features/editor/blocksuite/ai-toolbar";
 import type { AffineEditorContainer } from "@blocksuite/presets";
 import { useEffect, useRef, useState } from "react";
@@ -54,7 +53,6 @@ export function NotePagePane({
   asleep?: boolean;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
-  const insertTarget = useRef<McqInsertionTarget>();
   const ask = useRef(onAsk);
   ask.current = onAsk;
   const [editor, setEditor] = useState<AffineEditorContainer | null>(null);
@@ -155,22 +153,6 @@ export function NotePagePane({
           <span />
           <span />
           <span />
-        </div>
-      )}
-      {editor && available && !locked && !error && !editor.doc.readonly && (
-        <div className="note-page-insert" role="toolbar" aria-label="Insert into note">
-          <button type="button"
-            disabled={!editor.doc.getBlock(noteId)?.model.children.some((child) => child.flavour === "affine:paragraph")}
-            onPointerDown={(event) => {
-              insertTarget.current = captureNoteMcqTarget(editor, noteId);
-              if (insertTarget.current) event.preventDefault();
-            }}
-            onClick={() => {
-              requestMcqInsertion(insertTarget.current ?? captureNoteMcqTarget(editor, noteId));
-              insertTarget.current = undefined;
-            }}>
-            Multiple choice
-          </button>
         </div>
       )}
       <div

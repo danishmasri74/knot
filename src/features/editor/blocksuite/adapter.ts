@@ -817,9 +817,11 @@ export async function openEditor(
         }
         const stopPdf = observePdfToolbars(view.editor, onPdfNavigate);
         const stopMcq = observeMcqMenu(view.editor);
+        const stopToc = observeFloatingToc(view.editor);
         const entry = {
           ...view,
           dispose() {
+            stopToc();
             stopMcq();
             stopPdf();
             view.dispose();
