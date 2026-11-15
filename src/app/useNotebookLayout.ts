@@ -117,6 +117,16 @@ function restoredLayout(
     next.groups.length > 1
       ? (next.groups.find((g) => g.id === value.expandedGroupId)?.id ?? null)
       : null;
+  // "Hide columns" became Focus on the canvas column: the other columns stay
+  // reachable as rails instead of disappearing.
+  if (next.hidden) {
+    next.hidden = false;
+    if (next.groups.length > 1)
+      next.expandedGroupId =
+        next.groups.find((g) =>
+          g.tabIds.some((id) => next.tabs[id]?.kind === "canvas"),
+        )?.id ?? next.expandedGroupId;
+  }
   return next;
 }
 

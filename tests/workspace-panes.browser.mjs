@@ -21,6 +21,7 @@ try {
     window.$RefreshSig$ = () => (type) => type;
     window.__vite_plugin_react_preamble_installed__ = true;
     await import("/src/styles/app.css");
+    await import("/src/styles/dropdowns.css");
     await import("/node_modules/@toeverything/theme/dist/style.css?import");
     const catalog = [
       { id: "a", title: "Board A", kind: "whiteboard", updated_at: 1 },
@@ -83,7 +84,12 @@ try {
         available: width,
         blocked: false,
         onReturn: () => {},
-        label: (tab) => (tab.kind === "note" ? "Chapter two" : "PDF reader"),
+        label: (tab) =>
+          tab.kind === "note"
+            ? "Chapter two"
+            : tab.id.startsWith("pdf-")
+              ? `Reader ${tab.id.slice(4)}`
+              : "PDF reader",
         render: (tab) =>
           tab.kind === "note"
             ? React.createElement(NotePagePane, {
@@ -170,10 +176,67 @@ try {
       tab: { id: "pdf", kind: "pdf", workspaceId: "w", documentId: "a" },
     }),
   );
-  await page.getByLabel("Pane actions", { exact: true }).click();
+  // Columns have no ⋯ menu: a tab's own menu separates it.
+  assert.equal(await page.locator(".pane-menu, .pane-group-drag").count(), 0);
   await page
-    .getByRole("button", { name: "Separate tab to left", exact: true })
+    .getByRole("tab", { name: "PDF reader", exact: true })
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Open in new column ←", exact: true })
     .click();
+  assert.equal(await page.locator(".pane-group").count(), 2);
+  // One Focus switch, at the right end of the rightmost header, acting on
+  // the column marked current.
+  assert.equal(await page.locator(".pane-focus").count(), 1);
+  assert.equal(
+    await page.locator(".pane-group").last().locator(".pane-focus").count(),
+    1,
+  );
+  assert.equal(
+    await page.locator('.pane-header[data-current="true"]').count(),
+    1,
+  );
+  const current = await page
+    .locator('.pane-header[data-current="true"] [role="tab"]')
+    .first()
+    .textContent();
+  await page.locator(".pane-focus").click();
+  assert.equal(await page.locator(".pane-rail").count(), 1);
+  assert.equal(await page.locator(".pane-group").count(), 1);
+  assert.equal(
+    await page.locator(".pane-focus").getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(
+    await page.locator('.pane-group [role="tab"]').first().textContent(),
+    current,
+  );
+  // A rail switches focus to its column; it doesn't bring both back.
+  await page.locator(".pane-rail-tabs button").first().click();
+  assert.equal(await page.locator(".pane-rail").count(), 1);
+  assert.notEqual(
+    await page.locator('.pane-group [role="tab"]').first().textContent(),
+    current,
+  );
+  await page.locator(".pane-focus").click();
+  assert.equal(await page.locator(".pane-rail").count(), 0);
+  assert.equal(await page.locator(".pane-group").count(), 2);
+  // Shift+F10 opens a tab's menu from the keyboard; Esc returns to the tab
+  // without closing it.
+  await page.getByRole("tab", { name: "Chapter two", exact: true }).focus();
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menu").waitFor();
+  await page.screenshot({ path: "test-results/workspace-panes-tab-menu.png" });
+  assert.deepEqual(
+    await page.getByRole("menuitem").allTextContents(),
+    ["Focus this column", "Move to other column", "Swap columns", "Close tab", "Close other tabs"],
+  );
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator(".pane-tab-menu").count(), 0);
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.textContent),
+    "Chapter two",
+  );
   assert.equal(await page.locator(".pane-group").count(), 2);
   assert.equal(await host.evaluate((e) => e.isConnected), true);
   await page.screenshot({ path: "test-results/workspace-panes-split.png" });
@@ -225,6 +288,54 @@ try {
   await page.evaluate(async () => {
     await window.session.flush();
   });
+  // A crowded column says how many tabs are out of view, and lists them.
+  assert.equal(await page.locator(".pane-overflow-chip").count(), 0);
+  await page.setViewportSize({ width: 520, height: 640 });
+  await page.evaluate(() => {
+    for (let n = 1; n <= 6; n++)
+      window.dispatch({
+        type: "open",
+        tab: { id: `pdf-${n}`, kind: "pdf", workspaceId: "w", documentId: `doc-${n}` },
+      });
+  });
+  const chip = page.locator(".pane-overflow-chip");
+  await chip.waitFor();
+  const hiddenCount = Number((await chip.textContent()).replace(/\D/g, ""));
+  assert.ok(hiddenCount > 0, "some tabs are out of view");
+  await chip.click();
+  await page.getByText("Out of view").waitFor();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.screenshot({ path: "test-results/workspace-panes-overflow-list.png" });
+  await page.emulateMedia({ colorScheme: "light" });
+  assert.equal(
+    await page.locator('.pane-overflow-row button[aria-pressed="true"]').count(),
+    1,
+  );
+  const awayRows = page.locator(".pane-overflow-heading ~ .pane-overflow-row");
+  assert.equal(await awayRows.count(), hiddenCount);
+  const picked = await awayRows.first().locator("button").first().textContent();
+  await awayRows.first().locator("button").first().click();
+  await page.waitForTimeout(100);
+  assert.equal(
+    await page.locator('.pane-tab[data-active="true"] [role="tab"]').textContent(),
+    picked,
+    "picking a row makes that tab active",
+  );
+  const activeBox = await page
+    .locator('.pane-tab[data-active="true"]')
+    .boundingBox();
+  const stripBox = await page.locator(".pane-tabs").boundingBox();
+  assert.ok(
+    activeBox.x >= stripBox.x - 2 &&
+      activeBox.x + activeBox.width <= stripBox.x + stripBox.width + 2,
+    "the picked tab is scrolled into view",
+  );
+  await page.screenshot({ path: "test-results/workspace-panes-overflow.png" });
+  await page.evaluate(() => {
+    for (let n = 1; n <= 6; n++) window.dispatch({ type: "close", id: `pdf-${n}` });
+  });
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await chip.waitFor({ state: "detached" });
   await page
     .getByRole("button", { name: "Close Chapter two tab", exact: true })
     .click();
@@ -236,7 +347,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS stable pane hosts, shared edits, split/swap/merge, responsive restoration, delete/undo, close/disposal",
+    "PASS stable pane hosts, shared edits, tab menu, Focus switch and rails, split/swap/merge, responsive restoration, delete/undo, hidden-tab count, close/disposal",
   );
 } finally {
   await browser.close();

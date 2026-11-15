@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,21 +6,22 @@ import {
   type ComponentProps,
   type CSSProperties,
   type Dispatch,
+  type DragEvent,
   type HTMLAttributes,
   type ReactNode,
 } from "react";
 import { browserApi, browserBounds } from "../services/browser";
+import { Popover } from "./Collections";
+import { PaneTabMenu, type PaneMenuItem } from "./PaneTabMenu";
 import { ShellIcon } from "./ShellIcon";
 import { ShellMenu } from "./ShellMenu";
 import {
-  columnDropPreview,
   edgeDropPreview,
   projectLayout,
   minimumWidth,
   MAX_COLUMNS,
   RAIL_WIDTH,
   tabPolicy,
-  hasCanvas,
   type WorkspaceLayout,
   type LayoutAction,
   type PaneTab,
@@ -39,32 +39,6 @@ const icons = {
   reference: "link",
   video: "video",
 } as const;
-export function ColumnVisibilityToggle({
-  layout,
-  dispatch,
-  disabled = false,
-}: {
-  layout: WorkspaceLayout;
-  dispatch: Dispatch<LayoutAction>;
-  disabled?: boolean;
-}) {
-  const label = layout.hidden ? "Show columns" : "Hide columns";
-  // Hiding leaves only the canvas column, so it needs a canvas and something
-  // else to hide.
-  const others = Object.values(layout.tabs).some((t) => t.kind !== "canvas");
-  return (
-    <button
-      aria-label={label}
-      data-tooltip={label}
-      aria-pressed={!layout.hidden && others}
-      aria-controls="supporting-columns"
-      disabled={disabled || !others || !hasCanvas(layout)}
-      onClick={() => dispatch({ type: "visibility", hidden: !layout.hidden })}
-    >
-      <ShellIcon name="columns" />
-    </button>
-  );
-}
 export function WorkspacePanes({
   layout,
   dispatch,
@@ -79,13 +53,12 @@ export function WorkspacePanes({
   newTab,
   tools,
 }: {
-  /** Pinned first in the first column's tab row (the notebook pill). It gets
-   * that column's menu sections; when it renders, the column has no ⋯ menu. */
-  lead?: (columnMenu: ReactNode[]) => ReactNode;
-  /** "Open in this column" items for a column's menu. */
+  /** Pinned first in the first column's tab row (the notebook pill). */
+  lead?: () => ReactNode;
+  /** "Open in this column" items for a column's + menu. */
   newTab?: (group: string) => ReactNode;
-  /** Controls for a column's active tab, at the end of its tab row. */
-  tools?: (tab: PaneTab) => ReactNode;
+  /** Notebook-wide controls (undo, redo), once, at the header's right end. */
+  tools?: () => ReactNode;
   /** Overrides the kind's icon, e.g. the canvas tab while it shows a page. */
   icon?: (tab: PaneTab) => ComponentProps<typeof ShellIcon>["name"] | undefined;
   layout: WorkspaceLayout;
@@ -148,6 +121,13 @@ export function WorkspacePanes({
     index: number;
     left: number;
   } | null>(null);
+  const [tabMenu, setTabMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  // Per column: tabs scrolled fully or partly out of its tab row.
+  const [outOfView, setOutOfView] = useState<Record<string, string[]>>({});
   const composing = useRef(false);
   const toggleTarget = useRef({ expanded, group: layout.lastUsedGroupId, count: layout.groups.length });
   toggleTarget.current = { expanded, group: layout.lastUsedGroupId, count: layout.groups.length };
@@ -346,11 +326,6 @@ export function WorkspacePanes({
   const activate = (id: string) => {
     dispatch({ type: "activate", id });
   };
-  // With two columns, collapsing one expands the other.
-  const collapse = (groupId: string) => {
-    const other = layout.groups.find((g) => g.id !== groupId);
-    if (other) dispatch({ type: "expand", group: other.id });
-  };
   const close = (id: string) => {
     dispatch({ type: "close", id });
     requestAnimationFrame(() => {
@@ -366,7 +341,7 @@ export function WorkspacePanes({
     groupId: string,
     clientX: number,
   ) => {
-    if (!dragging || dragging.startsWith("group:")) return null;
+    if (!dragging) return null;
     const bounds = strip.getBoundingClientRect();
     const tabs = [...strip.querySelectorAll<HTMLElement>(".pane-tab")].filter(
       (tab) => tab.dataset.tabId !== dragging,
@@ -428,114 +403,96 @@ export function WorkspacePanes({
     layout.groups.length < MAX_COLUMNS &&
     layout.groups.reduce((n, g) => n + minimumWidth(layout, g) + 1, 0) + 320 <=
       available;
-  /** A column's menu, in sections. The first column's sections join the
-   * notebook pill's menu (lead) instead of a ⋯ button. */
-  const columnSections = (group: (typeof layout.groups)[number]) => {
+  /** What a tab's context menu offers. Moving columns only ever means
+   * swapping sides, since there are at most two. */
+  const tabActions = (id: string): PaneMenuItem[] => {
+    const tab = layout.tabs[id];
+    const group = layout.groups.find((g) => g.tabIds.includes(id));
+    if (!tab || !group) return [];
+    const canvas = tab.kind === "canvas";
+    const other = layout.groups.find((g) => g !== group);
+    const focusedHere = expanded && layout.expandedGroupId === group.id;
+    const closable = group.tabIds.filter(
+      (t) => t !== id && layout.tabs[t]?.kind !== "canvas",
+    );
     return [
-      newTab?.(group.id),
-      layout.groups.length > 1 && !projection.collapsed && (
-        <>
-          <button
-            onClick={() =>
-              dispatch(
-                expanded
-                  ? { type: "restore" }
-                  : { type: "expand", group: group.id },
-              )
-            }
-          >
-            {expanded ? "Show both columns" : "Expand column"}
-          </button>
-          {!expanded && (
-            <button onClick={() => collapse(group.id)}>Collapse column</button>
-          )}
-        </>
-      ),
-      <>
-        <button
-          disabled={!roomForColumn || group.tabIds.length < 2}
-          data-tooltip={
-            !roomForColumn ? "Widen the window to separate a tab" : undefined
-          }
-          onClick={() =>
-            move(
-              { type: "split", id: group.activeTabId, side: "left" },
-              "Tab separated to the left",
-            )
-          }
-        >
-          Separate tab to left
-        </button>
-        <button
-          disabled={!roomForColumn || group.tabIds.length < 2}
-          onClick={() =>
-            move(
-              { type: "split", id: group.activeTabId, side: "right" },
-              "Tab separated to the right",
-            )
-          }
-        >
-          Separate tab to right
-        </button>
-        {(["left", "right"] as const).map((side) => {
-          const at = layout.groups.findIndex((g) => g.id === group.id);
-          const neighbour = layout.groups[side === "left" ? at - 1 : at + 1];
-          if (at < 0 || !neighbour) return null;
-          return (
-            <Fragment key={side}>
-              <button
-                onClick={() =>
-                  move(
-                    {
-                      type: "move",
-                      id: group.activeTabId,
-                      group: neighbour.id,
-                    },
-                    `Tab moved to the ${side} column`,
-                  )
+      ...(layout.groups.length > 1 && !(projection.collapsed && !expanded)
+        ? [
+            focusedHere
+              ? {
+                  label: "Show all columns",
+                  run: () => dispatch({ type: "restore" }),
                 }
-              >
-                Move tab to {side} column
-              </button>
-              <button
-                onClick={() =>
+              : {
+                  label: "Focus this column",
+                  run: () => dispatch({ type: "expand", id }),
+                },
+            "separator" as const,
+          ]
+        : []),
+      ...(canvas
+        ? []
+        : other
+          ? [
+              {
+                label: "Move to other column",
+                run: () =>
                   move(
-                    layout.groups.length === 2
-                      ? { type: "swap" }
-                      : {
-                          type: "moveColumn",
-                          group: group.id,
-                          index: side === "left" ? at - 1 : at + 1,
-                        },
-                    "Column moved",
-                  )
-                }
-              >
-                Move column {side}
-              </button>
-              <button
-                onClick={() =>
-                  move(
-                    { type: "merge", group: group.id, into: neighbour.id },
-                    "Columns merged",
-                  )
-                }
-              >
-                Merge with {side} column
-              </button>
-            </Fragment>
-          );
-        })}
-        <button onClick={() => close(group.activeTabId)}>Close tab</button>
-      </>,
-    ].filter(Boolean);
+                    { type: "move", id, group: other.id },
+                    "Tab moved to the other column",
+                  ),
+              },
+            ]
+          : (["left", "right"] as const).map((side) => ({
+              label: `Open in new column ${side === "left" ? "←" : "→"}`,
+              disabled: !roomForColumn || group.tabIds.length < 2,
+              tooltip: !roomForColumn
+                ? "Widen the window to open another column"
+                : undefined,
+              run: () =>
+                move(
+                  { type: "split", id, side },
+                  `Tab opened in a new column on the ${side}`,
+                ),
+            }))),
+      ...(other
+        ? [{ label: "Swap columns", run: () => move({ type: "swap" }, "Columns swapped") }]
+        : []),
+      "separator",
+      ...(canvas ? [] : [{ label: "Close tab", run: () => close(id) }]),
+      {
+        label: "Close other tabs",
+        disabled: !closable.length,
+        run: () => {
+          activate(id);
+          for (const t of closable) dispatch({ type: "close", id: t });
+        },
+      },
+    ];
+  };
+  const openTabMenu = (id: string, x: number, y: number) => {
+    if (composing.current || dragging) return;
+    document
+      .querySelectorAll<HTMLDetailsElement>(".shell-menu[open]")
+      .forEach((menu) => (menu.open = false));
+    setTabMenu({ id, x, y });
+  };
+  // Focus fills the window with the current column; the others become rails.
+  // When the window is too narrow for both, it's on and can't be turned off.
+  const forcedRails = projection.collapsed && !expanded;
+  const focusTarget =
+    layout.groups.find((g) => g.id === layout.lastUsedGroupId) ??
+    layout.groups.at(-1);
+  const toggleFocus = () => {
+    if (expanded) dispatch({ type: "restore" });
+    else if (focusTarget) dispatch({ type: "expand", group: focusTarget.id });
   };
   const slots = projection.groups.map((g, index) => ({
     group: g,
     width: projection.widths[index],
     left: projection.lefts[index],
   }));
-  const leadNode = slots[0] && lead?.(columnSections(slots[0].group));
+  const leadNode = slots[0] && lead?.();
   return (
     <div
       ref={root}
@@ -561,32 +518,25 @@ export function WorkspacePanes({
           style={{ left, width: RAIL_WIDTH }}
           aria-label="Collapsed column"
         >
-          <button
-            className="pane-rail-toggle"
-            aria-label="Show column"
-            data-tooltip={expanded ? "Show column (Esc)" : "Show column"}
-            onClick={() =>
-              expanded
-                ? dispatch({ type: "restore" })
-                : activate(group.activeTabId)
-            }
-          >
-            <ShellIcon name="expand" />
-          </button>
-          {group.tabIds.map((id) => (
-            <button
-              key={id}
-              aria-label={`Show ${label(layout.tabs[id])}`}
-              data-tooltip={label(layout.tabs[id])}
-              data-active={id === group.activeTabId}
-              // Brings the column back showing this tab.
-              onClick={() => activate(id)}
-            >
-              <ShellIcon
-                name={icon?.(layout.tabs[id]) ?? icons[layout.tabs[id].kind]}
-              />
-            </button>
-          ))}
+          {/* Rails switch columns; only the Focus switch or Esc brings both
+              back. A tall stack of tabs scrolls. */}
+          <div className="pane-rail-tabs">
+            {group.tabIds.map((id) => (
+              <button
+                key={id}
+                aria-label={`Show ${label(layout.tabs[id])}`}
+                data-tooltip={label(layout.tabs[id])}
+                data-active={id === group.activeTabId}
+                onClick={() =>
+                  expanded ? dispatch({ type: "expand", id }) : activate(id)
+                }
+              >
+                <ShellIcon
+                  name={icon?.(layout.tabs[id]) ?? icons[layout.tabs[id].kind]}
+                />
+              </button>
+            ))}
+          </div>
           <span className="pane-rail-label" aria-hidden="true">
             {label(layout.tabs[group.activeTabId])}
           </span>
@@ -637,6 +587,8 @@ export function WorkspacePanes({
           />}
           <header
             className="pane-header"
+            // Side by side, the column Focus acts on carries a thin accent.
+            data-current={slots.length > 1 && group.id === focusTarget?.id}
             onKeyDown={(e) => {
               if (
                 e.key === "Escape" &&
@@ -656,18 +608,9 @@ export function WorkspacePanes({
             }}
             onDragOver={(e) => {
               if (!dragging) return;
-              if (dragging.startsWith("group:")) {
-                if (expanded || projection.single) return;
-                const source = layout.groups.findIndex(
-                  (g) => g.id === dragging.slice(6),
-                );
-                if (source < 0 || source === index) return;
-                setDropSide(index < source ? "left" : "right");
-              } else {
-                const strip =
-                  e.currentTarget.querySelector<HTMLElement>(".pane-tabs");
-                if (strip) setTabDrop(tabInsertion(strip, group.id, e.clientX));
-              }
+              const strip =
+                e.currentTarget.querySelector<HTMLElement>(".pane-tabs");
+              if (strip) setTabDrop(tabInsertion(strip, group.id, e.clientX));
               e.preventDefault();
             }}
             onDragLeave={(e) => {
@@ -684,43 +627,38 @@ export function WorkspacePanes({
             onDrop={(e) => {
               e.preventDefault();
               if (!dragging) return;
-              if (dragging.startsWith("group:")) {
-                const source = dragging.slice(6);
-                if (!expanded && !projection.single && source !== group.id)
-                  move(
-                    layout.groups.length === 2
-                      ? { type: "swap" }
-                      : { type: "moveColumn", group: source, index },
-                    "Column moved",
-                  );
-                else endGesture();
-              } else {
-                const strip =
-                  e.currentTarget.querySelector<HTMLElement>(".pane-tabs");
-                const insertion =
-                  strip && tabInsertion(strip, group.id, e.clientX);
-                if (insertion)
-                  move(
-                    {
-                      type: "move",
-                      id: dragging,
-                      group: insertion.group,
-                      index: insertion.index,
-                    },
-                    "Tab moved",
-                  );
-                else endGesture();
-              }
+              const strip =
+                e.currentTarget.querySelector<HTMLElement>(".pane-tabs");
+              const insertion =
+                strip && tabInsertion(strip, group.id, e.clientX);
+              if (insertion)
+                move(
+                  {
+                    type: "move",
+                    id: dragging,
+                    group: insertion.group,
+                    index: insertion.index,
+                  },
+                  "Tab moved",
+                );
+              else endGesture();
             }}
           >
             {index === 0 && leadNode}
             <TabStrip
               activeTab={group.activeTabId}
+              onOutOfView={(ids) =>
+                setOutOfView((current) =>
+                  (current[group.id] ?? []).join("\n") === ids.join("\n")
+                    ? current
+                    : { ...current, [group.id]: ids },
+                )
+              }
               role="tablist"
               aria-label="Tabs"
               className="pane-tabs"
               onDragOver={(e) => {
-                if (!dragging || dragging.startsWith("group:")) return;
+                if (!dragging) return;
                 e.preventDefault();
                 e.stopPropagation();
                 e.dataTransfer.dropEffect = "move";
@@ -742,7 +680,7 @@ export function WorkspacePanes({
                 );
               }}
               onDrop={(e) => {
-                if (!dragging || dragging.startsWith("group:")) return;
+                if (!dragging) return;
                 e.preventDefault();
                 e.stopPropagation();
                 const insertion = tabInsertion(
@@ -769,6 +707,10 @@ export function WorkspacePanes({
                   key={id}
                   data-active={id === group.activeTabId}
                   data-tab-id={id}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openTabMenu(id, e.clientX, e.clientY);
+                  }}
                 >
                   <button
                     role="tab"
@@ -798,6 +740,15 @@ export function WorkspacePanes({
                     }}
                     onDragEnd={endGesture}
                     onKeyDown={(e) => {
+                      if (
+                        e.key === "ContextMenu" ||
+                        (e.key === "F10" && e.shiftKey)
+                      ) {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        openTabMenu(id, rect.left, rect.bottom + 4);
+                        return;
+                      }
                       if (
                         ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
                           e.key,
@@ -848,75 +799,81 @@ export function WorkspacePanes({
                 />
               )}
             </TabStrip>
-            {layout.tabs[group.activeTabId] && (
-              <span className="pane-tools">
-                {tools?.(layout.tabs[group.activeTabId])}
-              </span>
+            {(outOfView[group.id]?.length ?? 0) > 0 && (
+              <TabOverflow
+                tabs={group.tabIds}
+                active={group.activeTabId}
+                outOfView={outOfView[group.id]}
+                label={(id) => label(layout.tabs[id])}
+                onPick={(id) => {
+                  activate(id);
+                  requestAnimationFrame(() =>
+                    document
+                      .getElementById(`tab-${encodeURIComponent(id)}`)
+                      ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+                  );
+                }}
+                onMenu={openTabMenu}
+                onDragOver={(e) => {
+                  if (!dragging) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  setTabDrop(null);
+                }}
+                onDrop={(e) => {
+                  if (!dragging) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Dropped on the count: the tab goes last in this column.
+                  move(
+                    { type: "move", id: dragging, group: group.id },
+                    "Tab moved",
+                  );
+                }}
+              />
             )}
-            {expanded ? (
-              <button
-                className="pane-expand"
-                aria-label="Show both columns"
-                data-tooltip="Show both columns (Esc)"
-                onClick={() => dispatch({ type: "restore" })}
-              >
-                <ShellIcon name="columns" />
-              </button>
-            ) : (
-              layout.groups.length > 1 &&
-              !projection.collapsed && (
-                // Side by side: fold this column into a rail.
-                <button
-                  className="pane-expand"
-                  aria-label="Collapse column"
-                  data-tooltip="Collapse column"
-                  onClick={() => collapse(group.id)}
-                >
-                  <ShellIcon name="collapse" />
-                </button>
-              )
-            )}
-            {!(index === 0 && leadNode) && (
+            {newTab && (
               <ShellMenu
-                label="Pane actions"
-                icon={<ShellIcon name="more" />}
-                className="pane-menu"
+                label="New tab"
+                icon={<ShellIcon name="plus" />}
+                className="pane-new-tab"
               >
-                {columnSections(group).map((section, i) => (
-                  <Fragment key={i}>
-                    {i > 0 && <hr />}
-                    {section}
-                  </Fragment>
-                ))}
+                {newTab(group.id)}
               </ShellMenu>
             )}
-            <button
-              className="pane-group-drag"
-              draggable
-              aria-label="Move column"
-              onDragStart={(e) => {
-                if (composing.current) {
-                  e.preventDefault();
-                  return;
-                }
-                beginGesture();
-                setDragging(`group:${group.id}`);
-                e.dataTransfer.setData("application/x-knot-pane", group.id);
-              }}
-              onDragEnd={endGesture}
-            >
-              <ShellIcon name="gripVertical" />
-            </button>
+            {index === slots.length - 1 && (
+              // Notebook-wide controls sit once, at the header's right end,
+              // whichever column is rightmost on screen.
+              <span className="pane-tools">
+                {tools?.()}
+                {layout.groups.length > 1 && (
+                  <button
+                    className="pane-focus"
+                    aria-label={expanded ? "Show all columns" : "Focus column"}
+                    aria-pressed={expanded || forcedRails}
+                    disabled={forcedRails}
+                    data-tooltip={
+                      forcedRails
+                        ? "Widen the window to show both columns"
+                        : expanded
+                          ? "Show all columns (Esc)"
+                          : "Focus this column (Ctrl+Shift+Enter)"
+                    }
+                    onClick={toggleFocus}
+                  >
+                    <ShellIcon name="expand" />
+                  </button>
+                )}
+              </span>
+            )}
           </header>
         </div>
       ))}
       {dragging &&
         !expanded &&
         (["left", "right"] as const).map((side) => {
-          const movingColumn = dragging.startsWith("group:");
-          const preview = movingColumn
-            ? columnDropPreview(layout, dragging.slice(6), side, available)
-            : edgeDropPreview(layout, dragging, side, available);
+          const preview = edgeDropPreview(layout, dragging, side, available);
           if (!preview) return null;
           return (
             <div
@@ -950,12 +907,24 @@ export function WorkspacePanes({
                 move(preview.action, `Pane moved to the ${side}`);
               }}
             >
-              {movingColumn
-                ? `Move column ${side}`
-                : `${preview.action.type === "split" ? "New" : "Move to"} ${side} column`}
+              {`${preview.action.type === "split" ? "New" : "Move to"} ${side} column`}
             </div>
           );
         })}
+      {tabMenu && layout.tabs[tabMenu.id] && (
+        <PaneTabMenu
+          label={`${label(layout.tabs[tabMenu.id])} tab`}
+          x={tabMenu.x}
+          y={tabMenu.y}
+          items={tabActions(tabMenu.id)}
+          onClose={(restoreFocus) => {
+            const id = tabMenu.id;
+            setTabMenu(null);
+            if (restoreFocus)
+              document.getElementById(`tab-${encodeURIComponent(id)}`)?.focus();
+          }}
+        />
+      )}
       {/* Flat, stable parents keep live editor/PDF controllers mounted when membership changes. */}
       {Object.values(layout.tabs).map((tab) => {
         // The canvas editor is positioned from outside (see canvasLeft).
@@ -998,12 +967,19 @@ export function WorkspacePanes({
 
 /** The tab row: tabs shrink first (CSS); when they still don't fit, the row
  * scrolls without a scrollbar. The wheel scrolls it sideways, faded edges
- * show there's more, and the active tab is kept in view. */
+ * show there's more, the active tab is kept in view, and the tabs that are
+ * out of view are reported so the column can show how many. */
 function TabStrip({
   activeTab,
+  onOutOfView,
   ...props
-}: { activeTab: string | null } & HTMLAttributes<HTMLDivElement>) {
+}: {
+  activeTab: string | null;
+  onOutOfView: (ids: string[]) => void;
+} & HTMLAttributes<HTMLDivElement>) {
   const strip = useRef<HTMLDivElement>(null);
+  const report = useRef(onOutOfView);
+  report.current = onOutOfView;
   // Wheel scrolling over the strip is handled once, by WorkspacePanes.
   useEffect(() => {
     const el = strip.current;
@@ -1014,11 +990,39 @@ function TabStrip({
       const end = el.scrollLeft < max - 1;
       if (start || end) el.dataset.overflow = start && end ? "both" : start ? "start" : "end";
       else delete el.dataset.overflow;
+      // A tab counts as out of view unless it's whole (a 2px allowance for
+      // rounding). The active tab is always scrolled in, so it never counts.
+      const bounds = el.getBoundingClientRect();
+      report.current(
+        start || end
+          ? [...el.querySelectorAll<HTMLElement>(".pane-tab")]
+              .filter((tab) => {
+                if (tab.dataset.active === "true") return false;
+                const rect = tab.getBoundingClientRect();
+                return (
+                  rect.left < bounds.left - 2 || rect.right > bounds.right + 2
+                );
+              })
+              .map((tab) => tab.dataset.tabId!)
+          : [],
+      );
     };
-    const resize = new ResizeObserver(update);
+    // When the row narrows (the window, a divider, or the count appearing),
+    // the active tab stays whole.
+    const resize = new ResizeObserver(() => {
+      el.querySelector<HTMLElement>('.pane-tab[data-active="true"]')
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      update();
+    });
     resize.observe(el);
     const tabs = new MutationObserver(update);
-    tabs.observe(el, { childList: true, subtree: true, characterData: true });
+    tabs.observe(el, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-active"],
+    });
     el.addEventListener("scroll", update, { passive: true });
     update();
     return () => {
@@ -1034,4 +1038,141 @@ function TabStrip({
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeTab]);
   return <div ref={strip} {...props} />;
+}
+
+/** "+N" after a crowded tab row: lists every tab in the column, the ones in
+ * view first, with the current one checked. Each row's ⋯ opens the same
+ * actions as right-clicking the tab. */
+function TabOverflow({
+  tabs,
+  active,
+  outOfView,
+  label,
+  onPick,
+  onMenu,
+  onDragOver,
+  onDrop,
+}: {
+  tabs: string[];
+  active: string;
+  outOfView: string[];
+  label: (id: string) => string;
+  onPick: (id: string) => void;
+  onMenu: (id: string, x: number, y: number) => void;
+  onDragOver: (e: DragEvent<HTMLElement>) => void;
+  onDrop: (e: DragEvent<HTMLElement>) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const hidden = new Set(outOfView);
+  const query = filter.trim().toLocaleLowerCase();
+  const matches = (id: string) =>
+    !query || label(id).toLocaleLowerCase().includes(query);
+  const inView = tabs.filter((id) => !hidden.has(id) && matches(id));
+  const away = tabs.filter((id) => hidden.has(id) && matches(id));
+  const count = outOfView.length;
+  const row = (id: string, close: () => void) => (
+    <div className="pane-overflow-row" key={id}>
+      <button
+        aria-pressed={id === active}
+        onClick={() => {
+          close();
+          onPick(id);
+        }}
+      >
+        <span>{label(id)}</span>
+        {id === active && <ShellIcon name="check" />}
+      </button>
+      <button
+        className="pane-overflow-more"
+        aria-label={`${label(id)} tab actions`}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          close();
+          onMenu(id, rect.left, rect.bottom + 4);
+        }}
+      >
+        <ShellIcon name="more" />
+      </button>
+    </div>
+  );
+  return (
+    <span className="pane-overflow" onDragOver={onDragOver} onDrop={onDrop}>
+      <Popover
+        label={`${count} more ${count === 1 ? "tab" : "tabs"}`}
+        className="pane-overflow-chip"
+        trigger={
+          <>
+            <span>+{count}</span>
+            <ShellIcon name="chevron" />
+          </>
+        }
+      >
+        {(close) => (
+          <div
+            className="pane-overflow-list"
+            role="group"
+            aria-label="All tabs in this column"
+            ref={(element) => {
+              // With a filter field, Popover focuses the field instead.
+              if (element && tabs.length < 8)
+                element
+                  .querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+                  ?.focus({ preventScroll: true });
+            }}
+            onKeyDown={(event) => {
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key))
+                return;
+              const buttons = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  ".pane-overflow-row > button:first-child",
+                ),
+              );
+              if (!buttons.length) return;
+              event.preventDefault();
+              const index = buttons.indexOf(
+                document.activeElement as HTMLButtonElement,
+              );
+              const next =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? buttons.length - 1
+                    : (index +
+                        (event.key === "ArrowDown" ? 1 : -1) +
+                        buttons.length) %
+                      buttons.length;
+              buttons[next]?.focus();
+            }}
+          >
+            {tabs.length >= 8 && (
+              <input
+                className="pane-overflow-filter"
+                aria-label="Find a tab"
+                placeholder="Find a tab"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  const first = inView[0] ?? away[0];
+                  if (e.key === "Enter" && first) {
+                    e.preventDefault();
+                    close();
+                    onPick(first);
+                  }
+                }}
+              />
+            )}
+            {inView.map((id) => row(id, close))}
+            {inView.length > 0 && away.length > 0 && <hr />}
+            {away.length > 0 && (
+              <span className="pane-overflow-heading">Out of view</span>
+            )}
+            {away.map((id) => row(id, close))}
+            {!inView.length && !away.length && (
+              <span className="pane-overflow-empty">No matching tabs</span>
+            )}
+          </div>
+        )}
+      </Popover>
+    </span>
+  );
 }

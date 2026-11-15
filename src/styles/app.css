@@ -5677,6 +5677,8 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   overflow-y: hidden;
   height: 100%;
   scrollbar-width: none;
+  /* A tab scrolled into view clears the faded edge. */
+  scroll-padding-inline: 32px;
 }
 .pane-tabs::-webkit-scrollbar {
   display: none;
@@ -5753,39 +5755,107 @@ details[open] > .diagnostics-disclosure > .shell-icon {
 .pane-tab:focus-within .pane-tab-close {
   opacity: 1;
 }
-.pane-tab button:hover,
-.pane-header > button:hover {
+.pane-tab button:hover {
   background: var(--shell-hover);
   border-radius: 4px;
 }
-.pane-header > button,
-.pane-menu > summary {
+/* The column Focus acts on, while columns sit side by side. */
+.pane-header[data-current="true"] {
+  box-shadow: inset 0 2px 0
+    color-mix(in srgb, var(--control-accent) 70%, transparent);
+}
+/* A crowded tab row shows how many tabs are out of view; the count opens a
+   list of the whole column. */
+.pane-overflow {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 5px;
-}
-.pane-group-drag {
-  cursor: grab;
-}
-.pane-header .pane-menu {
   flex: none;
+  margin: 0 2px;
 }
-.pane-menu .shell-menu-content {
-  right: 0;
-  left: auto;
-  width: 220px;
-  max-height: min(65vh, 500px);
+.pane-overflow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 5px 0 8px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--control-accent) 14%, transparent);
+  color: var(--shell-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pane-overflow-chip:hover,
+.pane-overflow-chip[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--control-accent) 24%, transparent);
+}
+.pane-overflow-chip .shell-icon {
+  width: 12px;
+  height: 12px;
+  transform: rotate(90deg);
+}
+.pane-overflow-list {
+  display: grid;
+  gap: var(--dropdown-gap);
+  width: 260px;
+  max-height: min(60vh, 420px);
   overflow-y: auto;
 }
-.pane-menu .shell-menu-content button {
+.pane-overflow-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pane-overflow-row > button:first-child {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  background: transparent;
+}
+.pane-overflow-row > button:first-child > span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  width: 100%;
-  text-align: left;
+}
+.pane-overflow-row > button:first-child > .shell-icon {
+  flex: none;
+  margin-left: auto;
+}
+.knot-dropdown .pane-overflow-row > button.pane-overflow-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  padding: 0;
+  background: transparent;
+  opacity: 0;
+}
+.pane-overflow-row:hover > .pane-overflow-more,
+.pane-overflow-row:focus-within > .pane-overflow-more {
+  opacity: 1;
+}
+.pane-overflow-heading,
+.pane-overflow-empty {
+  padding: 4px var(--dropdown-row-padding) 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--shell-muted);
+}
+.pane-overflow-filter {
+  height: 32px;
+  margin-bottom: 2px;
+}
+/* A tab's context menu opens at the pointer. */
+.pane-tab-menu {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  gap: 2px;
+  min-width: 210px;
 }
 .pane-content {
   position: absolute;
@@ -7074,8 +7144,8 @@ knot-web-source { display: block; margin-block: 8px; }
   width: 75%;
 }
 
-/* While one column is expanded, the others shrink to rails that keep their
-   tab icons; clicking one brings the columns back with that tab. */
+/* While one column is focused, the others shrink to rails that keep their
+   tab icons; clicking one focuses that column with that tab. */
 .pane-rail {
   position: absolute;
   top: 0;
@@ -7091,7 +7161,19 @@ knot-web-source { display: block; margin-block: 8px; }
   pointer-events: auto;
   overflow: hidden;
 }
-.pane-rail > button {
+.pane-rail-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.pane-rail-tabs::-webkit-scrollbar {
+  display: none;
+}
+.pane-rail-tabs > button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7101,8 +7183,8 @@ knot-web-source { display: block; margin-block: 8px; }
   border-radius: 6px;
   color: var(--shell-muted);
 }
-.pane-rail > button:hover,
-.pane-rail > button[data-active="true"] {
+.pane-rail-tabs > button:hover,
+.pane-rail-tabs > button[data-active="true"] {
   background: var(--shell-selected);
   color: var(--shell-text);
 }
@@ -7227,6 +7309,14 @@ knot-web-source { display: block; margin-block: 8px; }
 .pane-tools > button:hover:not(:disabled) {
   background: var(--shell-selected);
 }
+/* Focus keeps one icon; on, it looks pressed. */
+.pane-tools > .pane-focus[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--control-accent) 16%, transparent);
+  color: var(--control-accent);
+}
+.pane-tools > .pane-focus:disabled {
+  opacity: 0.6;
+}
 .pane-header .pane-new-tab {
   flex: none;
 }
@@ -7253,7 +7343,7 @@ knot-web-source { display: block; margin-block: 8px; }
   transform: rotate(90deg);
 }
 /* The pill's menu opens rightward from the pill; a column's + menu opens
-   leftward, since it sits at the column's right end. */
+   leftward, so it stays inside the column. */
 .notebook-pill .document-menu .shell-menu-content {
   left: 0;
   right: auto;
@@ -7372,20 +7462,6 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   color: var(--shell-muted);
 }
 
-/* Quieter column headers: the column drag handle shows on hover or focus. */
-.pane-header .pane-group-drag {
-  opacity: 0;
-  transition: opacity 120ms;
-}
-.pane-header:hover .pane-group-drag,
-.pane-header:focus-within .pane-group-drag {
-  opacity: 1;
-}
-/* A rail's toggle sits above its tab icons. */
-.pane-rail > .pane-rail-toggle {
-  margin-bottom: 4px;
-  color: var(--shell-text);
-}
 .export-format {
   justify-content: flex-start;
 }

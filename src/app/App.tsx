@@ -184,7 +184,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type ReactNode,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -2707,10 +2706,9 @@ export function App() {
     };
   }, [aiContext, workspaceCatalog.active, active?.id, ambientNote]);
   // Replaces the old header: the open notebook's name, favorite, save state
-  // and actions, pinned first in the first column's tab row.
-  // Its menu leads with the first column's sections (open a tab, collapse,
-  // move), then the notebook's own actions.
-  const notebookPill = (columnMenu: ReactNode[]) =>
+  // and actions, pinned first in the first column's tab row. Its menu holds
+  // only the notebook's own actions; columns have their + and tab menus.
+  const notebookPill = () =>
     active && !library ? (
       <div className="notebook-pill">
         <ShellIcon name="notebook" />
@@ -2776,11 +2774,6 @@ export function App() {
           icon={<ShellIcon name="chevron" />}
           className="document-menu"
         >
-                {columnMenu.map((section, i) => (
-                  <div key={i} className="document-action-group" role="group">
-                    {section}
-                  </div>
-                ))}
                 <div
                   className="document-action-group"
                   role="group"
@@ -2915,8 +2908,9 @@ export function App() {
         ))}
       </>
     ) : null;
-  const tabTools = (tab: PaneTab) =>
-    tab.kind === "canvas" || tab.kind === "note" ? (
+  // One undo history per notebook, so one pair of buttons for it.
+  const notebookTools = () =>
+    active && !library ? (
       <>
         <button
           data-tooltip="Undo (Ctrl+Z)"
@@ -4834,7 +4828,7 @@ export function App() {
           <WorkspacePanes
             lead={notebookPill}
             newTab={newTabMenu}
-            tools={tabTools}
+            tools={notebookTools}
             layout={layout}
             dispatch={dispatchPaneAction}
             available={contentWidth}

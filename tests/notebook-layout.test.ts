@@ -37,11 +37,26 @@ const layout = () => {
 };
 
 describe("notebook pane preferences", () => {
-  it("restores hidden columns per notebook and accepts older visible layouts", () => {
+  it("turns saved hidden columns into Focus on the canvas column", () => {
     const state = layoutReducer(layout(), { type: "visibility", hidden: true });
+    // No canvas to focus: the columns simply come back.
     expect(validatedNotebookLayout(state, "workspace", "testing")).toEqual(
-      state,
+      layout(),
     );
+    const withBoard = layoutReducer(
+      withCanvas(layout(), canvasTab("workspace", "testing")),
+      { type: "visibility", hidden: true },
+    );
+    const restored = validatedNotebookLayout(withBoard, "workspace", "testing");
+    expect(restored.hidden).toBe(false);
+    expect(restored.expandedGroupId).toBe(
+      restored.groups.find((g) =>
+        g.tabIds.some((id) => restored.tabs[id].kind === "canvas"),
+      )?.id,
+    );
+  });
+  it("accepts older visible layouts", () => {
+    const state = layoutReducer(layout(), { type: "visibility", hidden: true });
     expect(layoutReducer(state, { type: "visibility", hidden: false })).toEqual(
       layout(),
     );

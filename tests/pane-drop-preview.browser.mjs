@@ -201,19 +201,19 @@ try {
       await transfer.dispose();
     }
   }
-  // Whole-column drags include multiple tabs and keep their actual widths.
-  const startColumn = async (index) => {
-    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-    await page
-      .getByRole("button", { name: "Move column", exact: true })
-      .nth(index)
-      .dispatchEvent("dragstart", { dataTransfer });
-    return dataTransfer;
-  };
-  // Resize through the real divider, then preview into the resized destination.
+  // Columns swap from a tab's menu (there's no column grip): every tab and
+  // the active one move with the column, and the slots keep their widths,
+  // including a width set through the real divider.
+  const contents = ({ id, tabIds, activeTabId }) => ({
+    id,
+    tabIds,
+    activeTabId,
+  });
   for (const source of [0, 1]) {
     await page.setViewportSize({ width: 1600, height: 700 });
     await page.evaluate(() => window.configure(true));
+    await frame();
+    await page.evaluate(() => window.addColumnTab());
     await frame();
     const startWidth = (
       await page.locator(".pane-group").first().boundingBox()
@@ -231,131 +231,49 @@ try {
     });
     await page.mouse.up();
     await frame();
-    const destination = await page
-      .locator(".pane-group")
-      .nth(1 - source)
-      .boundingBox();
     const resized = await page.locator(".pane-group").first().boundingBox();
     assert.ok(
       Math.abs(resized.width - (startWidth - 80)) < 1,
       "pointer resize changes column width",
     );
-    const dataTransfer = await startColumn(source);
-    const target = page.locator(
-      `.pane-split-target.${source === 0 ? "right" : "left"}`,
+    const destination = await page
+      .locator(".pane-group")
+      .nth(1 - source)
+      .boundingBox();
+    const before = await page.evaluate(() =>
+      JSON.parse(JSON.stringify(window.layout)),
     );
-    const preview = await target.boundingBox();
-    assert.ok(
-      Math.abs(preview.x - destination.x) < 1,
-      "preview respects resized destination position",
-    );
-    assert.ok(
-      Math.abs(preview.width - destination.width) < 1,
-      "preview respects resized destination width",
-    );
-    await target.dispatchEvent("dragover", { dataTransfer });
-    if (source === 1)
-      await page.screenshot({ path: "test-results/pane-drop-resized.png" });
-    await target.dispatchEvent("drop", { dataTransfer });
+    await page
+      .locator(".pane-group")
+      .nth(source)
+      .locator('[role="tab"]')
+      .first()
+      .click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Swap columns", exact: true })
+      .click();
     await frame();
+    const after = await page.evaluate(() =>
+      JSON.parse(JSON.stringify(window.layout)),
+    );
+    assert.deepEqual(
+      after.groups.map(contents),
+      [...before.groups].reverse().map(contents),
+      "all tabs and active tabs move with the column",
+    );
     const landed = await page
       .locator(".pane-group")
       .nth(1 - source)
       .boundingBox();
     assert.ok(
       Math.abs(landed.x - destination.x) < 1,
-      "column move keeps resized divider position",
+      "swapping keeps the resized divider position",
     );
     assert.ok(
       Math.abs(landed.width - destination.width) < 1,
-      "column move keeps resized slot width",
+      "swapping keeps the resized slot width",
     );
-    await dataTransfer.dispose();
   }
-  for (const width of [1082, 1280, 1600]) {
-    await page.setViewportSize({ width, height: 700 });
-    for (const source of [0, 1]) {
-      await page.evaluate(() => {
-        window.configure(true);
-      });
-      await frame();
-      await page.evaluate(() => window.addColumnTab());
-      await frame();
-      const before = await page.evaluate(() =>
-        JSON.parse(JSON.stringify(window.layout)),
-      );
-      const side = source === 0 ? "right" : "left";
-      const dataTransfer = await startColumn(source);
-      const target = page.locator(`.pane-split-target.${side}`);
-      assert.equal(await page.locator(".pane-split-target").count(), 1);
-      assert.match(await target.textContent(), /Move column/);
-      const preview = await target.boundingBox();
-      if (source === 0) {
-        const header = page.locator(".pane-header").nth(1);
-        await header.dispatchEvent("dragover", { dataTransfer });
-        assert.equal(await target.getAttribute("data-drop-active"), "true");
-        await header.dispatchEvent("drop", { dataTransfer });
-      } else {
-        await target.dispatchEvent("dragover", { dataTransfer });
-        assert.equal(await target.getAttribute("data-drop-active"), "true");
-        await target.dispatchEvent("drop", { dataTransfer });
-      }
-      await frame();
-      const after = await page.evaluate(() =>
-        JSON.parse(JSON.stringify(window.layout)),
-      );
-      const contents = ({ id, tabIds, activeTabId }) => ({
-        id,
-        tabIds,
-        activeTabId,
-      });
-      assert.deepEqual(
-        after.groups.map(contents),
-        [...before.groups].reverse().map(contents),
-        "all tabs and active tabs move with the column",
-      );
-      const landed = await page
-        .locator(".pane-group")
-        .nth(1 - source)
-        .boundingBox();
-      assert.ok(
-        Math.abs(preview.x - landed.x) < 1,
-        "whole-column preview x matches destination",
-      );
-      assert.ok(
-        Math.abs(preview.width - landed.width) < 1,
-        "whole-column preview width matches destination",
-      );
-      assert.equal(await page.locator(".pane-split-target").count(), 0);
-      await dataTransfer.dispose();
-    }
-  }
-  // Dropping on the source column is a no-op; cancel clears its preview.
-  await page.evaluate(() => window.configure(true));
-  await frame();
-  const unchanged = await page.evaluate(() => JSON.stringify(window.layout));
-  const ownTransfer = await startColumn(0);
-  await page
-    .locator(".pane-header")
-    .first()
-    .dispatchEvent("drop", { dataTransfer: ownTransfer });
-  assert.equal(
-    await page.evaluate(() => JSON.stringify(window.layout)),
-    unchanged,
-  );
-  assert.equal(await page.locator(".pane-split-target").count(), 0);
-  await ownTransfer.dispose();
-  const cancelled = await startColumn(0);
-  await page
-    .locator(".pane-split-target.right")
-    .dispatchEvent("dragover", { dataTransfer: cancelled });
-  await page.keyboard.press("Escape");
-  assert.equal(await page.locator(".pane-split-target").count(), 0);
-  assert.equal(
-    await page.evaluate(() => JSON.stringify(window.layout)),
-    unchanged,
-  );
-  await cancelled.dispose();
   // Existing unequal columns: only the opposite side is a valid move.
   await page.evaluate(() => window.configure(true));
   await frame();

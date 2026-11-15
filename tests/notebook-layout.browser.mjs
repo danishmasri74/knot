@@ -29,8 +29,7 @@ async function hydrate(page) {
     ).default;
     const { useNotebookLayout } = await import("/src/app/useNotebookLayout.ts");
     const { tabIdentity } = await import("/src/app/workspace-layout.ts");
-    const { WorkspacePanes, ColumnVisibilityToggle } =
-      await import("/src/app/WorkspacePanes.tsx");
+    const { WorkspacePanes } = await import("/src/app/WorkspacePanes.tsx");
     await import("/src/styles/app.css");
     window.tab = (kind, noteId) => {
       const tab = {
@@ -57,7 +56,6 @@ async function hydrate(page) {
       return React.createElement(
         React.Fragment,
         null,
-        React.createElement(ColumnVisibilityToggle, { layout, dispatch }),
         // Columns cover the content row, as .workspace-content does in Knot.
         React.createElement(
           "div",
@@ -186,15 +184,15 @@ try {
     .evaluate((element) => {
       window.retainedPanel = element;
     });
-  await page.getByRole("button", { name: "Hide columns", exact: true }).click();
-  assert.deepEqual(await snapshot(page), { ...testing, hidden: true });
-  // Only the canvas column stays.
-  assert.equal(await page.locator(".pane-header").count(), 1);
+  // Focus fills the window with one column; the others become rails, and
+  // their panels stay mounted.
+  await page.locator(".pane-focus").click();
+  assert.equal(await page.locator(".pane-rail").count(), 1);
   assert.equal(
     await page.evaluate(() => window.retainedPanel.isConnected),
     true,
   );
-  await page.getByRole("button", { name: "Show columns", exact: true }).click();
+  await page.locator(".pane-focus").click();
   assert.deepEqual(await snapshot(page), testing);
   assert.equal(
     await page.evaluate(
@@ -202,16 +200,32 @@ try {
     ),
     true,
   );
-  await page.getByRole("button", { name: "Hide columns", exact: true }).click();
+  // Focus is remembered per notebook.
+  await page.locator(".pane-focus").click();
+  const focused = (await snapshot(page)).expandedGroupId;
+  assert.ok(focused);
   await switchTo(page, "oop");
-  assert.equal((await snapshot(page)).hidden, false);
+  assert.equal((await snapshot(page)).expandedGroupId, null);
   await switchTo(page, "testing");
-  assert.equal((await snapshot(page)).hidden, true);
+  assert.equal((await snapshot(page)).expandedGroupId, focused);
+  // Layouts saved with "Hide columns" come back as Focus on the canvas
+  // column, so the other columns stay reachable as rails.
+  await page.evaluate(() =>
+    window.dispatch({ type: "visibility", hidden: true }),
+  );
+  await page.evaluate(() => new Promise(requestAnimationFrame));
   await page.reload();
   await hydrate(page);
-  assert.equal((await snapshot(page)).hidden, true);
-  assert.equal(await page.locator(".pane-header").count(), 1);
-  await page.getByRole("button", { name: "Show columns", exact: true }).click();
+  const restored = await snapshot(page);
+  assert.equal(restored.hidden, false);
+  assert.equal(
+    restored.expandedGroupId,
+    restored.groups.find((g) =>
+      g.tabIds.some((id) => restored.tabs[id].kind === "canvas"),
+    ).id,
+  );
+  assert.equal(await page.locator(".pane-rail").count(), 1);
+  await page.locator(".pane-focus").click();
   assert.deepEqual(await snapshot(page), testing);
   await switchTo(page, "oop");
   assert.equal((await snapshot(page)).groups.length, 1);

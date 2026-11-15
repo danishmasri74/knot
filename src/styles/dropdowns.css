@@ -14,7 +14,7 @@
   --dropdown-shadow: 0 4px 16px #00000014, 0 0 1px #0000001f;
 }
 
-.knot-dropdown:is(.shell-menu-content, .collection-popover, .card-deck-menu) {
+.knot-dropdown:is(.shell-menu-content, .collection-popover, .card-deck-menu, .pane-tab-menu) {
   padding: var(--dropdown-padding);
   border: 1px solid var(--dropdown-border);
   border-radius: var(--dropdown-radius);
@@ -30,7 +30,7 @@
   gap: var(--dropdown-gap);
 }
 
-.knot-dropdown:is(.shell-menu-content, .collection-popover, .card-deck-menu)
+.knot-dropdown:is(.shell-menu-content, .collection-popover, .card-deck-menu, .pane-tab-menu)
   :is(button, [role="menuitem"]) {
   min-height: var(--dropdown-row-height);
   padding: var(--dropdown-row-padding);
@@ -43,7 +43,8 @@
 .knot-dropdown :is(.library-filter-options, .collection-action-list) button,
 .knot-dropdown.shell-menu-content > button,
 .knot-dropdown .document-action-group button,
-.card-deck-menu.knot-dropdown button {
+.card-deck-menu.knot-dropdown button,
+.pane-tab-menu.knot-dropdown button {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -51,9 +52,21 @@
   background: transparent;
 }
 
-.knot-dropdown:is(.shell-menu-content, .collection-popover, .card-deck-menu)
+.knot-dropdown:is(.shell-menu-content, .collection-popover, .card-deck-menu, .pane-tab-menu)
   button:is(:hover, :focus-visible, [aria-pressed="true"]):not(:disabled) {
   background: var(--dropdown-highlight);
+}
+
+/* Section breaks inside any menu. */
+.knot-dropdown hr {
+  margin: 2px 4px;
+  border: 0;
+  border-top: 1px solid var(--dropdown-border);
+}
+
+.knot-dropdown button:disabled {
+  color: var(--shell-muted);
+  cursor: default;
 }
 
 /* Destructive rows (Move to Trash) look the same in every menu. */
