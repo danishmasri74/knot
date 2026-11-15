@@ -35,6 +35,20 @@ export class NavigationHistory<T extends { id: string }> {
     this.changed();
   }
 
+  /** Swap the current entry for a more specific one (same place). */
+  replace(item: T) {
+    if (this.position < 0) return this.visit(item);
+    this.entries = this.entries.map((entry, index) =>
+      index === this.position ? item : entry,
+    );
+    this.changed();
+  }
+
+  /** The current entry, if any. */
+  get current(): T | undefined {
+    return this.entries[this.position];
+  }
+
   update(id: string, change: Partial<T>) {
     this.entries = this.entries.map((item) =>
       item.id === id ? { ...item, ...change } : item,
@@ -51,10 +65,14 @@ export class NavigationHistory<T extends { id: string }> {
   }
 
   remove(id: string) {
+    this.removeWhere((item) => item.id === id);
+  }
+
+  removeWhere(test: (item: T) => boolean) {
     const before = this.entries
       .slice(0, this.position + 1)
-      .filter((item) => item.id !== id).length;
-    this.entries = this.entries.filter((item) => item.id !== id);
+      .filter((item) => !test(item)).length;
+    this.entries = this.entries.filter((item) => !test(item));
     this.position = before - 1;
     this.changed();
   }

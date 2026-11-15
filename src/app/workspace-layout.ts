@@ -415,75 +415,114 @@ export function fillIndex(state: WorkspaceLayout, groups = state.groups) {
   return index < 0 ? 0 : index;
 }
 export type Rail = { group: PaneGroup; left: number };
-/** Responsive projection never mutates membership or preferred widths.
- * offset is where the first projected column starts (after any rails). */
+export type Projection = {
+  /** Columns shown at full size, left to right. */
+  groups: PaneGroup[];
+  widths: number[];
+  /** Where each shown column starts. */
+  lefts: number[];
+  single: boolean;
+  /** Some columns didn't fit and became rails. */
+  collapsed: boolean;
+  /** Columns shown as 40px rails (expanded neighbour, or too narrow). */
+  rails: Rail[];
+};
+/** Responsive projection never mutates membership or preferred widths. */
 export function projectLayout(
   state: WorkspaceLayout,
   available: number,
-): {
-  groups: PaneGroup[];
-  widths: number[];
-  single: boolean;
-  collapsed: boolean;
-  offset: number;
-  rails: Rail[];
-} {
-  const expanded = state.groups.findIndex(
-    (g) => g.id === state.expandedGroupId,
-  );
-  if (expanded >= 0 && !state.hidden && state.groups.length > 1) {
-    const others = state.groups.length - 1;
-    const width = Math.max(0, available - others * (RAIL_WIDTH + 1));
-    const rails: Rail[] = [];
-    let left = 0;
-    state.groups.forEach((group, index) => {
-      if (index === expanded) left += width + 1;
-      else {
-        rails.push({ group, left });
-        left += RAIL_WIDTH + 1;
-      }
-    });
-    return {
-      groups: [state.groups[expanded]],
-      widths: [width],
-      single: true,
-      collapsed: false,
-      offset: expanded * (RAIL_WIDTH + 1),
-      rails,
-    };
-  }
-  return { ...projectColumns(state, available), offset: 0, rails: [] };
-}
-function projectColumns(state: WorkspaceLayout, available: number) {
-  let groups = state.groups;
+): Projection {
+  const all = state.groups;
   if (state.hidden) {
     // "Hide columns" leaves only the canvas column.
-    groups = groups.filter((g) => containsCanvas(state, g));
+    const groups = all.filter((g) => containsCanvas(state, g));
     return {
       groups,
       widths: groups.map(() => available),
+      lefts: groups.map(() => 0),
       single: true,
       collapsed: false,
+      rails: [],
     };
   }
-  const minimums = groups.map((g) => minimumWidth(state, g));
-  const collapsed =
-    groups.length > 1 &&
-    available < minimums.reduce((a, b) => a + b, 0) + groups.length - 1;
-  if (collapsed) {
-    const focused =
-      groups.find((g) => g.id === state.lastUsedGroupId) ?? groups[0];
-    groups = [
-      {
-        ...focused,
-        tabIds: groups.flatMap((g) => g.tabIds),
-        preferredWidth: Math.max(...groups.map((g) => g.preferredWidth)),
-      },
-    ];
+  const expanded = all.findIndex((g) => g.id === state.expandedGroupId);
+  if (expanded >= 0 && all.length > 1)
+    return placed(state, all, new Set([expanded]), available, false);
+  const mins = all.map((g) => minimumWidth(state, g));
+  const fits = (shown: Set<number>) =>
+    [...shown].reduce((n, i) => n + mins[i], 0) +
+      shown.size -
+      1 +
+      (all.length - shown.size) * (RAIL_WIDTH + 1) <=
+    available;
+  const everything = new Set(all.map((_, i) => i));
+  if (all.length < 2 || fits(everything))
+    return placed(state, all, everything, available, false);
+  // Too narrow for every column: the one used last stays, then the canvas,
+  // then its nearest neighbours, while they fit; the rest become rails.
+  const focused = Math.max(
+    0,
+    all.findIndex((g) => g.id === state.lastUsedGroupId),
+  );
+  const canvas = all.findIndex((g) => containsCanvas(state, g));
+  const order = [
+    ...(canvas >= 0 && canvas !== focused ? [canvas] : []),
+    ...all
+      .map((_, i) => i)
+      .filter((i) => i !== focused && i !== canvas)
+      .sort((a, b) => Math.abs(a - focused) - Math.abs(b - focused)),
+  ];
+  const shown = new Set([focused]);
+  for (const index of order) {
+    const next = new Set([...shown, index]);
+    if (fits(next)) shown.add(index);
   }
-  const single = groups.length === 1;
-  if (single || !groups.length)
-    return { groups, widths: groups.map(() => available), single, collapsed };
+  return placed(state, all, shown, available, true);
+}
+/** Lays out shown columns and rails in their original order. */
+function placed(
+  state: WorkspaceLayout,
+  all: PaneGroup[],
+  shown: Set<number>,
+  available: number,
+  collapsed: boolean,
+): Projection {
+  const groups = all.filter((_, i) => shown.has(i));
+  const railCount = all.length - groups.length;
+  const widths = columnWidths(
+    state,
+    groups,
+    Math.max(0, available - railCount * (RAIL_WIDTH + 1)),
+  );
+  const lefts: number[] = [];
+  const rails: Rail[] = [];
+  let left = 0;
+  all.forEach((group, index) => {
+    if (shown.has(index)) {
+      lefts.push(left);
+      left += widths[lefts.length - 1] + 1;
+    } else {
+      rails.push({ group, left });
+      left += RAIL_WIDTH + 1;
+    }
+  });
+  return {
+    groups,
+    widths,
+    lefts,
+    single: groups.length === 1,
+    collapsed,
+    rails,
+  };
+}
+/** Shown columns share the width: the fill column (the canvas column, or the
+ * first) takes what the others leave. */
+function columnWidths(
+  state: WorkspaceLayout,
+  groups: PaneGroup[],
+  available: number,
+) {
+  if (groups.length < 2) return groups.map(() => available);
   const fill = fillIndex(state, groups);
   const mins = groups.map((g) => minimumWidth(state, g));
   const budget = available - (groups.length - 1) - mins[fill];
@@ -492,7 +531,10 @@ function projectColumns(state: WorkspaceLayout, available: number) {
     others[i] ? Math.max(mins[i], g.preferredWidth) : 0,
   );
   const minOthers = mins.reduce((n, m, i) => n + (others[i] ? m : 0), 0);
-  const wantedSurplus = wanted.reduce((n, w, i) => n + w - (others[i] ? mins[i] : 0), 0);
+  const wantedSurplus = wanted.reduce(
+    (n, w, i) => n + w - (others[i] ? mins[i] : 0),
+    0,
+  );
   const surplus = Math.max(0, budget - minOthers);
   const widths = groups.map((g, i) =>
     others[i]
@@ -503,7 +545,7 @@ function projectColumns(state: WorkspaceLayout, available: number) {
   );
   widths[fill] =
     available - (groups.length - 1) - widths.reduce((a, b) => a + b, 0);
-  return { groups, widths, single, collapsed };
+  return widths;
 }
 
 /** Where a tab dropped on the left or right edge goes. Null when the drop

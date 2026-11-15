@@ -8,3 +8,6 @@
 - The top bar is gone, giving its space to your notes. The notebook's name, star, save state and actions sit at the start of the first column, each column has a + menu to open tabs, and back, forward and the sidebar toggle moved into the sidebar.
 - Settings → General → Sidebar puts the sidebar on the left or right of the window.
 - Note tabs remember where you scrolled, even after restarting Knot.
+- On a narrow window, columns that do not fit shrink to rails instead of merging into one.
+- Each notebook's PDF reader comes back at the PDF, zoom and position you left it at.
+- Back and Forward also step between the tabs you switched to in a notebook.

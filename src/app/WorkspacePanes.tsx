@@ -97,7 +97,8 @@ export function WorkspacePanes({
   onReturn: () => void;
 }) {
   const projection = projectLayout(layout, available);
-  const expanded = projection.rails.length > 0;
+  // Rails from an expanded column (not from a narrow window).
+  const expanded = !!layout.expandedGroupId && projection.rails.length > 0;
   const hidden = !projection.groups.length;
   const [announcement, setAnnouncement] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
@@ -228,8 +229,7 @@ export function WorkspacePanes({
   );
   const canvasShown = canvasIndex >= 0;
   const canvasLeft = canvasShown
-    ? projection.offset +
-      projection.widths.slice(0, canvasIndex).reduce((n, w) => n + w + 1, 0)
+    ? projection.lefts[canvasIndex]
     : 0;
   const canvasWidth = canvasShown ? projection.widths[canvasIndex] : 0;
   useLayoutEffect(() => {
@@ -384,9 +384,7 @@ export function WorkspacePanes({
   const slots = projection.groups.map((g, index) => ({
     group: g,
     width: projection.widths[index],
-    left:
-      projection.offset +
-      projection.widths.slice(0, index).reduce((n, w) => n + w + 1, 0),
+    left: projection.lefts[index],
   }));
   return (
     <div

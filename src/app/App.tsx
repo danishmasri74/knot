@@ -257,6 +257,13 @@ async function highlightImageLines(
       .finished.finally(() => mark.remove());
   }
 }
+/** Where Back and Forward go: a notebook, a tab in one, the Library, or
+ * Ask Knot. */
+type HistoryEntry =
+  | KnowledgeObject
+  | LibraryLocation
+  | { id: string; ai: true }
+  | { id: string; tab: string; notebook: KnowledgeObject };
 export function App() {
   const [library, setLibrary] = useState<LibraryLocation | null>(
     defaultLibrary,
@@ -462,6 +469,8 @@ export function App() {
     };
   }, []);
   const pendingPaneFocus = useRef<string | null>(null);
+  /** A tab Back/Forward is showing, so showing it isn't a new step. */
+  const historyTab = useRef<string | null>(null);
   /** Tabs opened from a column's + menu join that column. */
   const paneTarget = useRef<string | null>(null);
   const workspaceIdentity = useRef<string | null>(null);
@@ -1124,9 +1133,7 @@ export function App() {
     pendingUpdateVersion !== skippedVersion();
   const host = useRef<HTMLDivElement>(null),
     history = useRef(
-      new NavigationHistory<
-        KnowledgeObject | LibraryLocation | { id: string; ai: true }
-      >(),
+      new NavigationHistory<HistoryEntry>(),
     ),
     session = useRef<EditorSession | null>(null),
     locked = useRef(false),
@@ -1357,9 +1364,18 @@ export function App() {
     setLibraryRevision((v) => v + 1);
     if (record) history.current.visit(location);
   }
-  async function navigateHistory(
-    item: KnowledgeObject | LibraryLocation | { id: string; ai: true },
-  ) {
+  async function navigateHistory(item: HistoryEntry) {
+    if ("tab" in item) {
+      // A tab visit: open its notebook, then show the tab if it's still open
+      // (Back never reopens a closed tab).
+      if (session.current?.doc.id !== item.notebook.id)
+        await select(item.notebook, false);
+      if (layoutRef.current.tabs[item.tab]) {
+        historyTab.current = item.tab;
+        dispatchLayout({ type: "activate", id: item.tab });
+      }
+      return;
+    }
     if ("ai" in item) {
       showAi("page", false);
       return;
@@ -2213,6 +2229,29 @@ export function App() {
   const viewing: "page" | "edgeless" =
     lastTab?.kind === "note" ? "page" : "edgeless";
   const viewingNote = lastTab?.kind === "note" ? (lastTab.noteId ?? null) : null;
+  // Switching tabs within a notebook is a step Back can return to.
+  useEffect(() => {
+    if (!active || library || !lastTab) return;
+    if (historyTab.current === lastTab.id) {
+      historyTab.current = null;
+      return;
+    }
+    const entry: HistoryEntry = {
+      id: `tab:${active.id}:${lastTab.id}`,
+      tab: lastTab.id,
+      notebook: active,
+    };
+    const current = history.current.current;
+    // Opening a notebook already recorded it; this names the tab it shows.
+    if (current && !("tab" in current) && current.id === active.id)
+      history.current.replace(entry);
+    else if (
+      current &&
+      "tab" in current &&
+      current.notebook.id === active.id
+    )
+      history.current.visit(entry);
+  }, [lastTab?.id, active?.id, library]);
   useEffect(() => {
     const openSelectedCard = (event: KeyboardEvent) => {
       if (
@@ -2906,7 +2945,11 @@ export function App() {
               setLinksView("add");
               setBacklinks(null);
               if (trash !== null) await loadTrash();
-              history.current.remove(moveSelection.id);
+              history.current.removeWhere(
+                (entry) =>
+                  entry.id === moveSelection.id ||
+                  ("tab" in entry && entry.notebook.id === moveSelection.id),
+              );
               if (session.current?.doc.id === moveSelection.id) {
                 session.current.destroy();
                 session.current = null;
@@ -4833,6 +4876,7 @@ export function App() {
                     <Suspense fallback={<p>Loading PDF reader…</p>}>
                       <PdfReader
                         key={pdfReader.id}
+                        rememberAs={session.current?.doc.id}
                         sources={pdfReader.sources}
                         onAsk={
                           aiEnabled

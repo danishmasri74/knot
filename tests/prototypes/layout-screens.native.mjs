@@ -54,31 +54,39 @@ try {
   await shell.waitForSelector("affine-editor-container", { timeout: 60000 });
   await ready();
   await shot("1-new-notebook");
-  // The notebook pill's menu holds the old Document actions.
-  await shell.locator('summary[aria-label="Notebook actions"]').click();
-  await shot("2-notebook-menu");
-  await shell.keyboard.press("Escape");
-  // The + menu opens a note tab in this column... then split it out.
+  const lastTab = () =>
+    shell.evaluate(() => {
+      return [...document.querySelectorAll('[role="tab"][aria-selected="true"]')].map((t) => t.textContent);
+    });
+  // Open a Card Deck tab, then a note tab; Back steps through the tabs.
   await shell.locator('summary[aria-label="Open a tab"]').first().click();
   await shell.getByRole("button", { name: "Card Deck", exact: true }).click();
   await ready();
   await shell.locator('summary[aria-label="Open a tab"]').last().click();
   await shell.getByRole("button", { name: "Note", exact: true }).click();
   await shell.locator("[data-note-pane]").waitFor();
-  await shot("3-plus-menu-tabs");
-  // Collapsed sidebar: its controls move to a rail.
-  await shell.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
-  await shot("4-sidebar-collapsed");
-  await shell.getByRole("button", { name: "Expand sidebar", exact: true }).click();
-  await shell.getByRole("button", { name: "Library", exact: true }).first().click();
+  const history = [];
+  history.push(await lastTab());
+  await shell.getByRole("button", { name: "Go back", exact: true }).first().click();
   await ready();
-  await shot("5-library");
-  // Sidebar on the right.
-  await shell.evaluate(() => localStorage.setItem("knot.sidebar.side", "right"));
-  await shell.reload();
-  await shell.waitForSelector(".app-shell", { timeout: 60000 });
+  await shell.waitForTimeout(300);
+  history.push(await lastTab());
+  await shell.getByRole("button", { name: "Go back", exact: true }).first().click();
   await ready();
-  await shot("6-sidebar-right");
+  await shell.waitForTimeout(300);
+  history.push(await lastTab());
+  console.log("selected tabs after each Back:", JSON.stringify(history));
+  console.log("active column tab:", JSON.stringify(await shell.evaluate(() => document.activeElement?.textContent ?? null)));
+  // Narrow window: the column that doesn't fit becomes a rail.
+  await shell.locator('.pane-group').last().locator('summary[aria-label="Pane actions"]').click();
+  await shell.getByRole("button", { name: "Separate tab to right", exact: true }).click();
+  await shell.evaluate(() => {
+    const content = document.querySelector(".workspace-content");
+    content.style.maxWidth = "820px";
+  });
+  await shell.waitForTimeout(800);
+  console.log("rails at narrow width:", await shell.locator(".pane-rail").count());
+  await shot("2-narrow-rails");
   console.log(JSON.stringify({ errors }, null, 2));
 } catch (error) {
   console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));

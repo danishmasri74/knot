@@ -92,3 +92,17 @@ it("notifies arrow controls after asynchronous tab navigation commits", async ()
   history.clear();
   expect(controls).toHaveLength(count);
 });
+it("replaces the current entry and removes entries matching a test", async () => {
+    const history = new NavigationHistory<{ id: string; tab?: string }>();
+    history.visit({ id: "a" });
+    history.replace({ id: "tab:a:1", tab: "1" });
+    history.visit({ id: "tab:a:2", tab: "2" });
+    expect(history.current?.id).toBe("tab:a:2");
+    const opened: string[] = [];
+    await history.move(-1, async (item) => void opened.push(item.id));
+    expect(opened).toEqual(["tab:a:1"]);
+    expect(history.canBack).toBe(false);
+    history.removeWhere((item) => item.id.startsWith("tab:a:"));
+    expect(history.current).toBeUndefined();
+    expect(history.canForward).toBe(false);
+  });

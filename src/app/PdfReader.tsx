@@ -34,8 +34,50 @@ import type { OcrLine } from "../services/ocr-passages";
 import { openPdfBytes } from "../services/pdf-input";
 import type { AiPdfSource } from "../services/pdf-input";
 
+/** Which PDF, zoom and scroll position each notebook's reader was left at,
+ * kept on this device so switching notebooks or restarting comes back to it. */
+type PdfView = { key: string; zoom: number; ratio: number };
+const viewKey = "knot.pdf-view.v1";
+function savedViews(): Record<string, PdfView> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(viewKey) ?? "{}");
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, PdfView>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+function savedView(notebook: string): PdfView | undefined {
+  const view = savedViews()[notebook];
+  return view &&
+    typeof view.key === "string" &&
+    Number.isFinite(view.zoom) &&
+    Number.isFinite(view.ratio)
+    ? view
+    : undefined;
+}
+let viewTimer = 0;
+function saveView(notebook: string, view: PdfView) {
+  clearTimeout(viewTimer);
+  viewTimer = window.setTimeout(() => {
+    const views = savedViews();
+    delete views[notebook];
+    views[notebook] = view;
+    // Keep the most recent notebooks only.
+    const names = Object.keys(views);
+    for (const name of names.slice(0, Math.max(0, names.length - 100)))
+      delete views[name];
+    try {
+      localStorage.setItem(viewKey, JSON.stringify(views));
+    } catch {
+      /* The view stays for this session. */
+    }
+  }, 400);
+}
 export function PdfReader({
   sources,
+  rememberAs,
   watchCitations,
   onJump,
   onDetach,
@@ -47,6 +89,8 @@ export function PdfReader({
   onRemove,
 }: {
   sources: PdfSource[];
+  /** The notebook whose reader this is; its last view is restored. */
+  rememberAs?: string;
   onAsk?: (label: string, text: string, source: AiPdfSource) => void;
   onReplace: (id: string, value: PdfHighlight) => Promise<void>;
   onDetach: (citation: PdfCitation) => Promise<() => Promise<void>>;
@@ -57,7 +101,13 @@ export function PdfReader({
   onCreate: (highlight: PdfHighlight) => Promise<void>;
   onRemove: (location: PdfLocation, id?: string) => Promise<void>;
 }) {
-  const [key, setKey] = useState(initial?.key ?? sources[0]?.key ?? "");
+  const [remembered] = useState(() => {
+    const view = !initial && rememberAs ? savedView(rememberAs) : undefined;
+    return view && sources.some((s) => s.key === view.key) ? view : undefined;
+  });
+  const [key, setKey] = useState(
+    initial?.key ?? remembered?.key ?? sources[0]?.key ?? "",
+  );
   const [pageNumber, setPageNumber] = useState(initial?.page ?? 1);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState("");
@@ -226,7 +276,49 @@ export function PdfReader({
   }, [anchor, destinations.length, draft]);
   const locatedInitial = useRef(false);
   const [readerWidth, setReaderWidth] = useState(320);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(remembered?.zoom ?? 1);
+  const restoredView = useRef(!remembered);
+  // Come back to the remembered scroll position once the pages are laid out.
+  useEffect(() => {
+    if (restoredView.current || !remembered || key !== remembered.key || loading)
+      return;
+    // Pages grow as they render, so keep applying the position until the
+    // height settles, unless the reader scrolls it themself first.
+    let frame = 0;
+    let tries = 0;
+    let stable = 0;
+    let height = -1;
+    const scroller = scrollRef.current;
+    const stop = () => {
+      restoredView.current = true;
+      cancelAnimationFrame(frame);
+    };
+    scroller?.addEventListener("wheel", stop, { once: true });
+    scroller?.addEventListener("pointerdown", stop, { once: true });
+    const restore = () => {
+      if (!scroller || restoredView.current) return;
+      scroller.scrollTop = remembered.ratio * scroller.scrollHeight;
+      stable = scroller.scrollHeight === height ? stable + 1 : 0;
+      height = scroller.scrollHeight;
+      if (stable < 10 && ++tries < 180) frame = requestAnimationFrame(restore);
+      else restoredView.current = true;
+    };
+    frame = requestAnimationFrame(restore);
+    return () => {
+      cancelAnimationFrame(frame);
+      scroller?.removeEventListener("wheel", stop);
+      scroller?.removeEventListener("pointerdown", stop);
+    };
+  }, [remembered, key, loading]);
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (rememberAs && key && restoredView.current && scroller)
+      saveView(rememberAs, {
+        key,
+        zoom,
+        ratio: scroller.scrollHeight ? scroller.scrollTop / scroller.scrollHeight : 0,
+      });
+  }, [rememberAs, key, zoom]);
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
@@ -836,6 +928,12 @@ export function PdfReader({
         ref={scrollRef}
         onScroll={(e) => {
           const el = e.currentTarget;
+          if (rememberAs && key && restoredView.current && el.scrollHeight)
+            saveView(rememberAs, {
+              key,
+              zoom,
+              ratio: el.scrollTop / el.scrollHeight,
+            });
           const pages = el.children;
           if (!pages.length) return;
           const target = el.getBoundingClientRect().top + el.clientHeight / 2;

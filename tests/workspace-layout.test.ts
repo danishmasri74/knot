@@ -324,8 +324,26 @@ describe("supporting workspace layout", () => {
         [canvas.id],
         [browser.id],
       ]);
-      expect(p.offset).toBe(41);
+      expect(p.lefts).toEqual([41]);
       expect(p.widths[0] + 2 * 41).toBe(1200);
+    });
+    it("turns columns that don't fit into rails instead of merging them", () => {
+      // Canvas (360) + PDF (360) + browser (320) need 1042px.
+      const s = layoutReducer(three(), { type: "activate", id: browser.id });
+      const p = projectLayout(s, 800);
+      expect(p.collapsed).toBe(true);
+      // The column used last stays, then the canvas; the PDF becomes a rail.
+      expect(p.groups.map((g) => g.tabIds)).toEqual([[canvas.id], [browser.id]]);
+      expect(p.rails.map((r) => r.group.tabIds)).toEqual([[pdf.id]]);
+      expect(p.widths.reduce((a, b) => a + b, 0) + 41 + 1).toBe(800);
+      // Rails and columns keep their original order.
+      expect(p.lefts[0]).toBe(0);
+      expect(p.rails[0].left).toBe(p.widths[0] + 1);
+      expect(p.lefts[1]).toBe(p.rails[0].left + 41);
+      // Very narrow: just the column used last, with two rails.
+      const tiny = projectLayout(s, 420);
+      expect(tiny.groups.map((g) => g.tabIds)).toEqual([[browser.id]]);
+      expect(tiny.rails).toHaveLength(2);
     });
     it("opens new tabs in the expanded column", () => {
       let s = layoutReducer(three(), { type: "expand", id: pdf.id });
