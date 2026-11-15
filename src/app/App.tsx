@@ -36,7 +36,10 @@ import {
   setSidebarSide,
   type SidebarSide,
 } from "../services/sidebar-side";
-import { useNotebookLayout } from "./useNotebookLayout";
+import {
+  forgetNotebookLayout,
+  useNotebookLayout,
+} from "./useNotebookLayout";
 import { NotePagePane } from "./NotePagePane";
 import {
   supportingKinds,
@@ -4178,6 +4181,9 @@ export function App() {
                     }
                     if (purgeSelection.ids.length)
                       count += await repository.purgeTrash(purgeSelection.ids);
+                    for (const id of purgeSelection.ids)
+                      if (workspaceCatalog.active)
+                        forgetNotebookLayout(workspaceCatalog.active, id);
                     setPurgeSelection(null);
                     setIntegrity(null);
                     setNotice(

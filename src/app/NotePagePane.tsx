@@ -3,8 +3,42 @@ import { observeAiToolbar } from "../features/editor/blocksuite/ai-toolbar";
 import type { AffineEditorContainer } from "@blocksuite/presets";
 import { useEffect, useRef, useState } from "react";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
-/** Where each note tab was scrolled, so a tab that slept comes back in place. */
-const scrollPositions = new Map<string, number>();
+/** Where each note tab was scrolled, so a tab that slept (or a notebook
+ * reopened after a restart) comes back in place. Kept on this device. */
+const scrollKey = "knot.note-scroll.v1";
+const scrollPositions = new Map<string, number>(
+  (() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(scrollKey) ?? "[]");
+      return Array.isArray(saved)
+        ? saved.filter(
+            (e): e is [string, number] =>
+              Array.isArray(e) &&
+              typeof e[0] === "string" &&
+              Number.isFinite(e[1]),
+          )
+        : [];
+    } catch {
+      return [];
+    }
+  })(),
+);
+let saveTimer = 0;
+function rememberScroll(key: string, top: number) {
+  scrollPositions.delete(key);
+  scrollPositions.set(key, top);
+  // Keep the most recent notes only.
+  while (scrollPositions.size > 300)
+    scrollPositions.delete(scrollPositions.keys().next().value!);
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    try {
+      localStorage.setItem(scrollKey, JSON.stringify([...scrollPositions]));
+    } catch {
+      /* Positions stay for this session. */
+    }
+  }, 400);
+}
 export function NotePagePane({
   session,
   noteId,
@@ -44,7 +78,7 @@ export function NotePagePane({
         target.matches(".affine-page-viewport") &&
         !element.closest("[hidden]")
       )
-        scrollPositions.set(key, target.scrollTop);
+        rememberScroll(key, target.scrollTop);
     };
     element.addEventListener("scroll", remember, true);
     const refresh = () => {

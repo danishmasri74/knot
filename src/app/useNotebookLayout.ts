@@ -115,6 +115,14 @@ function restoredLayout(
   return next;
 }
 
+/** A notebook deleted for good no longer needs its saved layout. */
+export function forgetNotebookLayout(workspace: string, notebook: string) {
+  try {
+    localStorage.removeItem(notebookLayoutKey(workspace, notebook));
+  } catch {
+    /* Nothing to clean up without storage. */
+  }
+}
 export function readNotebookLayout(workspace: string, notebook: string) {
   try {
     return validatedNotebookLayout(
