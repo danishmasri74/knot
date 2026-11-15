@@ -17,8 +17,8 @@ export const supportingKinds = new Set<string>([
   "reference",
   "video",
 ]);
-/** Up to three content columns sit beside the sidebar. */
-export const MAX_COLUMNS = 3;
+/** Up to two content columns sit beside the sidebar. */
+export const MAX_COLUMNS = 2;
 /** Width of a collapsed column while another column is expanded. */
 export const RAIL_WIDTH = 40;
 /** What each kind of tab does when it isn't visible, and how narrow it gets.
@@ -128,17 +128,24 @@ export function withCanvas(
     tabs: { ...state.tabs, [tab.id]: tab },
     groups: state.groups.map((g) => ({ ...g, tabIds: [...g.tabIds] })),
   };
-  if (next.groups.length < MAX_COLUMNS)
-    next.groups.unshift({
-      id: unusedGroupId(next),
-      tabIds: [tab.id],
-      activeTabId: tab.id,
-      preferredWidth: 480,
-    });
-  else {
-    next.groups[0].tabIds.unshift(tab.id);
-    next.groups[0].activeTabId = tab.id;
+  // No room for another column: the other columns share one, so the canvas
+  // still gets its own column on the left.
+  if (next.groups.length >= MAX_COLUMNS) {
+    const last = next.groups.at(-1)!;
+    next.groups = [
+      {
+        ...last,
+        tabIds: next.groups.flatMap((g) => g.tabIds),
+      },
+    ];
+    next.lastUsedGroupId = last.id;
   }
+  next.groups.unshift({
+    id: unusedGroupId(next),
+    tabIds: [tab.id],
+    activeTabId: tab.id,
+    preferredWidth: 480,
+  });
   next.lastUsedGroupId ??= next.groups[0].id;
   return next;
 }

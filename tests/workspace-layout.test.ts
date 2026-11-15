@@ -248,7 +248,7 @@ describe("supporting workspace layout", () => {
         (s, tab) => layoutReducer(s, { type: "open", tab }),
         withCanvas(emptyLayout(), canvas),
       );
-    it("fills the space the other columns leave", () => {
+    it("fills the space the other column leaves", () => {
       const s = withTools();
       expect(s.groups[0].tabIds).toEqual([canvas.id]);
       const p = projectLayout(s, 1400);
@@ -267,18 +267,13 @@ describe("supporting workspace layout", () => {
       expect(s.groups[0].tabIds).toEqual([canvas.id]);
       expect(s.groups[1].tabIds).toEqual([pdf.id, note.id]);
     });
-    it("splits up to three columns and moves columns", () => {
-      let s = withTools();
-      s = layoutReducer(s, { type: "split", id: pdf.id, side: "right" });
-      expect(s.groups).toHaveLength(3);
-      const full = layoutReducer(s, { type: "split", id: browser.id, side: "left" });
-      expect(full.groups).toHaveLength(3);
-      const moved = layoutReducer(s, {
-        type: "moveColumn",
-        group: s.groups[0].id,
-        index: 2,
-      });
-      expect(moved.groups[2].tabIds).toEqual([canvas.id]);
+    it("keeps at most two columns and moves columns", () => {
+      const s = withTools();
+      expect(MAX_COLUMNS).toBe(2);
+      const split = layoutReducer(s, { type: "split", id: pdf.id, side: "right" });
+      expect(split.groups).toHaveLength(2);
+      const moved = layoutReducer(s, { type: "swap" });
+      expect(moved.groups[1].tabIds).toEqual([canvas.id]);
       invariant(moved);
     });
     it("reopens a closed canvas in its own column on the left", () => {
@@ -289,15 +284,23 @@ describe("supporting workspace layout", () => {
       expect(s.groups[0].tabIds).toEqual([canvas.id]);
       expect(s.groups).toHaveLength(2);
     });
-    it("moves to an edge, splitting while there is room", () => {
-      let s = withTools();
+    it("moves to an edge: swaps columns, or joins the edge column when full", () => {
+      const s = withTools();
       expect(edgeMove(s, canvas.id, "left")).toBeNull();
-      s = layoutReducer(s, { type: "split", id: pdf.id, side: "right" });
-      expect(edgeMove(s, canvas.id, "right")).toEqual({
-        type: "moveColumn",
+      expect(edgeMove(s, canvas.id, "right")).toEqual({ type: "swap" });
+      expect(edgeMove(s, pdf.id, "left")).toEqual({
+        type: "move",
+        id: pdf.id,
         group: s.groups[0].id,
-        index: 2,
       });
+    });
+    it("gives the canvas its own column when the columns are already full", () => {
+      let s = layoutReducer(opened(), { type: "split", id: pdf.id, side: "left" });
+      s = withCanvas(s, canvas);
+      expect(s.groups.map((g) => g.tabIds)).toEqual([
+        [canvas.id],
+        [pdf.id, note.id, browser.id],
+      ]);
     });
     it("hiding columns leaves only the canvas column", () => {
       const s = layoutReducer(withTools(), { type: "visibility", hidden: true });
@@ -308,55 +311,42 @@ describe("supporting workspace layout", () => {
   });
   describe("expanding a column", () => {
     const canvas = canvasTab("w", "d");
-    const three = () => {
-      let s = [pdf, browser].reduce(
+    const two = () =>
+      [pdf, browser].reduce(
         (s, tab) => layoutReducer(s, { type: "open", tab }),
         withCanvas(emptyLayout(), canvas),
       );
-      s = layoutReducer(s, { type: "split", id: browser.id, side: "right" });
-      return s;
-    };
-    it("fills the width and shrinks the other columns to rails", () => {
-      const s = layoutReducer(three(), { type: "expand", id: pdf.id });
+    it("fills the width and shrinks the other column to a rail", () => {
+      const s = layoutReducer(two(), { type: "expand", id: pdf.id });
       const p = projectLayout(s, 1200);
-      expect(p.groups.map((g) => g.tabIds)).toEqual([[pdf.id]]);
-      expect(p.rails.map((r) => r.group.tabIds)).toEqual([
-        [canvas.id],
-        [browser.id],
-      ]);
+      expect(p.groups.map((g) => g.tabIds)).toEqual([[pdf.id, browser.id]]);
+      expect(p.rails.map((r) => r.group.tabIds)).toEqual([[canvas.id]]);
       expect(p.lefts).toEqual([41]);
-      expect(p.widths[0] + 2 * 41).toBe(1200);
+      expect(p.widths[0] + 41).toBe(1200);
     });
-    it("turns columns that don't fit into rails instead of merging them", () => {
-      // Canvas (360) + PDF (360) + browser (320) need 1042px.
-      const s = layoutReducer(three(), { type: "activate", id: browser.id });
-      const p = projectLayout(s, 800);
+    it("turns a column that doesn't fit into a rail instead of merging", () => {
+      // Canvas (360) + PDF column (360) need 721px.
+      const s = layoutReducer(two(), { type: "activate", id: pdf.id });
+      const p = projectLayout(s, 600);
       expect(p.collapsed).toBe(true);
-      // The column used last stays, then the canvas; the PDF becomes a rail.
-      expect(p.groups.map((g) => g.tabIds)).toEqual([[canvas.id], [browser.id]]);
-      expect(p.rails.map((r) => r.group.tabIds)).toEqual([[pdf.id]]);
-      expect(p.widths.reduce((a, b) => a + b, 0) + 41 + 1).toBe(800);
-      // Rails and columns keep their original order.
-      expect(p.lefts[0]).toBe(0);
-      expect(p.rails[0].left).toBe(p.widths[0] + 1);
-      expect(p.lefts[1]).toBe(p.rails[0].left + 41);
-      // Very narrow: just the column used last, with two rails.
-      const tiny = projectLayout(s, 420);
-      expect(tiny.groups.map((g) => g.tabIds)).toEqual([[browser.id]]);
-      expect(tiny.rails).toHaveLength(2);
+      expect(p.groups.map((g) => g.tabIds)).toEqual([[pdf.id, browser.id]]);
+      expect(p.rails.map((r) => r.group.tabIds)).toEqual([[canvas.id]]);
+      expect(p.rails[0].left).toBe(0);
+      expect(p.lefts[0]).toBe(41);
+      expect(p.widths[0] + 41).toBe(600);
     });
     it("opens new tabs in the expanded column", () => {
-      let s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      let s = layoutReducer(two(), { type: "expand", id: pdf.id });
       s = layoutReducer(s, { type: "open", tab: note });
       expect(s.groups.find((g) => g.id === s.expandedGroupId)?.tabIds).toEqual([
         pdf.id,
+        browser.id,
         note.id,
       ]);
     });
     it("restores when a tab in another column is shown or tabs move", () => {
-      const s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      const s = layoutReducer(two(), { type: "expand", id: pdf.id });
       expect(layoutReducer(s, { type: "activate", id: canvas.id }).expandedGroupId).toBeNull();
-      expect(layoutReducer(s, { type: "open", tab: browser }).expandedGroupId).toBeNull();
       expect(
         layoutReducer(s, { type: "move", id: browser.id, group: s.groups[0].id })
           .expandedGroupId,
@@ -364,9 +354,8 @@ describe("supporting workspace layout", () => {
       expect(layoutReducer(s, { type: "restore" }).expandedGroupId).toBeNull();
     });
     it("ends when only one column is left", () => {
-      let s = layoutReducer(three(), { type: "expand", id: pdf.id });
+      let s = layoutReducer(two(), { type: "expand", id: pdf.id });
       s = layoutReducer(s, { type: "close", id: canvas.id });
-      s = layoutReducer(s, { type: "close", id: browser.id });
       expect(s.expandedGroupId).toBeNull();
     });
   });

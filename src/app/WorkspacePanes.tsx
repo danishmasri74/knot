@@ -243,6 +243,17 @@ export function WorkspacePanes({
     parent.style.setProperty("--support-width", `${right}px`);
     parent.closest("main")?.style.setProperty("--support-width", `${right}px`);
   }, [canvasShown, canvasLeft, canvasWidth, available, hidden]);
+  // Columns glide when the layout changes (expand, restore, close, move), but
+  // follow the window and sidebar exactly while those resize.
+  const previousWidth = useRef(available);
+  useLayoutEffect(() => {
+    const parent = root.current?.parentElement;
+    if (!parent || previousWidth.current === available) return;
+    previousWidth.current = available;
+    parent.dataset.resizing = "true";
+    const timer = setTimeout(() => delete parent.dataset.resizing, 300);
+    return () => clearTimeout(timer);
+  }, [available]);
   const endGesture = () => {
     setDragging(null);
     setDropSide(null);

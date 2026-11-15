@@ -77,7 +77,6 @@ function restoredLayout(
   }
   const used = new Set<string>();
   for (const group of value.groups) {
-    if (next.groups.length === MAX_COLUMNS) break;
     if (
       !record(group) ||
       typeof group.id !== "string" ||
@@ -94,6 +93,12 @@ function restoredLayout(
       return [tab.id];
     });
     if (!tabIds.length) continue;
+    // Layouts saved with more columns than Knot now allows fold the extra
+    // columns' tabs into the last one, so no tab is lost.
+    if (next.groups.length === MAX_COLUMNS) {
+      next.groups.at(-1)!.tabIds.push(...tabIds);
+      continue;
+    }
     next.groups.push({
       id: group.id,
       tabIds,

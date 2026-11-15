@@ -118,17 +118,17 @@ try {
       window.tab("ask"),
     ])
       window.dispatch({ type: "open", tab: t });
-    window.dispatch({ type: "split", id: window.tab("pdf").id, side: "left" });
-    window.dispatch({ type: "resize", group: "pane-3", width: 620 });
+    // Two columns at most: the canvas and one for the tools.
+    window.dispatch({ type: "resize", group: "pane-2", width: 620 });
     window.dispatch({
       type: "activate",
       id: window.tab("note", "First note").id,
     });
   });
-  await page.waitForFunction(() => window.layout.groups.length === 3);
+  await page.waitForFunction(() => window.layout.groups.length === 2);
   const testing = await snapshot(page);
-  assert.equal(await page.locator(".pane-header").count(), 3);
-  assert.equal(testing.groups[0].preferredWidth, 620);
+  assert.equal(await page.locator(".pane-header").count(), 2);
+  assert.equal(testing.groups[1].preferredWidth, 620);
   const strip = page.locator(".pane-tabs").last();
   await strip.evaluate((element) => {
     element.style.maxWidth = "40px";
@@ -225,7 +225,7 @@ try {
   await page.reload();
   await hydrate(page);
   assert.deepEqual(await snapshot(page), testing);
-  assert.equal(await page.getByRole("tab", { selected: true }).count(), 3);
+  assert.equal(await page.getByRole("tab", { selected: true }).count(), 2);
 
   const stored = await context.storageState();
   await context.close();
@@ -257,7 +257,7 @@ try {
   assert.equal((await snapshot(fresh)).groups.length, 1);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS per-notebook/workspace isolation, canvas plus two-column order/widths/active tabs, refresh, fresh session, closed layout, malformed storage, StrictMode",
+    "PASS per-notebook/workspace isolation, canvas plus tools column order/widths/active tabs, refresh, fresh session, closed layout, malformed storage, StrictMode",
   );
   await freshContext.close();
 } finally {

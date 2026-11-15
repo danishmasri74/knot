@@ -144,17 +144,39 @@ describe("notebook pane preferences", () => {
   it("gives layouts saved before the canvas was a tab a canvas column on the left", () => {
     const legacy = { ...layout(), version: 1 };
     const migrated = validatedNotebookLayout(legacy, "workspace", "testing");
-    expect(migrated.groups).toHaveLength(3);
+    // Two columns at most: the old supporting columns share one.
+    expect(migrated.groups).toHaveLength(2);
     expect(migrated.groups[0].tabIds).toEqual([
       canvasTab("workspace", "testing").id,
     ]);
-    expect(migrated.groups.slice(1).map((g) => g.tabIds)).toEqual(
-      layout().groups.map((g) => g.tabIds),
+    expect(migrated.groups[1].tabIds).toEqual(
+      layout().groups.flatMap((g) => g.tabIds),
     );
     // A saved version 2 layout whose canvas was closed stays closed.
     expect(validatedNotebookLayout(layout(), "workspace", "testing")).toEqual(
       layout(),
     );
+  });
+  it("folds columns beyond the limit into the last one", () => {
+    const wide = layout();
+    const extra = tab("note", "note-2");
+    const saved = {
+      ...wide,
+      tabs: { ...wide.tabs, [extra.id]: extra },
+      groups: [
+        ...wide.groups,
+        {
+          id: "pane-9",
+          tabIds: [extra.id],
+          activeTabId: extra.id,
+          preferredWidth: 480,
+        },
+      ],
+    };
+    const restored = validatedNotebookLayout(saved, "workspace", "testing");
+    expect(restored.groups).toHaveLength(2);
+    expect(restored.groups[1].tabIds).toContain(extra.id);
+    expect(Object.keys(restored.tabs)).toHaveLength(4);
   });
   it("falls back safely when storage is unavailable or contains invalid JSON", () => {
     // No browser storage in this test environment.

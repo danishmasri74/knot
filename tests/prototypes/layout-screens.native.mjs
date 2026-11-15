@@ -54,39 +54,28 @@ try {
   await shell.waitForSelector("affine-editor-container", { timeout: 60000 });
   await ready();
   await shot("1-new-notebook");
-  const lastTab = () =>
-    shell.evaluate(() => {
-      return [...document.querySelectorAll('[role="tab"][aria-selected="true"]')].map((t) => t.textContent);
-    });
-  // Open a Card Deck tab, then a note tab; Back steps through the tabs.
   await shell.locator('summary[aria-label="Open a tab"]').first().click();
   await shell.getByRole("button", { name: "Card Deck", exact: true }).click();
   await ready();
-  await shell.locator('summary[aria-label="Open a tab"]').last().click();
-  await shell.getByRole("button", { name: "Note", exact: true }).click();
-  await shell.locator("[data-note-pane]").waitFor();
-  const history = [];
-  history.push(await lastTab());
-  await shell.getByRole("button", { name: "Go back", exact: true }).first().click();
-  await ready();
-  await shell.waitForTimeout(300);
-  history.push(await lastTab());
-  await shell.getByRole("button", { name: "Go back", exact: true }).first().click();
-  await ready();
-  await shell.waitForTimeout(300);
-  history.push(await lastTab());
-  console.log("selected tabs after each Back:", JSON.stringify(history));
-  console.log("active column tab:", JSON.stringify(await shell.evaluate(() => document.activeElement?.textContent ?? null)));
-  // Narrow window: the column that doesn't fit becomes a rail.
+  // Can a third column be made? (Two content columns at most.)
   await shell.locator('.pane-group').last().locator('summary[aria-label="Pane actions"]').click();
-  await shell.getByRole("button", { name: "Separate tab to right", exact: true }).click();
-  await shell.evaluate(() => {
-    const content = document.querySelector(".workspace-content");
-    content.style.maxWidth = "820px";
+  console.log("separate disabled:", await shell.getByRole("button", { name: "Separate tab to right", exact: true }).isDisabled());
+  await shell.keyboard.press("Escape");
+  // Sample the Card Deck column's width while it expands.
+  const samples = await shell.evaluate(async () => {
+    const column = () => [...document.querySelectorAll(".pane-group")].at(-1);
+    const editor = document.querySelector(".editor-area");
+    const out = [];
+    document.querySelectorAll('.pane-group')[1].querySelector('[aria-label="Expand column"]').click();
+    const start = performance.now();
+    while (performance.now() - start < 320) {
+      await new Promise((r) => requestAnimationFrame(r));
+      out.push([Math.round(performance.now() - start), Math.round(column().getBoundingClientRect().width), getComputedStyle(editor).visibility]);
+    }
+    return out;
   });
-  await shell.waitForTimeout(800);
-  console.log("rails at narrow width:", await shell.locator(".pane-rail").count());
-  await shot("2-narrow-rails");
+  console.log("expand samples [ms, column, canvas]:", JSON.stringify(samples.filter((_, i) => i % 3 === 0)));
+  await shot("2-expanded");
   console.log(JSON.stringify({ errors }, null, 2));
 } catch (error) {
   console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));
