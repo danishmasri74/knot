@@ -13,9 +13,12 @@ function readWidth() {
 export function SidebarFrame({
   collapsed,
   onCollapse,
+  side = "left",
   children,
 }: {
   collapsed: boolean;
+  /** On the right, the resize edge and drag direction mirror. */
+  side?: "left" | "right";
   onCollapse: (value: boolean) => void;
   children: ReactNode;
 }) {
@@ -61,9 +64,9 @@ export function SidebarFrame({
               : event.key === "End"
                 ? MAX
                 : event.key === "ArrowLeft"
-                  ? width - 16
+                  ? width + (side === "right" ? 16 : -16)
                   : event.key === "ArrowRight"
-                    ? width + 16
+                    ? width + (side === "right" ? -16 : 16)
                     : null;
           if (next !== null) {
             event.preventDefault();
@@ -79,7 +82,10 @@ export function SidebarFrame({
         onPointerMove={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId))
             setWidth(
-              clamp(origin.current.width + event.clientX - origin.current.x),
+              clamp(
+                origin.current.width +
+                  (event.clientX - origin.current.x) * (side === "right" ? -1 : 1),
+              ),
             );
         }}
         onPointerUp={(event) => {

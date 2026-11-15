@@ -31,6 +31,11 @@ import {
   WORKSPACE_SEARCH_CHANGED,
 } from "../services/ai-preferences";
 import { WorkspacePanes } from "./WorkspacePanes";
+import {
+  getSidebarSide,
+  setSidebarSide,
+  type SidebarSide,
+} from "../services/sidebar-side";
 import { useNotebookLayout } from "./useNotebookLayout";
 import { NotePagePane } from "./NotePagePane";
 import {
@@ -574,6 +579,7 @@ export function App() {
   const browserSequence = useRef(0);
   const [linkPreference, updateLinkPreference] = useState(getLinkPreference);
   const [noteView, updateNoteView] = useState(getNoteView);
+  const [sidebarSide, updateSidebarSide] = useState(getSidebarSide);
   const [startupDestination, updateStartupDestination] =
     useState(getStartupDestination);
   useEffect(() => {
@@ -2847,7 +2853,11 @@ export function App() {
       </>
     ) : null;
   return (
-    <div className="app-shell" aria-busy={busy}>
+    <div
+      className="app-shell"
+      aria-busy={busy}
+      data-sidebar-side={sidebarSide}
+    >
       {collectionTrash && (
         <TrashConfirmation
           kind="move"
@@ -3143,7 +3153,11 @@ export function App() {
           }}
         />
       )}
-      <SidebarFrame collapsed={collapsed} onCollapse={setCollapsed}>
+      <SidebarFrame
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        side={sidebarSide}
+      >
         <aside className="sidebar" aria-label="Workspace navigation">
           <div className="brand">
             <img
@@ -3650,6 +3664,27 @@ export function App() {
                 >
                   <option value="page">A note tab</option>
                   <option value="edgeless">Canvas</option>
+                </select>
+              </div>
+
+              <div className="settings-row">
+                <div>
+                  <label htmlFor="sidebar-side">
+                    <strong>Sidebar</strong>
+                  </label>
+                  <p>Show the sidebar on the left or right of the window.</p>
+                </div>
+                <select
+                  id="sidebar-side"
+                  value={sidebarSide}
+                  onChange={(event) => {
+                    const side = event.target.value as SidebarSide;
+                    setSidebarSide(side);
+                    updateSidebarSide(side);
+                  }}
+                >
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
                 </select>
               </div>
 

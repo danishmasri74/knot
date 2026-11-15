@@ -73,6 +73,12 @@ try {
   await shell.getByRole("button", { name: "Library", exact: true }).first().click();
   await ready();
   await shot("5-library");
+  // Sidebar on the right.
+  await shell.evaluate(() => localStorage.setItem("knot.sidebar.side", "right"));
+  await shell.reload();
+  await shell.waitForSelector(".app-shell", { timeout: 60000 });
+  await ready();
+  await shot("6-sidebar-right");
   console.log(JSON.stringify({ errors }, null, 2));
 } catch (error) {
   console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));

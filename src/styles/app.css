@@ -7256,3 +7256,21 @@ knot-web-source { display: block; margin-block: 8px; }
   left: auto;
   right: 0;
 }
+
+/* Sidebar on the right: the shell mirrors, including the resize edge and
+   the collapsed rail's border. */
+.app-shell[data-sidebar-side="right"] {
+  flex-direction: row-reverse;
+}
+.app-shell[data-sidebar-side="right"] .sidebar-resizer {
+  right: auto;
+  left: 0;
+}
+.app-shell[data-sidebar-side="right"] .sidebar {
+  border-right: 0;
+  border-left: 1px solid var(--shell-border);
+}
+.app-shell[data-sidebar-side="right"] .shell-rail {
+  border-right: 0;
+  border-left: 1px solid var(--shell-border);
+}
