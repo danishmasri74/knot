@@ -7040,3 +7040,26 @@ knot-web-source { display: block; margin-block: 8px; }
 .card-deck-card:has(.placement-menu[open]) {
   position: relative;
 }
+
+/* A note tab that slept shows quiet placeholder lines while its editor
+   comes back. */
+.note-page-loading {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+.note-page-loading span {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--shell-text) 8%, transparent);
+}
+.note-page-loading span:nth-child(1) {
+  width: 45%;
+  height: 16px;
+}
+.note-page-loading span:nth-child(2) {
+  width: 90%;
+}
+.note-page-loading span:nth-child(3) {
+  width: 75%;
+}

@@ -20,20 +20,22 @@ export const supportingKinds = new Set<string>([
 /** Up to three content columns sit beside the sidebar. */
 export const MAX_COLUMNS = 3;
 /** What each kind of tab does when it isn't visible, and how narrow it gets.
+ * "sleep" tabs drop their editor when hidden (WorkspacePanes passes them
+ * "asleep"); "alive" tabs keep running.
  * Identity (tabIdentity) already keeps one Canvas, Ask, Card Deck, Browser
  * and Links tab per notebook; notes, PDFs and videos are one per item. */
 export const tabPolicy: Record<
   PaneKind,
-  { idle: "alive" | "sleep" | "unmount"; minWidth: number }
+  { idle: "alive" | "sleep"; minWidth: number }
 > = {
   canvas: { idle: "alive", minWidth: 360 },
   note: { idle: "sleep", minWidth: 360 },
-  pdf: { idle: "sleep", minWidth: 360 },
-  video: { idle: "sleep", minWidth: 320 },
+  pdf: { idle: "alive", minWidth: 360 },
+  video: { idle: "alive", minWidth: 320 },
   browser: { idle: "alive", minWidth: 320 },
   ask: { idle: "alive", minWidth: 320 },
   cardDeck: { idle: "alive", minWidth: 320 },
-  reference: { idle: "unmount", minWidth: 320 },
+  reference: { idle: "alive", minWidth: 320 },
 };
 export type PaneTab = {
   id: string;

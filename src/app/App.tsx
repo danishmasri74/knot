@@ -4749,7 +4749,7 @@ export function App() {
               tab.kind === "canvas" && mode === "page" ? "note" : undefined
             }
             contentKey={(tab) => tab.id}
-            render={(tab) => (
+            render={(tab, _close, state) => (
               <>
                 {tab.kind === "note" &&
                   session.current &&
@@ -4757,6 +4757,7 @@ export function App() {
                     <NotePagePane
                       session={session.current}
                       noteId={tab.noteId!}
+                      asleep={state === "asleep"}
                       aiEnabled={aiEnabled}
                       onAsk={(editor) => {
                         if (!workspaceCatalog.active || busy || navigating)

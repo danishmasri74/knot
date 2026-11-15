@@ -19,11 +19,15 @@ import {
   projectLayout,
   minimumWidth,
   MAX_COLUMNS,
+  tabPolicy,
   hasCanvas,
   type WorkspaceLayout,
   type LayoutAction,
   type PaneTab,
 } from "./workspace-layout";
+/** live: on screen. warm: just left the screen. asleep: may drop its editor. */
+export type TabState = "live" | "warm" | "asleep";
+const WARM_MS = 30_000;
 const icons = {
   canvas: "board",
   note: "note",
@@ -80,7 +84,7 @@ export function WorkspacePanes({
   available: number;
   blocked: boolean;
   label: (tab: PaneTab) => string;
-  render: (tab: PaneTab, onClose: () => void) => ReactNode;
+  render: (tab: PaneTab, onClose: () => void, state: TabState) => ReactNode;
   contentKey?: (tab: PaneTab) => string;
   onReturn: () => void;
 }) {
@@ -98,6 +102,44 @@ export function WorkspacePanes({
   const hidden = !projection.groups.length;
   const [announcement, setAnnouncement] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
+  // Tabs that just stopped being visible stay loaded briefly, so flipping
+  // between two tabs doesn't rebuild an editor each time.
+  const [warm, setWarm] = useState<Record<string, number>>({});
+  const shownTabs = projection.groups.map((g) => g.activeTabId);
+  const shownKey = shownTabs.join("\n");
+  const previouslyShown = useRef<string[]>([]);
+  useEffect(() => {
+    const now = Date.now();
+    const left = previouslyShown.current.filter((id) => !shownTabs.includes(id));
+    previouslyShown.current = shownTabs;
+    if (!left.length) return;
+    setWarm((current) => {
+      const next = { ...current };
+      for (const id of left) next[id] = now + WARM_MS;
+      return next;
+    });
+    // shownKey stands for shownTabs.
+  }, [shownKey]);
+  useEffect(() => {
+    const until = Object.values(warm);
+    if (!until.length) return;
+    const timer = setTimeout(
+      () =>
+        setWarm((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(([, end]) => end > Date.now()),
+          ),
+        ),
+      Math.max(0, Math.min(...until) - Date.now()) + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [warm]);
+  const tabState = (tab: PaneTab): TabState =>
+    tabPolicy[tab.kind].idle === "alive" || shownTabs.includes(tab.id)
+      ? "live"
+      : (warm[tab.id] ?? 0) > Date.now()
+        ? "warm"
+        : "asleep";
   const [dropSide, setDropSide] = useState<"left" | "right" | null>(null);
   const [tabDrop, setTabDrop] = useState<{
     strip: string;
@@ -791,7 +833,7 @@ export function WorkspacePanes({
                 dispatch({ type: "activate", id: tab.id });
             }}
           >
-            {render(tab, () => close(tab.id))}
+            {render(tab, () => close(tab.id), tabState(tab))}
           </section>
         );
       })}
