@@ -71,7 +71,14 @@ export const emptyLayout = (): WorkspaceLayout => ({
 });
 export type LayoutAction =
   | { type: "visibility"; hidden: boolean }
-  | { type: "open"; tab: PaneTab; width?: number; beside?: string }
+  | {
+      type: "open";
+      tab: PaneTab;
+      width?: number;
+      beside?: string;
+      /** Open in this column (a column's + menu). */
+      group?: string;
+    }
   | { type: "activate" | "close"; id: string }
   | { type: "move"; id: string; group: string; index?: number }
   | { type: "split"; id: string; side: "left" | "right" }
@@ -195,6 +202,13 @@ export function layoutReducer(
       // While a column is expanded, new tabs open in it. An existing tab in
       // another column brings the columns back.
       if (expanded && group && group !== expanded) next.expandedGroupId = null;
+      const chosen = next.groups.find((g) => g.id === action.group);
+      if (!group && chosen) {
+        group = chosen;
+        next.tabs[action.tab.id] = action.tab;
+        if (action.tab.kind === "canvas") group.tabIds.unshift(action.tab.id);
+        else group.tabIds.push(action.tab.id);
+      }
       if (!group && expanded) {
         group = expanded;
         next.tabs[action.tab.id] = action.tab;

@@ -7108,3 +7108,151 @@ knot-web-source { display: block; margin-block: 8px; }
 .pane-header > .pane-expand[aria-pressed="true"] {
   background: var(--shell-selected);
 }
+
+/* No app header: back, forward and the sidebar toggle live in the sidebar's
+   top row, or on a slim rail while the sidebar is collapsed. */
+.brand-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.brand-actions > button,
+.shell-rail > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--shell-radius);
+  color: var(--shell-muted);
+}
+.brand-actions > button:hover:not(:disabled),
+.shell-rail > button:hover:not(:disabled) {
+  background: var(--shell-selected);
+  color: var(--shell-text);
+}
+.shell-rail {
+  flex: none;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  border-right: 1px solid var(--shell-border);
+  background: var(--shell-surface);
+}
+
+/* The open notebook, first in the first column's tab row. */
+.notebook-pill {
+  flex: 0 1 auto;
+  min-width: 96px;
+  max-width: 40%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  margin-right: 6px;
+  padding: 0 2px 0 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-surface);
+}
+.notebook-pill > .shell-icon {
+  flex: none;
+}
+.notebook-pill .title-input {
+  flex: 1;
+  min-width: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px;
+}
+.notebook-pill .favorite-toggle {
+  display: flex;
+  padding: 3px;
+  border-radius: var(--shell-radius);
+}
+/* Saved/Saving shows as a dot; a failure shows its words and retries. */
+.notebook-pill .save-status {
+  flex: none;
+  padding: 3px 4px;
+  border-radius: var(--shell-radius);
+  font-size: 12px;
+}
+.notebook-pill .save-status:not(.failed) {
+  width: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: transparent;
+  position: relative;
+}
+.notebook-pill .save-status:not(.failed)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: light-dark(#2f8a4e, #6fbf87);
+}
+.notebook-pill .save-status.saving::before {
+  background: light-dark(#b08a40, #cfb37c);
+}
+.notebook-pill button:hover:not(:disabled) {
+  background: var(--shell-selected);
+}
+.pane-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.pane-tools > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--shell-radius);
+}
+.pane-tools > button:hover:not(:disabled) {
+  background: var(--shell-selected);
+}
+.pane-header .pane-new-tab {
+  flex: none;
+}
+.pane-new-tab > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--shell-radius);
+}
+
+/* The Library keeps its location row where the header was. */
+.library-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--shell-border);
+}
+.notebook-pill .document-menu > summary .shell-icon {
+  transform: rotate(90deg);
+}
+/* The pill's menu opens rightward from the pill; a column's + menu opens
+   leftward, since it sits at the column's right end. */
+.notebook-pill .document-menu .shell-menu-content {
+  left: 0;
+  right: auto;
+}
+.pane-new-tab .shell-menu-content {
+  left: auto;
+  right: 0;
+}

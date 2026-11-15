@@ -54,31 +54,25 @@ try {
   await shell.waitForSelector("affine-editor-container", { timeout: 60000 });
   await ready();
   await shot("1-new-notebook");
-  // Page opens the note in a tab beside the canvas.
-  await shell.getByRole("button", { name: "Page", exact: true }).click();
-  await shell.locator("[data-note-pane]").waitFor();
-  await shot("2-page-opens-note-tab");
-  // Back to the canvas, then add a note from the sidebar.
-  await shell.getByRole("button", { name: "Canvas", exact: true }).click();
-  await shell.getByRole("button", { name: "Add note", exact: true }).first().click();
+  // The notebook pill's menu holds the old Document actions.
+  await shell.locator('summary[aria-label="Notebook actions"]').click();
+  await shot("2-notebook-menu");
+  await shell.keyboard.press("Escape");
+  // The + menu opens a note tab in this column... then split it out.
+  await shell.locator('summary[aria-label="Open a tab"]').first().click();
+  await shell.getByRole("button", { name: "Card Deck", exact: true }).click();
   await ready();
-  await shot("3-add-note");
-  // Expand the note column; the canvas shrinks to a rail.
-  await shell.locator(".pane-group").last().getByRole("button", { name: "Expand column", exact: true }).click();
-  await shot("4-note-expanded");
-  // The canvas rail brings the columns back.
-  await shell.getByRole("button", { name: "Show Canvas", exact: true }).click();
-  await shot("5-restored");
-  // Ask Knot "Open as page" is the Ask tab expanded.
-  await shell.getByRole("button", { name: "Ask Knot", exact: true }).first().click();
-  await shell.locator(".ask-knot textarea").waitFor();
-  const asPage = shell.getByRole("button", { name: "Open as page", exact: true });
-  if (await asPage.count()) await asPage.click();
-  await shot("6-ask-expanded");
-  console.log(JSON.stringify(await shell.evaluate(() => ({
-    rails: document.querySelectorAll(".pane-rail").length,
-    tabs: [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent),
-  }))));
+  await shell.locator('summary[aria-label="Open a tab"]').last().click();
+  await shell.getByRole("button", { name: "Note", exact: true }).click();
+  await shell.locator("[data-note-pane]").waitFor();
+  await shot("3-plus-menu-tabs");
+  // Collapsed sidebar: its controls move to a rail.
+  await shell.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  await shot("4-sidebar-collapsed");
+  await shell.getByRole("button", { name: "Expand sidebar", exact: true }).click();
+  await shell.getByRole("button", { name: "Library", exact: true }).first().click();
+  await ready();
+  await shot("5-library");
   console.log(JSON.stringify({ errors }, null, 2));
 } catch (error) {
   console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));

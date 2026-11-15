@@ -75,7 +75,16 @@ export function WorkspacePanes({
   contentKey = (tab) => tab.id,
   onReturn,
   icon,
+  lead,
+  newTab,
+  tools,
 }: {
+  /** Pinned first in the first column's tab row (the notebook pill). */
+  lead?: ReactNode;
+  /** A column's + menu. */
+  newTab?: (group: string) => ReactNode;
+  /** Controls for a column's active tab, at the end of its tab row. */
+  tools?: (tab: PaneTab) => ReactNode;
   /** Overrides the kind's icon, e.g. the canvas tab while it shows a page. */
   icon?: (tab: PaneTab) => ComponentProps<typeof ShellIcon>["name"] | undefined;
   layout: WorkspaceLayout;
@@ -543,6 +552,7 @@ export function WorkspacePanes({
               }
             }}
           >
+            {index === 0 && lead}
             <TabStrip
               activeTab={group.activeTabId}
               role="tablist"
@@ -677,6 +687,12 @@ export function WorkspacePanes({
                 />
               )}
             </TabStrip>
+            {newTab?.(group.id)}
+            {layout.tabs[group.activeTabId] && (
+              <span className="pane-tools">
+                {tools?.(layout.tabs[group.activeTabId])}
+              </span>
+            )}
             {(expanded || layout.groups.length > 1) && (
               <button
                 className="pane-expand"

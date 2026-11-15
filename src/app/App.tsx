@@ -30,7 +30,7 @@ import {
   OCR_CHANGED,
   WORKSPACE_SEARCH_CHANGED,
 } from "../services/ai-preferences";
-import { ColumnVisibilityToggle, WorkspacePanes } from "./WorkspacePanes";
+import { WorkspacePanes } from "./WorkspacePanes";
 import { useNotebookLayout } from "./useNotebookLayout";
 import { NotePagePane } from "./NotePagePane";
 import {
@@ -423,7 +423,7 @@ export function App() {
   // the open notebook was last opened from; only that copy expands.
   const [notebookPlace, setNotebookPlace] = useState<string | null>(null);
   const focusedEditor = useRef<EditorSession["editor"] | null>(null);
-  const [documentUndo, setDocumentUndo] = useState(true);
+  const [, setDocumentUndo] = useState(true);
   useEffect(() => {
     const track = (event: Event) => {
       const target = event.target;
@@ -454,6 +454,8 @@ export function App() {
     };
   }, []);
   const pendingPaneFocus = useRef<string | null>(null);
+  /** Tabs opened from a column's + menu join that column. */
+  const paneTarget = useRef<string | null>(null);
   const workspaceIdentity = useRef<string | null>(null);
   const contentArea = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState(1000);
@@ -490,6 +492,7 @@ export function App() {
     dispatchLayout({
       type: "open",
       tab: { ...tab, id },
+      group: paneTarget.current ?? undefined,
       beside,
       width:
         layoutRef.current.groups.find(
@@ -2187,7 +2190,12 @@ export function App() {
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [busy, showSearch]);
-  const pageModeButton = useRef<HTMLButtonElement>(null);
+  // Ctrl+Enter: the selected card opens in a note tab (kept current each render).
+  const openSelected = useRef(() => {});
+  openSelected.current = () => {
+    const note = session.current?.selectedCanvasNoteId();
+    if (note) openNoteTab(note);
+  };
   const lastTab =
     layout.tabs[
       layout.groups.find((g) => g.id === layout.lastUsedGroupId)?.activeTabId ??
@@ -2209,11 +2217,10 @@ export function App() {
       )
         return;
       const current = session.current;
-      const button = pageModeButton.current;
       if (
-        !button ||
-        button.disabled ||
-        current?.editor.mode !== "edgeless" ||
+        !current ||
+        locked.current ||
+        current.editor.mode !== "edgeless" ||
         document.querySelector("dialog[open]")
       )
         return;
@@ -2229,7 +2236,7 @@ export function App() {
         return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      button.click();
+      openSelected.current();
     };
     window.addEventListener("keydown", openSelectedCard, true);
     return () => window.removeEventListener("keydown", openSelectedCard, true);
@@ -2577,6 +2584,268 @@ export function App() {
       sourceIntent: "ambient" as const,
     };
   }, [aiContext, workspaceCatalog.active, active?.id]);
+  // Replaces the old header: the open notebook's name, favorite, save state
+  // and actions, pinned first in the first column's tab row.
+  const notebookPill =
+    active && !library ? (
+      <div className="notebook-pill">
+        <ShellIcon name="notebook" />
+                <input
+                  style={{
+                    width: `${Math.max(8, Array.from(title).length + 1)}ch`,
+                  }}
+                  className="title-input"
+                  aria-label="Document title"
+                  data-tooltip={title || "Document title"}
+                  value={title}
+                  disabled={!active || busy || navigating}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  onBlur={() => {
+                    if (active && title !== active.title)
+                      void run(async () => {
+                        await session.current?.rename(title);
+                        setActive({ ...active, title });
+                        await refresh();
+                      });
+                  }}
+                />
+                <button
+                  className="favorite-toggle icon-button"
+                  aria-label={
+                    isFavorite
+                      ? "Remove notebook from favorites"
+                      : "Add notebook to favorites"
+                  }
+                  data-tooltip={
+                    isFavorite
+                      ? "Remove notebook from favorites"
+                      : "Add notebook to favorites"
+                  }
+                  aria-pressed={isFavorite}
+                  disabled={!active || busy || navigating}
+                  onClick={() => active && toggleFavorite(active.id)}
+                >
+                  <AnimatedFavorite key={active?.id} favorite={isFavorite} />
+                </button>
+                <button
+                  className={`save-status ${status}`}
+                  aria-live="polite"
+                  data-tooltip="Save now / retry"
+                  aria-label="Save now / retry"
+                  onClick={() =>
+                    void run(async () => {
+                      await session.current?.flush();
+                    })
+                  }
+                >
+                  {status === "saved"
+                    ? "✓ Saved"
+                    : status === "saving"
+                      ? "◌ Saving…"
+                      : "! Save failed · Retry"}
+                </button>
+        <ShellMenu
+          label="Notebook actions"
+          icon={<ShellIcon name="chevron" />}
+          className="document-menu"
+        >
+                <div
+                  className="document-action-group"
+                  role="group"
+                  aria-label="Add content"
+                >
+                  <button
+                    aria-label="Attach"
+                    disabled={!active || busy}
+                    onClick={() => file.current?.click()}
+                  >
+                    <ShellIcon name="attach" />
+                    <span>Attach</span>
+                  </button>
+                  <button
+                    aria-label="Links"
+                    aria-pressed={paneActive("reference")}
+                    disabled={!active || busy}
+                    onClick={() => {
+                      setLinksView("add");
+                      openSurface("reference");
+                    }}
+                  >
+                    <ShellIcon name="link" />
+                    <span>Links</span>
+                  </button>
+                </div>
+                <div
+                  className="document-action-group"
+                  role="group"
+                  aria-label="Connections"
+                >
+                  <button
+                    aria-label="Backlinks"
+                    disabled={!active || busy}
+                    onClick={() => {
+                      openSurface("reference");
+                      setLinksView("backlinks");
+                      void run(scanBacklinks);
+                    }}
+                  >
+                    <ShellIcon name="backlinks" />
+                    <span>Backlinks</span>
+                  </button>
+                </div>
+                <div
+                  className="document-action-group"
+                  role="group"
+                  aria-label="Read & export"
+                >
+                  <button
+                    aria-label="Export"
+                    disabled={!active || busy}
+                    onClick={() => setExporting(!exporting)}
+                  >
+                    <ShellIcon name="export" />
+                    <span>Export</span>
+                  </button>
+                  <button
+                    aria-label="Share as file"
+                    disabled={!active || busy}
+                    onClick={() =>
+                      active && setSharing({ id: active.id, title: active.title })
+                    }
+                  >
+                    <ShellIcon name="share" />
+                    <span>Share as file…</span>
+                  </button>
+                </div>
+                {!library && (
+                  <div
+                    className="document-action-group"
+                    role="group"
+                    aria-label="Quiz"
+                  >
+                    <button
+                      aria-label="Reset quiz progress"
+                      disabled={!active || busy || navigating}
+                      onClick={() => setQuizReset(true)}
+                    >
+                      <ShellIcon name="refresh" />
+                      <span>Reset quiz progress…</span>
+                    </button>
+                  </div>
+                )}
+                <div
+                  className="document-action-group"
+                  role="group"
+                  aria-label="Trash"
+                >
+                  <button
+                    aria-label="Delete document"
+                    className="delete-document"
+                    disabled={!active || busy}
+                    onClick={() => active && requestTrash(active, "toolbar")}
+                  >
+                    <AnimatedTrash revision={trashAnimation.toolbar} />
+                    <span>Move to Trash</span>
+                  </button>
+                </div>
+        </ShellMenu>
+      </div>
+    ) : null;
+  const newTabMenu = (group: string) =>
+    active && !library ? (
+      <ShellMenu
+        label="Open a tab"
+        icon={<ShellIcon name="plus" />}
+        className="pane-new-tab"
+      >
+        {(
+          [
+            ["Canvas", "board", () => showNotebookView(null)],
+            [
+              "Note",
+              "note",
+              () => {
+                const note = session.current && pageNote(session.current);
+                if (note) openNoteTab(note);
+              },
+            ],
+            ["PDF reader", "highlight", () => void run(() => openPdf())],
+            ["Browser", "globe", () => openSurface("browser")],
+            [
+              "Card Deck",
+              "cardDeck",
+              () =>
+                void run(async () => {
+                  const cleaned = await session.current?.enrollWorkspaceCards();
+                  if (cleaned)
+                    setNotice(
+                      `Moved ${cleaned} empty ${cleaned === 1 ? "card" : "cards"} to Trash.`,
+                    );
+                  openSurface("cardDeck");
+                }),
+            ],
+            ["Ask Knot", "sparkles", () => showAi("panel")],
+            [
+              "Links",
+              "link",
+              () => {
+                setLinksView("add");
+                openSurface("reference");
+              },
+            ],
+            [
+              "Backlinks",
+              "backlinks",
+              () => {
+                openSurface("reference");
+                setLinksView("backlinks");
+                void run(scanBacklinks);
+              },
+            ],
+          ] as const
+        ).map(([name, icon, open]) => (
+          <button
+            key={name}
+            disabled={busy}
+            onClick={() => {
+              paneTarget.current = group;
+              try {
+                open();
+              } finally {
+                paneTarget.current = null;
+              }
+            }}
+          >
+            <ShellIcon name={icon} />
+            <span>{name}</span>
+          </button>
+        ))}
+      </ShellMenu>
+    ) : null;
+  const tabTools = (tab: PaneTab) =>
+    tab.kind === "canvas" || tab.kind === "note" ? (
+      <>
+        <button
+          data-tooltip="Undo (Ctrl+Z)"
+          aria-label="Undo"
+          disabled={!active || busy}
+          onClick={() => session.current?.doc.undo()}
+        >
+          <ShellIcon name="undo" />
+        </button>
+        <button
+          data-tooltip="Redo (Ctrl+Y)"
+          aria-label="Redo"
+          disabled={!active || busy}
+          onClick={() => session.current?.doc.redo()}
+        >
+          <ShellIcon name="redo" />
+        </button>
+      </>
+    ) : null;
   return (
     <div className="app-shell" aria-busy={busy}>
       {collectionTrash && (
@@ -2885,6 +3154,33 @@ export function App() {
               height="40"
             />
             <span>Knot</span>
+            <div className="brand-actions">
+          <button
+            className="icon-button sidebar-toggle"
+            data-tooltip={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            <ShellIcon name="sidebar" />
+          </button>
+          <button
+            aria-label="Go back"
+            data-tooltip="Go back"
+            disabled={busy || !history.current.canBack}
+            onClick={() => moveHistory(-1)}
+          >
+            <ShellIcon name="back" />
+          </button>
+          <button
+            aria-label="Go forward"
+            data-tooltip="Go forward"
+            disabled={busy || !history.current.canForward}
+            onClick={() => moveHistory(1)}
+          >
+            <ShellIcon name="forward" />
+          </button>
+            </div>
           </div>
           {library || !active ? (
             <AddNotePicker
@@ -3124,15 +3420,8 @@ export function App() {
           </div>
         </aside>
       </SidebarFrame>
-      <main
-        className={`${surface ? "has-tool-surface" : ""} ai-placement-${aiPlacement}`}
-        style={
-          {
-            "--panel-width": `${activePanelWidth}px`,
-          } as React.CSSProperties
-        }
-      >
-        <header className="topbar">
+      {collapsed && (
+        <nav className="shell-rail" aria-label="Navigation">
           <button
             className="icon-button"
             data-tooltip={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -3158,10 +3447,25 @@ export function App() {
           >
             <ShellIcon name="forward" />
           </button>
-          {aiPlacement === "page" ? (
-            <span className="breadcrumb">Ask Knot</span>
-          ) : library ? (
-            <>
+          <button
+            aria-label="Search"
+            data-tooltip="Search (Ctrl+K)"
+            onClick={() => setShowSearch(true)}
+          >
+            <ShellIcon name="search" />
+          </button>
+        </nav>
+      )}
+      <main
+        className={`${surface ? "has-tool-surface" : ""} ai-placement-${aiPlacement}`}
+        style={
+          {
+            "--panel-width": `${activePanelWidth}px`,
+          } as React.CSSProperties
+        }
+      >
+        {library && (
+          <header className="library-header">
               <nav className="library-breadcrumb" aria-label="Library location">
                 <button
                   onClick={() =>
@@ -3193,311 +3497,8 @@ export function App() {
               {library.library === "cardDeck" && (
                 <div id="library-card-chrome" />
               )}
-            </>
-          ) : !active ? (
-            layout.groups.length > 0 && (
-              <ColumnVisibilityToggle
-                layout={layout}
-                dispatch={dispatchLayout}
-                disabled={busy || navigating}
-              />
-            )
-          ) : (
-            <>
-              <div className="notebook-title">
-                <input
-                  style={{
-                    width: `${Math.max(8, Array.from(title).length + 1)}ch`,
-                  }}
-                  className="title-input"
-                  aria-label="Document title"
-                  data-tooltip={title || "Document title"}
-                  value={title}
-                  disabled={!active || busy || navigating}
-                  onChange={(e) => setTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.currentTarget.blur();
-                  }}
-                  onBlur={() => {
-                    if (active && title !== active.title)
-                      void run(async () => {
-                        await session.current?.rename(title);
-                        setActive({ ...active, title });
-                        await refresh();
-                      });
-                  }}
-                />
-                <button
-                  className="favorite-toggle icon-button"
-                  aria-label={
-                    isFavorite
-                      ? "Remove notebook from favorites"
-                      : "Add notebook to favorites"
-                  }
-                  data-tooltip={
-                    isFavorite
-                      ? "Remove notebook from favorites"
-                      : "Add notebook to favorites"
-                  }
-                  aria-pressed={isFavorite}
-                  disabled={!active || busy || navigating}
-                  onClick={() => active && toggleFavorite(active.id)}
-                >
-                  <AnimatedFavorite key={active?.id} favorite={isFavorite} />
-                </button>
-                <button
-                  className={`save-status ${status}`}
-                  aria-live="polite"
-                  data-tooltip="Save now / retry"
-                  aria-label="Save now / retry"
-                  onClick={() =>
-                    void run(async () => {
-                      await session.current?.flush();
-                    })
-                  }
-                >
-                  {status === "saved"
-                    ? "✓ Saved"
-                    : status === "saving"
-                      ? "◌ Saving…"
-                      : "! Save failed · Retry"}
-                </button>
-              </div>
-
-              <div className="mode-switch">
-                {(["page", "edgeless"] as const).map((m) => (
-                  <button
-                    key={m}
-                    ref={m === "page" ? pageModeButton : undefined}
-                    aria-keyshortcuts={
-                      m === "page" ? "Control+Enter" : undefined
-                    }
-                    title={
-                      m === "page"
-                        ? "Open the selected card in a note tab (Ctrl+Enter)"
-                        : undefined
-                    }
-                    disabled={!active || busy}
-                    aria-pressed={viewing === m}
-                    className={viewing === m ? "current" : ""}
-                    onClick={() => {
-                      const current = session.current;
-                      if (!current) return;
-                      if (
-                        surface &&
-                        [
-                          "settings",
-                          "editorSettings",
-                          "aiSettings",
-                          "updates",
-                          "workspaceSettings",
-                          "workspace",
-                          "backups",
-                          "trash",
-                          "integrity",
-                          "quarantine",
-                        ].includes(surface)
-                      ) {
-                        clearInactiveSurface(null);
-                        setSurface(null);
-                      }
-                      // Page opens the selected card (or the last note) in its
-                      // own tab beside the canvas; Canvas brings the canvas
-                      // forward.
-                      if (m === "edgeless") return showNotebookView(null);
-                      const note = pageNote(current);
-                      if (note) openNoteTab(note);
-                    }}
-                  >
-                    <ShellIcon name={m === "page" ? "note" : "board"} />{" "}
-                    {m === "page" ? "Page" : "Canvas"}
-                  </button>
-                ))}
-              </div>
-              <div
-                className="document-quick-actions"
-                role="group"
-                aria-label="Quick document actions"
-              >
-                <ColumnVisibilityToggle
-                  layout={layout}
-                  dispatch={dispatchLayout}
-                  disabled={busy || navigating}
-                />
-              </div>
-              <div
-                className="document-quick-actions document-history"
-                role="group"
-                aria-label="Edit history"
-              >
-                <button
-                  data-tooltip="Undo (Ctrl+Z)"
-                  aria-label="Undo"
-                  disabled={!active || busy || !documentUndo}
-                  onClick={() => session.current?.doc.undo()}
-                >
-                  <ShellIcon name="undo" />
-                </button>
-                <button
-                  data-tooltip="Redo (Ctrl+Y)"
-                  aria-label="Redo"
-                  disabled={!active || busy || !documentUndo}
-                  onClick={() => session.current?.doc.redo()}
-                >
-                  <ShellIcon name="redo" />
-                </button>
-              </div>
-              <ShellMenu
-                label="Document actions"
-                icon={<ShellIcon name="more" />}
-                className="document-menu"
-              >
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Open tools"
-                >
-                  <span className="document-action-heading">Open tools</span>
-                  <button
-                    aria-label="Browser"
-                    aria-pressed={paneActive("browser")}
-                    disabled={busy}
-                    onClick={() => openSurface("browser")}
-                  >
-                    <ShellIcon name="globe" />
-                    <span>Browser</span>
-                  </button>
-                  <button
-                    aria-label="Card Deck"
-                    aria-pressed={paneActive("cardDeck")}
-                    disabled={!active || busy}
-                    onClick={() => {
-                      void run(async () => {
-                        const cleaned =
-                          await session.current?.enrollWorkspaceCards();
-                        if (cleaned)
-                          setNotice(
-                            `Moved ${cleaned} empty ${cleaned === 1 ? "card" : "cards"} to Trash.`,
-                          );
-                        openSurface("cardDeck");
-                      });
-                    }}
-                  >
-                    <ShellIcon name="cardDeck" />
-                    <span>Card Deck</span>
-                  </button>
-                  <button
-                    aria-label="PDF reader"
-                    disabled={!active || busy}
-                    onClick={() => void run(() => openPdf())}
-                  >
-                    <ShellIcon name="highlight" />
-                    <span>PDF reader</span>
-                  </button>
-                </div>
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Add content"
-                >
-                  <button
-                    aria-label="Attach"
-                    disabled={!active || busy}
-                    onClick={() => file.current?.click()}
-                  >
-                    <ShellIcon name="attach" />
-                    <span>Attach</span>
-                  </button>
-                  <button
-                    aria-label="Links"
-                    aria-pressed={paneActive("reference")}
-                    disabled={!active || busy}
-                    onClick={() => {
-                      setLinksView("add");
-                      openSurface("reference");
-                    }}
-                  >
-                    <ShellIcon name="link" />
-                    <span>Links</span>
-                  </button>
-                </div>
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Connections"
-                >
-                  <button
-                    aria-label="Backlinks"
-                    disabled={!active || busy}
-                    onClick={() => {
-                      openSurface("reference");
-                      setLinksView("backlinks");
-                      void run(scanBacklinks);
-                    }}
-                  >
-                    <ShellIcon name="backlinks" />
-                    <span>Backlinks</span>
-                  </button>
-                </div>
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Read & export"
-                >
-                  <button
-                    aria-label="Export"
-                    disabled={!active || busy}
-                    onClick={() => setExporting(!exporting)}
-                  >
-                    <ShellIcon name="export" />
-                    <span>Export</span>
-                  </button>
-                  <button
-                    aria-label="Share as file"
-                    disabled={!active || busy}
-                    onClick={() =>
-                      active && setSharing({ id: active.id, title: active.title })
-                    }
-                  >
-                    <ShellIcon name="share" />
-                    <span>Share as file…</span>
-                  </button>
-                </div>
-                {!library && (
-                  <div
-                    className="document-action-group"
-                    role="group"
-                    aria-label="Quiz"
-                  >
-                    <button
-                      aria-label="Reset quiz progress"
-                      disabled={!active || busy || navigating}
-                      onClick={() => setQuizReset(true)}
-                    >
-                      <ShellIcon name="refresh" />
-                      <span>Reset quiz progress…</span>
-                    </button>
-                  </div>
-                )}
-                <div
-                  className="document-action-group"
-                  role="group"
-                  aria-label="Trash"
-                >
-                  <button
-                    aria-label="Delete document"
-                    className="delete-document"
-                    disabled={!active || busy}
-                    onClick={() => active && requestTrash(active, "toolbar")}
-                  >
-                    <AnimatedTrash revision={trashAnimation.toolbar} />
-                    <span>Move to Trash</span>
-                  </button>
-                </div>
-              </ShellMenu>
-            </>
-          )}
-        </header>
+          </header>
+        )}
         {error && (
           <div role="alert" className="error-banner">
             {error}
@@ -4703,6 +4704,9 @@ export function App() {
               </section>
             )}
           <WorkspacePanes
+            lead={notebookPill}
+            newTab={newTabMenu}
+            tools={tabTools}
             layout={layout}
             dispatch={dispatchPaneAction}
             available={contentWidth}

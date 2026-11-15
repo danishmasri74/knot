@@ -4,7 +4,7 @@ Slices one and two preserve the existing handlers, storage model and bounded for
 
 | Previous entry point                             | Current location and behavior                                                                                                                                   |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add note / New notebook…                        | Sidebar creation actions: add a note to the active notebook, or name and create a separate notebook. Whiteboard access stays in the header’s Page / Canvas toggle.                                                                                                                                          |
+| Add note / New notebook… | Sidebar creation actions: add a note to the active notebook, or name and create a separate notebook. The canvas is the notebook’s Canvas tab; a column’s + menu reopens it. |
 | Title search / body search                       | Search library or Library options opens the library surface. Title matches update as you type; Search titles & body explicitly flushes and scans saved content. |
 | Collection navigation                                | Each collection expands inline to show its own notebooks and their contents. Ctrl+K remains workspace-wide.                                                             |
 | Collection creation, rename, deletion            | Notebook ⋯ → Find or create. Rename/delete live in the collection’s ⋯ menu; deleting keeps all notebooks.                                                           |
@@ -15,20 +15,20 @@ Slices one and two preserve the existing handlers, storage model and bounded for
 | Trash search, pagination and restore             | Sidebar → Trash → dedicated management view.                                                                                                                    |
 | Integrity, guided reference/attachment recovery  | Settings → Workspace health → dedicated management view, including retry and Recovery backups.                                                                  |
 | Quarantine preview, move, restore and disposal   | Settings → File recovery → dedicated management view; existing revalidation and confirmations remain.                                                           |
-| Back / Forward                                   | Main header; save failure blocks navigation.                                                                                                                    |
-| Rename                                           | Main header document title (Enter or blur).                                                                                                                     |
-| Page / Canvas                                    | Main header view switch; same editor and document identity.                                                                                                     |
-| Save status / retry                              | Main header, always visible; errors and completion notices remain dismissible.                                                                                  |
+| Back / Forward | Sidebar top row, or the slim rail while the sidebar is collapsed; save failure blocks navigation. |
+| Rename | Notebook pill (first in the first column’s tab row): its title field (Enter or blur). |
+| Page / Canvas | Page view is a Note tab: a column’s + menu → Note, Ctrl+Enter on a selected card, or a sidebar note row. The canvas is the Canvas tab. |
+| Save status / retry | Notebook pill: a dot while saved or saving; a failure shows its words and retries when clicked. |
 | Notebook collection memberships                    | Notebook ⋯ or right-click row → collection checkboxes.                                                                                                            |
-| Backlinks                                        | Document actions → Backlinks; explicit refresh and source navigation in the right panel.                                                                        |
-| Reference selection/insertion                    | Document actions → Reference; insert link or place shared note in the right panel.                                                                              |
-| PDF reader / source reopening                | Document actions → PDF reader, or a saved highlight source link; reader fits the right panel width and preserves normalized locations.                      |
-| Export                                           | Document actions → Export → right panel; existing format limitations and native save dialog remain.                                                             |
-| Attachments                                      | Document actions → Attach; native file picker.                                                                                                                  |
-| Undo / redo / soft-delete                        | Document actions menu; editor keyboard shortcuts retained, deletion still confirmed.                                                                            |
+| Backlinks                                        | Notebook pill menu → Backlinks; explicit refresh and source navigation in the right panel.                                                                        |
+| Reference selection/insertion                    | Notebook pill menu → Reference; insert link or place shared note in the right panel.                                                                              |
+| PDF reader / source reopening | A column’s + menu → PDF reader, or a saved highlight source link; reader fits its column and preserves normalized locations. |
+| Export                                           | Notebook pill menu → Export → right panel; existing format limitations and native save dialog remain.                                                             |
+| Attachments                                      | Notebook pill menu → Attach; native file picker.                                                                                                                  |
+| Undo / redo / soft-delete | Tab tools at the end of the Canvas or Note tab’s row; editor keyboard shortcuts retained. Notebook pill menu → Move to Trash, still confirmed. |
 | Sidebar Quiz cards → New multiple-choice card   | Canvas note tool (bottom toolbar) → Multiple choice, after Image / Link / File. Opens the composer and places a standalone question card on the canvas. In Page, use the `/mcq` slash command or the Multiple choice action in the text and card toolbars. |
 | Sidebar Quiz cards → Create MCQ from selection   | Select text, then use Multiple choice in the formatting toolbar; the question is inserted inline at the selection.                                              |
-| Sidebar Quiz cards → Reset quiz progress…       | Document actions → Reset quiz progress…; still permanently clears this notebook's answers after confirmation.                                                   |
+| Sidebar Quiz cards → Reset quiz progress…       | Notebook pill menu → Reset quiz progress…; still permanently clears this notebook's answers after confirmation.                                                   |
 | Startup workspace recovery                       | Switch workspace, Settings and Trash remain available without an editor.                                                                                        |
 
 The right panel closes through its single labeled header Close control or Escape while focus is inside the panel. Focus returns to its invoking control (the disclosure summary for menu actions). Busy operations cannot be dismissed.
