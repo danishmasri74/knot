@@ -12,3 +12,6 @@
 - Each notebook's PDF reader comes back at the PDF, zoom and position you left it at.
 - Back and Forward also step between the tabs you switched to in a notebook.
 - Expanding, restoring and rearranging columns now animate smoothly.
+- Export is now a dialog: pick Markdown, PNG or PDF and save.
+- Column headers are quieter: opening a tab moved into the column's ⋯ menu, which can also collapse a column.
+- A collapsed column stays collapsed when you pick a tab on its rail; its expand button brings it back.

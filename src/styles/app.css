@@ -7322,3 +7322,74 @@ html[data-pane-gesture] .workspace-content > .editor-area {
     animation: none;
   }
 }
+
+/* Export: a dialog like Share as file, with one row per format. */
+.export-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+.export-formats {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 4px;
+  padding: 0;
+  border: 0;
+}
+.export-format {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.export-format:has(input:checked) {
+  border-color: var(--control-accent);
+  background: var(--shell-selected);
+}
+.export-format input {
+  margin-top: 3px;
+}
+.export-format > span {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.export-format > span > span {
+  color: var(--shell-muted);
+  line-height: 1.4;
+}
+.export-note {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--shell-muted);
+}
+
+/* Quieter column headers: the column drag handle shows on hover or focus. */
+.pane-header .pane-group-drag {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.pane-header:hover .pane-group-drag,
+.pane-header:focus-within .pane-group-drag {
+  opacity: 1;
+}
+/* A rail's toggle sits above its tab icons. */
+.pane-rail > .pane-rail-toggle {
+  margin-bottom: 4px;
+  color: var(--shell-text);
+}
+.export-format {
+  justify-content: flex-start;
+}
+.export-format > span {
+  flex: 1;
+  text-align: left;
+}
+.export-format input[type="radio"] {
+  flex: none;
+  width: auto;
+  height: auto;
+  margin: 3px 0 0;
+}

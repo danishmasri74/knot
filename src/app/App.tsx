@@ -31,6 +31,7 @@ import {
   WORKSPACE_SEARCH_CHANGED,
 } from "../services/ai-preferences";
 import { WorkspacePanes } from "./WorkspacePanes";
+import { ExportDialog } from "./ExportDialog";
 import {
   getSidebarSide,
   setSidebarSide,
@@ -943,8 +944,8 @@ export function App() {
       );
     await restoreDocument(target, true);
   }
-  const exporting = surface === "export";
-  const setExporting = (value: boolean) => toggleSurface("export", value);
+  // Export is a dialog over the notebook, like Share as file.
+  const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("markdown");
   const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalog>({
     active: null,
@@ -2804,11 +2805,8 @@ export function App() {
     ) : null;
   const newTabMenu = (group: string) =>
     active && !library ? (
-      <ShellMenu
-        label="Open a tab"
-        icon={<ShellIcon name="plus" />}
-        className="pane-new-tab"
-      >
+      <>
+        <span className="document-action-heading">Open in this column</span>
         {(
           [
             ["Canvas", "board", () => showNotebookView(null)],
@@ -2871,7 +2869,7 @@ export function App() {
             <span>{name}</span>
           </button>
         ))}
-      </ShellMenu>
+      </>
     ) : null;
   const tabTools = (tab: PaneTab) =>
     tab.kind === "canvas" || tab.kind === "note" ? (
@@ -3028,6 +3026,42 @@ export function App() {
           />
         );
       })()}
+      {exporting && active && (
+        <ExportDialog
+          title={title}
+          format={exportFormat}
+          onFormat={setExportFormat}
+          onClose={() => setExporting(false)}
+          onExport={async (format) => {
+            const current = session.current;
+            if (!current) return;
+            try {
+              await current.flush();
+              // A picture of the canvas needs the canvas on screen.
+              if (format !== "markdown" && !canvasVisible) {
+                revealCanvas();
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() =>
+                    requestAnimationFrame(() => resolve()),
+                  ),
+                );
+              }
+              const files = await current.exportFiles(format);
+              const path = await exportDocument(
+                current.doc.meta?.title || title,
+                format,
+                files,
+              );
+              if (path) {
+                setExporting(false);
+                setNotice(`Export saved: ${path}`);
+              }
+            } catch (error) {
+              report(error);
+            }
+          }}
+        />
+      )}
       {sharing && (
         <ShareNotebookDialog
           root={sharing}
@@ -3917,63 +3951,6 @@ export function App() {
                 ? "Loading backups…"
                 : "Backups could not be loaded. Select Backups to retry."}
             </p>
-          )}
-          {exporting && active && (
-            <section className="recovery-panel" aria-label="Export document">
-              <p>
-                Markdown exports page text and supported blocks, with
-                attachments in a ZIP when needed. Canvas drawings are omitted;
-                shared notes and document references remain links to workspace
-                IDs, not portable copies.
-              </p>
-              <p>
-                PNG and PDF capture the current Page or Canvas view. PDF is a
-                single image-based page; text is not selectable. Embedded files
-                and remote media may appear as cards. Keep a Knot backup for
-                full fidelity.
-              </p>
-              <label>
-                Format{" "}
-                <select
-                  aria-label="Export format"
-                  disabled={busy}
-                  value={exportFormat}
-                  onChange={(e) =>
-                    setExportFormat(e.target.value as ExportFormat)
-                  }
-                >
-                  <option value="markdown">Markdown (.md / .zip)</option>
-                  <option value="png">PNG image (.png)</option>
-                  <option value="pdf">PDF snapshot (.pdf)</option>
-                </select>
-              </label>{" "}
-              <button
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    const current = session.current;
-                    if (!current) return;
-                    await current.flush();
-                    const files = await current.exportFiles(exportFormat);
-                    const path = await exportDocument(
-                      current.doc.meta?.title || title,
-                      exportFormat,
-                      files,
-                    );
-                    setNotice(
-                      path ? `Export saved: ${path}` : "Export canceled.",
-                    );
-                  })
-                }
-              >
-                Save export
-              </button>{" "}
-              <p>
-                Choose a new filename; existing files are never overwritten.
-                Maximum export: 100 MiB. Visual exports are limited to 16
-                megapixels.
-              </p>
-            </section>
           )}
           {surface === "quarantine" && cleanup !== null && (
             <QuarantinePanel

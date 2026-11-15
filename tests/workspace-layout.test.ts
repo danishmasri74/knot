@@ -335,6 +335,15 @@ describe("supporting workspace layout", () => {
       expect(p.lefts[0]).toBe(41);
       expect(p.widths[0] + 41).toBe(600);
     });
+    it("lets a rail choose its tab without bringing the column back", () => {
+      let s = layoutReducer(two(), { type: "expand", id: canvas.id });
+      s = layoutReducer(s, { type: "activate", id: pdf.id, stay: true });
+      expect(s.expandedGroupId).toBe(s.groups[0].id);
+      expect(s.groups[1].activeTabId).toBe(pdf.id);
+      expect(s.lastUsedGroupId).toBe(s.groups[0].id);
+      // Navigating to it on purpose does bring it back.
+      expect(layoutReducer(s, { type: "activate", id: pdf.id }).expandedGroupId).toBeNull();
+    });
     it("opens new tabs in the expanded column", () => {
       let s = layoutReducer(two(), { type: "expand", id: pdf.id });
       s = layoutReducer(s, { type: "open", tab: note });

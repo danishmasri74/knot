@@ -54,28 +54,33 @@ try {
   await shell.waitForSelector("affine-editor-container", { timeout: 60000 });
   await ready();
   await shot("1-new-notebook");
-  await shell.locator('summary[aria-label="Open a tab"]').first().click();
+  // Open tabs from the column menu (no + button any more).
+  await shell.locator('summary[aria-label="Pane actions"]').first().click();
+  await shot("2-column-menu");
   await shell.getByRole("button", { name: "Card Deck", exact: true }).click();
   await ready();
-  // Can a third column be made? (Two content columns at most.)
-  await shell.locator('.pane-group').last().locator('summary[aria-label="Pane actions"]').click();
-  console.log("separate disabled:", await shell.getByRole("button", { name: "Separate tab to right", exact: true }).isDisabled());
-  await shell.keyboard.press("Escape");
-  // Sample the Card Deck column's width while it expands.
-  const samples = await shell.evaluate(async () => {
-    const column = () => [...document.querySelectorAll(".pane-group")].at(-1);
-    const editor = document.querySelector(".editor-area");
-    const out = [];
-    document.querySelectorAll('.pane-group')[1].querySelector('[aria-label="Expand column"]').click();
-    const start = performance.now();
-    while (performance.now() - start < 320) {
-      await new Promise((r) => requestAnimationFrame(r));
-      out.push([Math.round(performance.now() - start), Math.round(column().getBoundingClientRect().width), getComputedStyle(editor).visibility]);
-    }
-    return out;
-  });
-  console.log("expand samples [ms, column, canvas]:", JSON.stringify(samples.filter((_, i) => i % 3 === 0)));
-  await shot("2-expanded");
+  await shell.locator('summary[aria-label="Pane actions"]').last().click();
+  await shell.getByRole("button", { name: "Note", exact: true }).click();
+  await shell.locator("[data-note-pane]").waitFor();
+  await shot("3-header");
+  // Collapse the tools column from its menu.
+  await shell.locator('summary[aria-label="Pane actions"]').last().click();
+  await shell.getByRole("button", { name: "Collapse column", exact: true }).click();
+  await shell.waitForTimeout(400);
+  // Choosing a tab on the rail keeps the layout.
+  await shell.getByRole("button", { name: "Choose Card Deck", exact: true }).click();
+  await shell.waitForTimeout(400);
+  console.log("after rail click: rails", await shell.locator(".pane-rail").count(), "columns", await shell.locator(".pane-group").count());
+  await shot("4-rail-stays");
+  await shell.getByRole("button", { name: "Expand column", exact: true }).first().click();
+  await shell.waitForTimeout(400);
+  console.log("after toggle: rails", await shell.locator(".pane-rail").count(), "columns", await shell.locator(".pane-group").count(),
+    "tools tab", JSON.stringify(await shell.locator('.pane-group').last().locator('[role="tab"][aria-selected="true"]').textContent()));
+  // Export is a dialog.
+  await shell.locator('summary[aria-label="Notebook actions"]').click();
+  await shell.getByRole("button", { name: "Export", exact: true }).click();
+  await shell.locator(".export-dialog").waitFor();
+  await shot("5-export");
   console.log(JSON.stringify({ errors }, null, 2));
 } catch (error) {
   console.log("FAILED", error.message.slice(0, 200), JSON.stringify(errors));

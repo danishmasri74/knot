@@ -81,7 +81,7 @@ export function WorkspacePanes({
 }: {
   /** Pinned first in the first column's tab row (the notebook pill). */
   lead?: ReactNode;
-  /** A column's + menu. */
+  /** "Open in this column" items for a column's menu. */
   newTab?: (group: string) => ReactNode;
   /** Controls for a column's active tab, at the end of its tab row. */
   tools?: (tab: PaneTab) => ReactNode;
@@ -422,13 +422,28 @@ export function WorkspacePanes({
           style={{ left, width: RAIL_WIDTH }}
           aria-label="Collapsed column"
         >
+          <button
+            className="pane-rail-toggle"
+            aria-label={expanded ? "Expand column" : "Show column"}
+            data-tooltip={expanded ? "Expand column (Esc)" : "Show column"}
+            onClick={() =>
+              expanded
+                ? dispatch({ type: "restore" })
+                : activate(group.activeTabId)
+            }
+          >
+            <ShellIcon name="expand" />
+          </button>
           {group.tabIds.map((id) => (
             <button
               key={id}
-              aria-label={`Show ${label(layout.tabs[id])}`}
+              aria-label={`Choose ${label(layout.tabs[id])}`}
+              aria-pressed={id === group.activeTabId}
               data-tooltip={label(layout.tabs[id])}
               data-active={id === group.activeTabId}
-              onClick={() => activate(id)}
+              // Picks the tab this column shows when it comes back; the
+              // layout stays as it is.
+              onClick={() => dispatch({ type: "activate", id, stay: true })}
             >
               <ShellIcon
                 name={icon?.(layout.tabs[id]) ?? icons[layout.tabs[id].kind]}
@@ -696,7 +711,6 @@ export function WorkspacePanes({
                 />
               )}
             </TabStrip>
-            {newTab?.(group.id)}
             {layout.tabs[group.activeTabId] && (
               <span className="pane-tools">
                 {tools?.(layout.tabs[group.activeTabId])}
@@ -728,12 +742,41 @@ export function WorkspacePanes({
               icon={<ShellIcon name="more" />}
               className="pane-menu"
             >
-              {group.tabIds.map((id) => (
-                <button key={id} onClick={() => activate(id)}>
-                  {label(layout.tabs[id])}
-                </button>
-              ))}
-              <hr />
+              {newTab && (
+                <>
+                  {newTab(group.id)}
+                  <hr />
+                </>
+              )}
+              {layout.groups.length > 1 && !projection.collapsed && (
+                <>
+                  <button
+                    onClick={() =>
+                      dispatch(
+                        expanded
+                          ? { type: "restore" }
+                          : { type: "expand", group: group.id },
+                      )
+                    }
+                  >
+                    {expanded ? "Restore columns" : "Expand column"}
+                  </button>
+                  {!expanded && (
+                    <button
+                      onClick={() => {
+                        // With two columns, collapsing one expands the other.
+                        const other = layout.groups.find(
+                          (g) => g.id !== group.id,
+                        );
+                        if (other) dispatch({ type: "expand", group: other.id });
+                      }}
+                    >
+                      Collapse column
+                    </button>
+                  )}
+                  <hr />
+                </>
+              )}
               <button
                 disabled={!roomForColumn || group.tabIds.length < 2}
                 data-tooltip={

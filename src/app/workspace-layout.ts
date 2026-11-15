@@ -79,7 +79,10 @@ export type LayoutAction =
       /** Open in this column (a column's + menu). */
       group?: string;
     }
-  | { type: "activate" | "close"; id: string }
+  | { type: "close"; id: string }
+  /** stay: pick the tab a collapsed column will show, without bringing the
+   * column back (a rail's tab icons). */
+  | { type: "activate"; id: string; stay?: boolean }
   | { type: "move"; id: string; group: string; index?: number }
   | { type: "split"; id: string; side: "left" | "right" }
   | { type: "merge"; group: string; into?: string }
@@ -261,6 +264,10 @@ export function layoutReducer(
     }
     case "activate": {
       const group = containing(action.id);
+      if (group && action.stay) {
+        group.activeTabId = action.id;
+        break;
+      }
       if (group) {
         next.hidden = false;
         if (next.expandedGroupId && next.expandedGroupId !== group.id)
