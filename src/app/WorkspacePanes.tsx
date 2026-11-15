@@ -326,6 +326,14 @@ export function WorkspacePanes({
   const activate = (id: string) => {
     dispatch({ type: "activate", id });
   };
+  /** The current column is where new tabs open and what Focus fills. */
+  const makeCurrent = (id: string) => {
+    if (
+      layout.lastUsedGroupId !==
+      layout.groups.find((g) => g.tabIds.includes(id))?.id
+    )
+      dispatch({ type: "activate", id });
+  };
   const close = (id: string) => {
     dispatch({ type: "close", id });
     requestAnimationFrame(() => {
@@ -588,10 +596,28 @@ export function WorkspacePanes({
           <header
             className="pane-header"
             // Side by side, the column Focus acts on carries a thin accent.
-            data-current={slots.length > 1 && group.id === focusTarget?.id}
+            data-current={
+              slots.length > 1 ? group.id === focusTarget?.id : undefined
+            }
+            // The right-end controls act on the current column, so clicking
+            // them must not change which one that is.
+            onPointerDownCapture={(e) => {
+              if (
+                !(e.target instanceof Element) ||
+                !e.target.closest(".pane-tools")
+              )
+                makeCurrent(group.activeTabId);
+            }}
+            onFocusCapture={(e) => {
+              if (!e.target.closest(".pane-tools"))
+                makeCurrent(group.activeTabId);
+            }}
             onKeyDown={(e) => {
+              // Esc only leaves Focus; it never closes a tab, so reaching
+              // for "get out" can't lose your place.
               if (
                 e.key === "Escape" &&
+                expanded &&
                 !e.defaultPrevented &&
                 !dragging &&
                 !document.querySelector(
@@ -600,10 +626,7 @@ export function WorkspacePanes({
               ) {
                 e.preventDefault();
                 e.stopPropagation();
-                // Esc first restores an expanded column, then closes tabs.
-                if (expanded) dispatch({ type: "restore" });
-                else if (layout.tabs[group.activeTabId]?.kind !== "canvas")
-                  close(group.activeTabId);
+                dispatch({ type: "restore" });
               }
             }}
             onDragOver={(e) => {
@@ -949,13 +972,9 @@ export function WorkspacePanes({
               if (e) e.inert = !visible || blocked || hidden;
             }}
             style={{ left: slot.left, width: slot.width }}
-            onFocusCapture={() => {
-              if (
-                layout.lastUsedGroupId !==
-                layout.groups.find((g) => g.tabIds.includes(tab.id))?.id
-              )
-                dispatch({ type: "activate", id: tab.id });
-            }}
+            // Clicking or focusing anywhere in a column makes it current.
+            onFocusCapture={() => makeCurrent(tab.id)}
+            onPointerDownCapture={() => makeCurrent(tab.id)}
           >
             {render(tab, () => close(tab.id), tabState(tab))}
           </section>

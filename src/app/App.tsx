@@ -186,6 +186,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { watchHistoryNotes } from "../features/editor/blocksuite/history-notes";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { flushUiPreferences } from "../services/ui-preferences";
 import { listen } from "@tauri-apps/api/event";
@@ -1169,6 +1170,33 @@ export function App() {
     setNotice(value);
     setNoticeAction(action);
   };
+  // Undo and redo share one notebook history, whichever column you're in.
+  // When one changes a note you can't see (behind a rail or another tab,
+  // with the canvas not showing), say which note, without switching to it.
+  const undoNotice = useRef<(type: "undo" | "redo", notes: string[]) => void>(
+    () => {},
+  );
+  undoNotice.current = (type, notes) => {
+    const current = session.current;
+    if (!current) return;
+    const state = layoutRef.current;
+    const shown = projectLayout(state, contentWidth).groups.map(
+      (g) => state.tabs[g.activeTabId],
+    );
+    if (shown.some((tab) => tab?.kind === "canvas")) return;
+    const visible = new Set(
+      shown.flatMap((tab) => (tab?.kind === "note" ? [tab.noteId] : [])),
+    );
+    if (notes.some((id) => visible.has(id))) return;
+    const titles = current.notebookNotes();
+    const verb = type === "undo" ? "Undid" : "Redid";
+    setNotice(
+      notes.length === 1
+        ? `${verb} a change in “${titles.find((note) => note.id === notes[0])?.title ?? "a note"}”.`
+        : `${verb} changes in ${notes.length} notes.`,
+    );
+  };
+  const stopUndoWatch = useRef(() => {});
   const updateState = useUpdateState();
   // The quiet Settings dot: an update is waiting and the Updates page hasn't
   // been opened for that version yet.
@@ -2001,6 +2029,10 @@ export function App() {
     setAiPlacement((value) => (value === "page" ? "hidden" : value));
     session.current?.destroy();
     session.current = next;
+    stopUndoWatch.current();
+    stopUndoWatch.current = watchHistoryNotes(next.doc, (type, notes) => {
+      if (session.current === next) undoNotice.current(type, notes);
+    });
     host.current?.replaceChildren(next.editor);
     setReferences(next.catalog.filter((row) => row.id !== item.id));
     setLibrary(null);

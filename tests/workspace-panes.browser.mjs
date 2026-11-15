@@ -221,6 +221,24 @@ try {
   await page.locator(".pane-focus").click();
   assert.equal(await page.locator(".pane-rail").count(), 0);
   assert.equal(await page.locator(".pane-group").count(), 2);
+  // Clicking inside a column makes it current; the Focus button (at the
+  // other column's right end) then fills the window with it.
+  await page.locator(".fixture-reader").click();
+  assert.equal(
+    await page
+      .locator('.pane-header[data-current="true"] [role="tab"]')
+      .first()
+      .textContent(),
+    "PDF reader",
+  );
+  await page.locator(".pane-focus").click();
+  assert.equal(
+    await page.locator('.pane-group [role="tab"]').first().textContent(),
+    "PDF reader",
+  );
+  // Focused, there's one column, so nothing is marked current.
+  assert.equal(await page.locator(".pane-header[data-current]").count(), 0);
+  await page.locator(".pane-focus").click();
   // Shift+F10 opens a tab's menu from the keyboard; Esc returns to the tab
   // without closing it.
   await page.getByRole("tab", { name: "Chapter two", exact: true }).focus();
@@ -288,6 +306,36 @@ try {
   await page.evaluate(async () => {
     await window.session.flush();
   });
+  // Undo and redo report the note they changed.
+  const history = await page.evaluate(async () => {
+    const { watchHistoryNotes } = await import(
+      "/src/features/editor/blocksuite/history-notes.ts"
+    );
+    const doc = window.session.doc;
+    const seen = [];
+    const stop = watchHistoryNotes(doc, (type, notes) =>
+      seen.push([type, notes]),
+    );
+    doc.captureSync();
+    doc.getBlock(window.noteId).model.children[0].text.insert("!", 0);
+    doc.captureSync();
+    doc.undo();
+    doc.redo();
+    stop();
+    doc.undo();
+    return { seen, noteId: window.noteId };
+  });
+  assert.deepEqual(history.seen, [
+    ["undo", [history.noteId]],
+    ["redo", [history.noteId]],
+  ]);
+  // Esc in the header never closes a tab.
+  await page.getByRole("tab", { name: "Chapter two", exact: true }).focus();
+  await page.keyboard.press("Escape");
+  assert.equal(
+    await page.getByRole("tab", { name: "Chapter two", exact: true }).count(),
+    1,
+  );
   // A crowded column says how many tabs are out of view, and lists them.
   assert.equal(await page.locator(".pane-overflow-chip").count(), 0);
   await page.setViewportSize({ width: 520, height: 640 });
@@ -347,7 +395,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS stable pane hosts, shared edits, tab menu, Focus switch and rails, split/swap/merge, responsive restoration, delete/undo, hidden-tab count, close/disposal",
+    "PASS stable pane hosts, shared edits, tab menu, current column, Focus switch and rails, undo notes, Esc keeps tabs, split/swap/merge, responsive restoration, delete/undo, hidden-tab count, close/disposal",
   );
 } finally {
   await browser.close();

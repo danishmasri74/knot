@@ -5759,10 +5759,21 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   background: var(--shell-hover);
   border-radius: 4px;
 }
-/* The column Focus acts on, while columns sit side by side. */
+/* Side by side, the current column (where new tabs open and what Focus
+   fills) has an accent edge and a faint tint; the other column's tabs step
+   back. */
 .pane-header[data-current="true"] {
-  box-shadow: inset 0 2px 0
-    color-mix(in srgb, var(--control-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--control-accent) 7%, var(--shell-surface));
+  box-shadow: inset 0 2px 0 var(--control-accent);
+}
+.pane-header[data-current="true"] .pane-tab[data-active="true"] {
+  background: color-mix(in srgb, var(--control-accent) 14%, var(--shell-surface));
+}
+.pane-header[data-current="false"] .pane-tab > [role="tab"] {
+  color: var(--shell-muted);
+}
+.pane-header[data-current="false"] .pane-tab[data-active="true"] > [role="tab"] {
+  color: var(--shell-text);
 }
 /* A crowded tab row shows how many tabs are out of view; the count opens a
    list of the whole column. */
