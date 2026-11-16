@@ -11,6 +11,8 @@ import {
 } from "../../../services/web-ai-evidence";
 import { appendWebProvenance } from "./web-source";
 import { mcqDecks } from "./mcq-block";
+import { captureCanvasMap } from "./canvas-map";
+import type { CanvasMapData } from "../../../services/canvas-map-format";
 import { Text } from "@blocksuite/store";
 import {
   clearPlacement,
@@ -74,6 +76,8 @@ type Range = {
 };
 export type AiContext = {
   sourceIntent?: "ambient" | "selection" | "explicit";
+  /** How the open canvas is arranged; sent with every canvas message. */
+  canvasMap?: CanvasMapData;
   webContext?: string;
   canvas?: boolean;
   selectedImageKey?: string;
@@ -170,6 +174,7 @@ export function captureCardContext(
     instance: doc,
     version: version(doc),
     label: "Focused note",
+    canvasMap: captureCanvasMap(doc, [card.id], card.id),
     note: card.id,
     text: structure.map((b) => b.text).join("\n"),
     structure,
@@ -421,6 +426,18 @@ export function captureAiContext(
     surrounding,
     ranges,
     note: note?.id ?? (visible.length === 1 ? visible[0].id : null),
+    ...(canvas && {
+      canvasMap: captureCanvasMap(
+        doc,
+        [
+          ...new Set([
+            ...selectedBlocks.map((m) => m.id),
+            ...canvasSelected.map((e) => e.id),
+          ]),
+        ],
+        note?.id,
+      ),
+    }),
   };
 }
 

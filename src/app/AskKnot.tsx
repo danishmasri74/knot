@@ -1780,7 +1780,11 @@ function AskKnotPanel({
         ? await prepareAiImage(selectedImage.key)
         : undefined;
       const baseContext = cardContext
-        ? cardRequestContext(current.document, current.structure)
+        ? cardRequestContext(
+            current.document,
+            current.structure,
+            current.canvasMap,
+          )
         : (replayContext ??
           withCitationSources(
             JSON.stringify({
@@ -1808,6 +1812,10 @@ function AskKnotPanel({
                 },
               }),
               addedNotes: extra,
+              // Every message while a canvas is open describes its layout.
+              ...(useSources && current.canvasMap && {
+                canvasMap: current.canvasMap,
+              }),
             }),
           ));
       // Saved transcripts of the YouTube cards in these notes (never fetched

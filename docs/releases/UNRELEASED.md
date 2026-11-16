@@ -9,3 +9,4 @@
 - Ask Knot can make multiple-choice quizzes: ask it to "quiz me on this note" and it suggests questions you can review, then puts them on a new quiz card beside the note with an arrow from it, or into the note if you ask (Settings → AI → Make quizzes).
 - Cards Ask Knot puts on the canvas, and replies saved with "Add reply as one card", get an Open card button that jumps to them.
 - The canvas suggestion is now "Break this into ideas?": it replaces a long card with short one-idea cards in a frame where the card was, with colored arrows showing how the ideas relate. Anything the cards leave out is kept on an "Other details" card, and the original goes to Trash (Undo brings it back).
+- Ask Knot now understands how your canvas is arranged: which cards are in which frame, what your arrows connect, mind map branches and roughly where things are. Ask "what depends on this?" or "walk me through this frame".

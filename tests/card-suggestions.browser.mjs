@@ -167,6 +167,11 @@ try {
     .citationSources.map((b) => b.text)
     .join(" ");
   assert.equal(text.includes("Alpha") !== text.includes("Beta"), true);
+  // The request describes the canvas: both cards, the asked-about one cited.
+  const canvasMap = JSON.parse(call.context).canvasMap;
+  assert.match(canvasMap, /^K1 "/m, canvasMap);
+  assert.match(canvasMap, /^K2 "/m, canvasMap);
+  assert.match(canvasMap, /\[S1–S\d+\]/, canvasMap);
   assert.ok(await buttons.nth(1).isDisabled());
   const groups = page.getByRole("group", { name: "Card suggestions" });
   await groups.first().getByRole("button", { name: "Not now" }).click();

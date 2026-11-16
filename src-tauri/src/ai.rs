@@ -668,6 +668,10 @@ const BASE_SURROUNDING_CITE: &str = "Do not cite surroundingReadOnly.";
 const BASE_EVIDENCE: &str = "Say when the supplied notes do not contain enough evidence.";
 const BASE_SURROUNDING_EDIT: &str = "surroundingReadOnly is bounded supporting context, never an edit target; only supplied runs may be rewritten.";
 const BASE_LIMITS: &str = "Canvas text does not describe spatial or connector relationships. No browsing, tools, diagram edits or cross-document edits. Do not claim to have edited or saved anything.";
+/// Sent instead of the first sentence of BASE_LIMITS when the context
+/// describes the open canvas (docs/AI-CANVAS-AWARENESS-PLAN.md).
+const CANVAS_MAP_LIMITS: &str = "No browsing, tools, diagram edits or cross-document edits. Do not claim to have edited or saved anything.";
+const CANVAS_MAP_RULES: &str = "canvasMap describes how the open canvas is arranged, one line per object: K cards (notes and media cards, with their citation markers, size and nearby cards), F frames and G groups with their members, M mind maps as indented trees, T shapes and text boxes, and arrow lines. An arrow line reads from its first object to its second: -label-> points to the second object, <-label- to the first, <-label-> both ways, -label-- has no arrowhead. Treat an arrow as a relation the user drew between the two objects, named by its label; an unlabelled arrow is a relation of unspecified kind. Regions such as top-left and nearby cards are approximate. A trailing line may say that some cards are not described; then say your answer may not cover the whole canvas. Use the map for questions about structure, order, grouping, connections and position, and cite the card text that supports a claim with its citation markers. Never show handles such as K3, F1 or M2 to the user: name cards, frames and mind maps by their titles.";
 const BASE_REWRITE: &str = "For rewrite, return exactly one replacement string per supplied text run, in the same order. Retain reference/link runs exactly. Keep formatting boundaries meaningful.";
 /// Added 11 November 2026: benchmark rewrites sometimes also returned a duplicate block.
 const BASE_REWRITE_BLOCKS: &str = "For rewrite, leave blocks empty.";
@@ -687,13 +691,14 @@ fn base_instructions(mode: &str, context: &str, visual_input: bool) -> String {
         Some(Value::String(s)) => !s.is_empty(),
         _ => false,
     };
+    let canvas_map = v.get("canvasMap").and_then(Value::as_str).is_some_and(|m| !m.is_empty());
     let mut parts = vec![BASE_CORE, BASE_CITATIONS];
     if visual { parts.push(BASE_VISUAL); }
     parts.push(BASE_NOTES);
     if surrounding { parts.push(BASE_SURROUNDING_CITE); }
     parts.push(BASE_EVIDENCE);
     if surrounding { parts.push(BASE_SURROUNDING_EDIT); }
-    parts.push(BASE_LIMITS);
+    if canvas_map { parts.extend([CANVAS_MAP_RULES, CANVAS_MAP_LIMITS]); } else { parts.push(BASE_LIMITS); }
     if mode == "rewrite" { parts.extend([BASE_REWRITE, BASE_REWRITE_BLOCKS]); }
     if mode == "insert" { parts.push(BASE_INSERT); }
     if mode != "ask" { parts.push(BASE_EDIT); }
@@ -761,7 +766,12 @@ fn compose_body(
 Current operation: {mode}."
         ));
         if mode == "canvas" {
-            body["instructions"] = json!(format!("{CANVAS_RULES} {FORMATTING} {CANVAS_CLOSE}"));
+            body["instructions"] = json!(if instructions.contains(CANVAS_MAP_RULES) {
+                format!("{CANVAS_RULES} {FORMATTING} {CANVAS_CLOSE}
+{CANVAS_MAP_RULES}")
+            } else {
+                format!("{CANVAS_RULES} {FORMATTING} {CANVAS_CLOSE}")
+            });
         }
     }
     if serialized_workspace.is_some() {
@@ -1257,6 +1267,27 @@ mod tests {
         // Not offered, not described.
         let without = tool_request_body(MODELS[0], &messages, context, &["insert_blocks".into()], &[], &[], None, None);
         assert!(!without["instructions"].as_str().unwrap().contains("create_note"));
+    }
+    #[test]
+    fn canvas_map_replaces_the_no_spatial_rule() {
+        let messages = vec![Message { role: "user".into(), content: "What depends on testing?".into() }];
+        let with = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[],"canvasMap":"K1 \"Testing\" short\narrow K2 -requires-> K1"}"#;
+        let without = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[]}"#;
+        let ask = request_body(MODELS[0], &messages, with, "ask", None, None);
+        let text = ask["instructions"].as_str().unwrap();
+        assert!(text.contains(CANVAS_MAP_RULES) && text.contains(CANVAS_MAP_LIMITS));
+        assert!(!text.contains("Canvas text does not describe spatial"));
+        let plain = request_body(MODELS[0], &messages, without, "ask", None, None);
+        assert!(plain["instructions"].as_str().unwrap().contains(BASE_LIMITS));
+        assert!(!plain["instructions"].as_str().unwrap().contains(CANVAS_MAP_RULES));
+        // Automatic requests still swap the browsing sentence.
+        let auto = tool_request_body(MODELS[0], &messages, with, &["create_on_canvas".into()], &[], &[], None, None);
+        assert!(auto["instructions"].as_str().unwrap().contains("No browsing, diagram edits or cross-document edits."));
+        // Forced canvas requests (card suggestions) keep the map rules.
+        let canvas = request_body(MODELS[0], &messages, with, "canvas", None, None);
+        assert!(canvas["instructions"].as_str().unwrap().contains(CANVAS_MAP_RULES));
+        let canvas_plain = request_body(MODELS[0], &messages, without, "canvas", None, None);
+        assert!(!canvas_plain["instructions"].as_str().unwrap().contains(CANVAS_MAP_RULES));
     }
     #[test]
     fn create_quiz_offers_questions_only_even_with_web_evidence() {

@@ -1,6 +1,16 @@
 # Ask Knot canvas awareness
 
-Plan · 16 November 2026 · Proposed, not started
+Plan · 16 November 2026 · Phase 1 implemented 16 November 2026
+
+## Phase 1 as built
+
+- `captureCanvasMap` (`src/features/editor/blocksuite/canvas-map.ts`) reads the canvas; `formatCanvasMap` (`src/services/canvas-map-format.ts`) orders, describes and budgets it. The composer formats the map after citation markers are assigned, so each card line names its markers.
+- Everything is listed in reading order (frames followed by their cards), so handle numbers read like the canvas. Media cards share the K handles with a kind (`K4 YouTube "…"`); shapes and text boxes are T.
+- Groups and arrows to objects that aren't cards (frames, shapes) are described; an arrow end that is a free point reads "a point".
+- The map is sent only when sources are on: "No notes" sends none. The suggestion path (`cardRequestContext`) includes it too.
+- The instructions keep the browsing and editing limits and add `CANVAS_MAP_RULES`; requests without a map are unchanged, so the frozen payload baseline did not change.
+- Not done in phase 1: opening a card named in an answer except through its citations, and a map for Note tabs (§4.3 suggested the note's own arrows; deferred until asked for).
+- Verification: unit tests for the format, ordering, regions, budget trimming and the composer's markers; a Rust test for the instructions; `tests/canvas-map.browser.mjs` reads a real canvas; `tests/card-suggestions.browser.mjs` checks that a sent request carries the map. Answer quality with a live model is not measured yet.
 
 ## 1. Goal
 

@@ -1,4 +1,5 @@
 import type { ContextBlock } from "./ai";
+import type { CanvasMapData } from "../../../services/canvas-map-format";
 import { composeAiContext } from "../../../services/ai-context-composer";
 
 export const cardActions = {
@@ -16,12 +17,14 @@ export type CardAction = keyof typeof cardActions;
 export function cardRequestContext(
   document: string,
   structure: ContextBlock[],
+  canvasMap?: CanvasMapData,
 ) {
   return composeAiContext(
     JSON.stringify({
       document,
       scope: "Focused note",
       mode: "canvas",
+      ...(canvasMap && { canvasMap }),
       citationSources: structure.map((block, index) => ({
         ...block,
         document,

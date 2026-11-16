@@ -27,6 +27,8 @@ pub struct Composition {
     #[serde(default)] pub evidence_token_upper_bound: usize,
     #[serde(default)] pub workspace_indexed: usize,
     #[serde(default)] pub workspace_total: usize,
+    /// Bytes of the canvas map (docs/AI-CANVAS-AWARENESS-PLAN.md).
+    #[serde(default)] pub canvas_map_bytes: usize,
     pub context_bytes: usize,
     pub message_bytes: usize,
     pub messages: usize,
@@ -72,6 +74,7 @@ impl Composition {
                 result.workspace_indexed=v["coverage"]["indexed"].as_u64().unwrap_or(0) as usize;
                 result.workspace_total=v["coverage"]["total"].as_u64().unwrap_or(0) as usize;
             }
+            result.canvas_map_bytes = bytes("canvasMap");
             result.text_bytes = bytes("text");
             result.structure_bytes = bytes("structure");
             result.citation_bytes = bytes("citationSources");

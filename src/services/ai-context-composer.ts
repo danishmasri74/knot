@@ -1,3 +1,4 @@
+import { formatCanvasMap, type CanvasMapData } from "./canvas-map-format";
 import { ocrPassages } from "./ocr-passages";
 import type { ImageTextEvidence } from "./note-image-text";
 import { readCitationSources } from "./ai-citations";
@@ -285,6 +286,18 @@ export function composeAiContext(
     ...source,
     citation: `[S${index + 1}]`,
   }));
+  // The canvas map names each card's citation markers in this request.
+  if (data.canvasMap && typeof data.canvasMap === "object") {
+    const cited = new Map<string, number[]>();
+    (result.citationSources as CitationSource[]).forEach((source, index) => {
+      const note = (source as { note?: unknown }).note;
+      if (typeof note === "string")
+        cited.set(note, [...(cited.get(note) ?? []), index + 1]);
+    });
+    const map = formatCanvasMap(data.canvasMap as CanvasMapData, cited);
+    if (map) result.canvasMap = map;
+    else delete result.canvasMap;
+  }
   dropCoveredCopies(result);
   if (bytes(result) > 180_000)
     throw new Error(
