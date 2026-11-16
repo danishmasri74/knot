@@ -1,6 +1,15 @@
 # Ask Knot canvas awareness
 
-Plan · 16 November 2026 · Phase 1 implemented 16 November 2026
+Plan · 16 November 2026 · Phases 1–2 implemented 16 November 2026
+
+## Phase 2 as built
+
+- Instead of changing `connections` endpoints to strings (which would change every canvas schema), proposals get a separate `links` list, only when a canvas map is present: `{card, existing, label, toExisting}`. Requests without a map are unchanged, so the frozen payload baseline did not change.
+- Handles resolve at Apply from the map captured with the request (`canvasHandles`), never from IDs sent to the model. Unknown handles, objects no longer on the canvas, and the card being replaced are refused with a retry message.
+- Placement: linked new cards go 160 px right of the objects they link to (`clearPlacement`); replacement keeps its own placement. Link arrows use the typed relation colors.
+- Quizzes: `about` names the frame or card; the quiz card goes beside it with the arrow from it, titled after it. A stale `about` falls back to the source note.
+- Preview: "Links to existing cards" lists each link by title; a quiz about something says so.
+- Verification: Rust test for the conditional schemas and rules, unit test for handle resolution, `tests/ai-canvas-links.browser.mjs` (link, placement, color, stale handle, undo, quiz about a frame). Live answer quality not measured.
 
 ## Phase 1 as built
 

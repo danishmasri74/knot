@@ -12,7 +12,11 @@ import {
 import { appendWebProvenance } from "./web-source";
 import { mcqDecks } from "./mcq-block";
 import { captureCanvasMap } from "./canvas-map";
-import type { CanvasMapData } from "../../../services/canvas-map-format";
+import {
+  canvasHandles,
+  type CanvasHandleTarget,
+  type CanvasMapData,
+} from "../../../services/canvas-map-format";
 import { Text } from "@blocksuite/store";
 import {
   clearPlacement,
@@ -65,8 +69,24 @@ export type AiProposal = {
   questions?: AiQuestion[];
   /** create_quiz: a new linked quiz card (default) or the current note. */
   target?: QuizTarget;
+  /** create_quiz with a canvas map: the frame or card it covers (a handle). */
+  about?: string;
+  /** Canvas with a canvas map: arrows from new cards to existing objects. */
+  links?: AiLink[];
 };
 export type { AiQuestion } from "../../../services/ai-quiz";
+export type AiLink = {
+  /** Index of a new top-level card. */
+  card: number;
+  /** Handle of an existing card, frame or text from the canvas map. */
+  existing: string;
+  label: string;
+  /** The arrow points from the new card to the existing object. */
+  toExisting: boolean;
+};
+/** Links one canvas proposal may add; matches CANVAS_LINK_RULES in ai.rs. */
+export const MAX_LINKS = 20;
+const HANDLE = /^[KFT]\d{1,4}$/;
 type Range = {
   id: string;
   start: number;
@@ -512,6 +532,27 @@ export function validateProposal(
         connections.length))
   )
     throw new Error("Invalid quiz questions.");
+  if (
+    (p.links !== undefined &&
+      (!Array.isArray(p.links) ||
+        p.links.length > MAX_LINKS ||
+        p.links.some(
+          (link) =>
+            !link ||
+            !Number.isInteger(link.card) ||
+            link.card < 0 ||
+            link.card >= p.blocks.length ||
+            typeof link.existing !== "string" ||
+            !HANDLE.test(link.existing) ||
+            typeof link.label !== "string" ||
+            link.label.length > 200 ||
+            typeof link.toExisting !== "boolean",
+        ))) ||
+    (p.about !== undefined &&
+      (typeof p.about !== "string" ||
+        (p.about !== "" && !/^[KFT]\d{1,4}$/.test(p.about))))
+  )
+    throw new Error("Invalid links to existing cards.");
   validateSourceRefs(p, webContext);
   return cleanAiProposal(p);
 }
@@ -582,7 +623,19 @@ function applyQuiz(
   const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
     | SurfaceBlockModel
     | undefined;
-  const sourceBounds = source ? parse(source.xywh) : undefined;
+  // A quiz about a frame or card named from the canvas map sits beside it,
+  // with the arrow from it; otherwise beside the source note.
+  const named =
+    card && proposal.about && context.canvasMap
+      ? canvasHandles(context.canvasMap).get(proposal.about)
+      : undefined;
+  const about =
+    named?.box &&
+    (doc.getBlock(named.id) || surface?.getElementById(named.id))
+      ? named
+      : undefined;
+  const sourceBounds = about?.box ?? (source ? parse(source.xywh) : undefined);
+  const anchorId = about?.id ?? source?.id;
   const bounds = card
     ? quizCardPlacement(
         sourceBounds,
@@ -597,7 +650,9 @@ function applyQuiz(
       )
     : undefined;
   const title = quizCardTitle(
-    (source && structuredAiBlocks(source).find((b) => b.text.trim())?.text) ||
+    about?.title ||
+      (source &&
+        structuredAiBlocks(source).find((b) => b.text.trim())?.text) ||
       doc.meta?.title,
   );
   const ids = definitions.map((definition) => deck.writeMcq(definition));
@@ -627,7 +682,7 @@ function applyQuiz(
           doc.addBlock(mcqReferenceFlavour as never, { cardId }, host),
         );
       // The arrow shows which note the quiz tests.
-      if (noteId && source && sourceBounds && surface)
+      if (noteId && anchorId && sourceBounds && surface)
         surface.addElement({
           type: "connector",
           mode: {
@@ -636,7 +691,7 @@ function applyQuiz(
             straight: ConnectorMode.Straight,
           }[getAiConnectorShape()],
           stroke: aiConnectorStroke(0),
-          source: { id: source.id, position: [1, 0.5] },
+          source: { id: anchorId, position: [1, 0.5] },
           target: { id: noteId, position: [0, 0.5] },
         });
     });
@@ -862,6 +917,62 @@ export function applyAiProposal(
       shift: [region[0] + FRAME_PAD - minX, region[1] + FRAME_TOP - minY],
     };
   }
+  // Links to existing objects resolve through the canvas map captured with
+  // the request; the document revision is unchanged, so its IDs still hold.
+  const handles = context.canvasMap
+    ? canvasHandles(context.canvasMap)
+    : new Map<string, CanvasHandleTarget>();
+  const links =
+    mode === "canvas"
+      ? (proposal.links ?? []).map((link) => {
+          const target = handles.get(link.existing);
+          if (
+            !target?.box ||
+            target.id === options?.replaces ||
+            !(doc.getBlock(target.id) || surface?.getElementById(target.id))
+          )
+            throw new Error(
+              "This proposal links to something that isn't on the canvas any more. Try again.",
+            );
+          return { ...link, target: target as Required<CanvasHandleTarget> };
+        })
+      : [];
+  // Where the new cards go as a group: the replaced card's place, or beside
+  // the existing objects they link to, clear of anything in the way.
+  let placed: { shift: [number, number]; top: number } | undefined = replaced
+    ? { shift: replaced.shift, top: replaced.region[1] }
+    : undefined;
+  if (!placed && links.length && proposal.blocks.length) {
+    const laid = layoutAiCards(
+      proposal.blocks.map(aiBlockText),
+      connections,
+      0,
+      proposal.blocks.map(aiBlockSize),
+    );
+    const minX = Math.min(...laid.map((b) => b[0]));
+    const minY = Math.min(...laid.map((b) => b[1]));
+    const size: [number, number] = [
+      Math.max(...laid.map((b) => b[0] + b[2])) - minX,
+      Math.max(...laid.map((b) => b[1] + b[3])) - minY,
+    ];
+    const targets = links.map((l) => l.target.box);
+    const occupied = [
+      ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
+      ...(surface?.elementModels ?? []).filter(
+        (e) => e.type !== "connector" && e.type !== "group",
+      ),
+    ].flatMap((e) => {
+      const b = "xywh" in e ? parseBox(e.xywh) : undefined;
+      return b ? [b] : [];
+    });
+    const region = clearPlacement(
+      Math.max(...targets.map((b) => b[0] + b[2])) + 160,
+      Math.min(...targets.map((b) => b[1])),
+      occupied,
+      size,
+    );
+    placed = { shift: [region[0] - minX, region[1] - minY], top: region[1] };
+  }
   const connectorMode = {
     curve: ConnectorMode.Curve,
     elbowed: ConnectorMode.Orthogonal,
@@ -920,11 +1031,11 @@ export function applyAiProposal(
       const bounds = layoutAiCards(
         proposal.blocks.map(aiBlockText),
         connections,
-        replaced ? 0 : right,
+        placed ? 0 : right,
         proposal.blocks.map(aiBlockSize),
       ).map(([x, y, w, h]): [number, number, number, number] =>
-        replaced
-          ? [x + replaced.shift[0], y + replaced.shift[1], w, h]
+        placed
+          ? [x + placed.shift[0], y + placed.shift[1], w, h]
           : [x, y, w, h],
       );
       if (proposal.mindmap?.length) {
@@ -938,7 +1049,7 @@ export function applyAiProposal(
           : right;
         nodes[0].xywh = JSON.stringify([
           mapLeft,
-          replaced ? replaced.region[1] : 0,
+          placed ? placed.top : 0,
           180,
           50,
         ]);
@@ -1011,6 +1122,23 @@ export function applyAiProposal(
           source: { id: ids[c.from], position: ports.source },
           target: { id: ids[c.to], position: ports.target },
           text: new Y.Text(c.label),
+        });
+      }
+      // Arrows between new cards and the existing objects they link to.
+      for (const [index, link] of links.entries()) {
+        const ports = aiConnectorPorts(bounds[link.card], link.target.box);
+        // Ports were measured from the new card to the existing object.
+        const fromNew = { id: ids[link.card], position: ports.source };
+        const toOld = { id: link.target.id, position: ports.target };
+        surface!.addElement({
+          type: "connector",
+          mode: connectorMode,
+          stroke:
+            relationStroke(link.label) ||
+            aiConnectorStroke(connections.length + index),
+          source: link.toExisting ? fromNew : toOld,
+          target: link.toExisting ? toOld : fromNew,
+          text: new Y.Text(link.label),
         });
       }
       if (replaced) {

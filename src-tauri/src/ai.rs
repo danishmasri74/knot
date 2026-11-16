@@ -405,7 +405,7 @@ const CANVAS_CLOSE: &str = "Do not claim changes are saved: the user previews an
 const EDIT_MARKERS: &str = "Generated document content must not contain request-local citation markers such as [S1] or [S42]. This applies to card titles, body text, table headers and cells, kanban stages, connector labels, and mind map labels. Keep web provenance in sourceRefs rather than inline markers. For rewrites preserve existing literal text and protected reference/link runs without adding citation markers.";
 /// Strict schema of an edit proposal, shared by forced edit modes (as the
 /// response format) and automatic requests (as tool parameters).
-fn edit_schema(mode: &str, web: bool) -> Value {
+fn edit_schema(mode: &str, web: bool, map: bool) -> Value {
     let content = json!({"type":"object","additionalProperties":false,"required":["type","text","columns","rows"],"properties":{
         "type":{"type":"string","enum":["paragraph","h1","h2","h3","bulleted","numbered","todo","table","kanban"]},
         "text":{"type":"string"}, "columns":{"type":"array","items":{"type":"string"}},
@@ -448,6 +448,14 @@ fn edit_schema(mode: &str, web: bool) -> Value {
             edge["required"].as_array_mut().unwrap().push(json!("sourceRefs"));
         }
     }
+    // With a canvas map, new cards may also be linked to existing objects.
+    if mode == "canvas" && map {
+        schema["required"].as_array_mut().unwrap().push(json!("links"));
+        schema["properties"]["links"] = json!({"type":"array","items":{"type":"object","additionalProperties":false,
+            "required":["card","existing","label","toExisting"],"properties":{
+                "card":{"type":"integer"},"existing":{"type":"string"},
+                "label":{"type":"string"},"toExisting":{"type":"boolean"}}}});
+    }
     schema
 }
 /// Write tools an automatic request may offer, with the edit mode each one
@@ -480,11 +488,11 @@ fn tool_rules(name: &str) -> String {
 /// A tool's parameters: the edit schema without the field its edit never
 /// uses, so a rewrite cannot also return blocks. The app restores the
 /// missing field as an empty array before validating.
-fn tool_schema(mode: &str, web: bool) -> Value {
+fn tool_schema(mode: &str, web: bool, map: bool) -> Value {
     if mode == "quiz" {
-        return quiz_schema();
+        return quiz_schema(map);
     }
-    let mut schema = edit_schema(mode, web);
+    let mut schema = edit_schema(mode, web, map);
     let unused = if mode == "rewrite" { "blocks" } else { "replacements" };
     if let Some(properties) = schema["properties"].as_object_mut() {
         properties.remove(unused);
@@ -507,8 +515,8 @@ const QUIZ_RULES: &str = "create_quiz makes interactive multiple-choice question
 /// Strict parameters of create_quiz. The app checks the limits again and
 /// writes each question as a Card Deck question, referenced from a new quiz
 /// card (target card) or the end of the current note (target note).
-fn quiz_schema() -> Value {
-    json!({"type":"object","additionalProperties":false,"required":["target","questions"],"properties":{
+fn quiz_schema(map: bool) -> Value {
+    let mut schema = json!({"type":"object","additionalProperties":false,"required":["target","questions"],"properties":{
         "target":{"type":"string","enum":["card","note"]},
         "questions":{"type":"array","items":{"type":"object","additionalProperties":false,
             "required":["question","options","correct","explanation"],"properties":{
@@ -517,8 +525,18 @@ fn quiz_schema() -> Value {
                 "correct":{"type":"integer"},
                 "explanation":{"type":"string"}
             }}}
-    }})
+    }});
+    // With a canvas map, the frame or card the quiz is about (a handle).
+    if map {
+        schema["required"].as_array_mut().unwrap().push(json!("about"));
+        schema["properties"]["about"] = json!({"type":"string"});
+    }
+    schema
 }
+/// Sent with canvas proposals when the context has a canvas map.
+const CANVAS_LINK_RULES: &str = "links connects new cards to objects already on the canvas: card is the zero-based index of a new top-level card, existing is the handle of a card, frame or text from canvasMap, label names the relation (prefer leads to, causes, requires, part of, example of or contrasts with), and toExisting is true when the arrow points from the new card to the existing object. Link only where the content supports a relation, at most 20 links; leave links empty otherwise. Never link to a card that the request replaces, and never put handles in card text. New cards with links are placed beside the existing objects they link to.";
+/// Sent with create_quiz when the context has a canvas map.
+const QUIZ_MAP_RULES: &str = "With a canvas map, about is the handle of the frame or card the quiz covers when the user names one (for example quiz me on a frame); base the questions on the text of its cards, and you may ask about the relations its arrows show. Otherwise about is empty.";
 /// Searches the user's workspace on the device. The app runs it and sends the
 /// results back with the next request; at most two per message.
 pub(crate) const SEARCH_TOOL: &str = "search_workspace";
@@ -583,6 +601,7 @@ fn tool_request_body(
     // Mirror the decisions compose_body made for this context.
     let web = base.contains("Web evidence was explicitly captured");
     let compacted = base.contains(crate::ai_context::COMPACT_INSTRUCTIONS);
+    let map = base.contains(CANVAS_MAP_RULES);
     let browsing = if tools.iter().any(|name| name == WEB_TOOL) {
         "No browsing except with web_search, no diagram edits or cross-document edits."
     } else {
@@ -597,6 +616,14 @@ fn tool_request_body(
         for name in &edits {
             instructions.push('\n');
             instructions.push_str(&tool_rules(name));
+            if map && name.as_str() == "create_on_canvas" {
+                instructions.push(' ');
+                instructions.push_str(CANVAS_LINK_RULES);
+            }
+            if map && name.as_str() == "create_quiz" {
+                instructions.push(' ');
+                instructions.push_str(QUIZ_MAP_RULES);
+            }
         }
         instructions.push_str(&format!("\n{AUTO_EDIT} {FORMATTING}\n{EDIT_MARKERS}"));
         if compacted {
@@ -643,7 +670,7 @@ fn tool_request_body(
         .iter()
         .map(|name| match tool_mode(name) {
             Some(mode) => json!({"type": "function", "name": name, "description": tool_description(name),
-                "strict": true, "parameters": tool_schema(mode, web)}),
+                "strict": true, "parameters": tool_schema(mode, web, map)}),
             None if name == WEB_TOOL => json!({"type": "web_search"}),
             None if name == IMAGES_TOOL => json!({"type": "function", "name": IMAGES_TOOL,
                 "description": "Look at up to three images from the user's open note or canvas.",
@@ -758,8 +785,9 @@ fn compose_body(
     }
     let mut body = json!({"model":model,"instructions":format!("{instructions}\nCurrent operation: {mode}."),"input":input,"store":false,"stream":true,"max_output_tokens":max_output,"reasoning":{"effort":effort}});
     let web = serde_json::from_str::<Value>(context).ok().is_some_and(|v| v["webOutcomes"].as_array().is_some_and(|a| !a.is_empty()));
+    let map = instructions.contains(CANVAS_MAP_RULES);
     if mode != "ask" {
-        body["text"] = json!({"format":{"type":"json_schema","name":"knot_edit","strict":true,"schema":edit_schema(mode, web)}});
+        body["text"] = json!({"format":{"type":"json_schema","name":"knot_edit","strict":true,"schema":edit_schema(mode, web, map)}});
         body["instructions"] = json!(format!(
             "{instructions}
 {FORMATTING}
@@ -768,7 +796,7 @@ Current operation: {mode}."
         if mode == "canvas" {
             body["instructions"] = json!(if instructions.contains(CANVAS_MAP_RULES) {
                 format!("{CANVAS_RULES} {FORMATTING} {CANVAS_CLOSE}
-{CANVAS_MAP_RULES}")
+{CANVAS_MAP_RULES} {CANVAS_LINK_RULES}")
             } else {
                 format!("{CANVAS_RULES} {FORMATTING} {CANVAS_CLOSE}")
             });
@@ -1129,7 +1157,7 @@ mod tests {
         for tool in offered {
             assert_eq!(tool["type"], "function");
             assert_eq!(tool["strict"], true);
-            assert_eq!(tool["parameters"], tool_schema(tool_mode(tool["name"].as_str().unwrap()).unwrap(), false));
+            assert_eq!(tool["parameters"], tool_schema(tool_mode(tool["name"].as_str().unwrap()).unwrap(), false, false));
         }
         let instructions = body["instructions"].as_str().unwrap();
         assert!(instructions.starts_with(BASE_CORE));
@@ -1144,7 +1172,7 @@ mod tests {
         // Web evidence adds sourceRefs to tool arguments as it does to proposals.
         let web = r#"{"webOutcomes":[{"state":"ready"}],"citationSources":[{"kind":"web","ref":"c/s1","text":"A"}]}"#;
         let canvas = tool_request_body(MODELS[0], &messages, web, &["create_on_canvas".into()], &[], &[], None, None);
-        assert_eq!(canvas["tools"][0]["parameters"], tool_schema("canvas", true));
+        assert_eq!(canvas["tools"][0]["parameters"], tool_schema("canvas", true, false));
         // Each tool has only its own fields: a rewrite cannot return blocks.
         let fields = |tool: &Value| tool["parameters"]["required"].as_array().unwrap().iter().map(|f| f.as_str().unwrap().to_owned()).collect::<Vec<_>>();
         assert_eq!(fields(&offered[0]), ["replacements"]);
@@ -1288,6 +1316,23 @@ mod tests {
         assert!(canvas["instructions"].as_str().unwrap().contains(CANVAS_MAP_RULES));
         let canvas_plain = request_body(MODELS[0], &messages, without, "canvas", None, None);
         assert!(!canvas_plain["instructions"].as_str().unwrap().contains(CANVAS_MAP_RULES));
+        // Phase 2: with a map, canvas proposals may link to existing objects
+        // and a quiz may name what it's about; without one, nothing changes.
+        let schema = &canvas["text"]["format"]["schema"];
+        assert_eq!(schema["properties"]["links"]["items"]["required"], json!(["card", "existing", "label", "toExisting"]));
+        assert!(schema["required"].as_array().unwrap().contains(&json!("links")));
+        assert!(canvas["instructions"].as_str().unwrap().contains(CANVAS_LINK_RULES));
+        assert!(canvas_plain["text"]["format"]["schema"]["properties"].get("links").is_none());
+        let tools: Vec<String> = vec!["create_on_canvas".into(), "create_quiz".into()];
+        let auto = tool_request_body(MODELS[0], &messages, with, &tools, &[], &[], None, None);
+        let auto_text = auto["instructions"].as_str().unwrap();
+        assert!(auto_text.contains(CANVAS_LINK_RULES) && auto_text.contains(QUIZ_MAP_RULES));
+        assert!(auto["tools"][0]["parameters"]["properties"].get("links").is_some());
+        assert_eq!(auto["tools"][1]["parameters"]["properties"]["about"], json!({"type": "string"}));
+        let auto_plain = tool_request_body(MODELS[0], &messages, without, &tools, &[], &[], None, None);
+        let plain_text = auto_plain["instructions"].as_str().unwrap();
+        assert!(!plain_text.contains(CANVAS_LINK_RULES) && !plain_text.contains(QUIZ_MAP_RULES));
+        assert!(auto_plain["tools"][1]["parameters"]["properties"].get("about").is_none());
     }
     #[test]
     fn create_quiz_offers_questions_only_even_with_web_evidence() {
@@ -1303,7 +1348,7 @@ mod tests {
         assert_eq!(quiz["parameters"]["properties"]["target"]["enum"], json!(["card", "note"]));
         let item = &quiz["parameters"]["properties"]["questions"]["items"];
         assert_eq!(item["required"], json!(["question", "options", "correct", "explanation"]));
-        assert_eq!(tool_schema("quiz", true), tool_schema("quiz", false), "no sourceRefs");
+        assert_eq!(tool_schema("quiz", true, false), tool_schema("quiz", false, false), "no sourceRefs");
         let instructions = body["instructions"].as_str().unwrap();
         assert!(instructions.contains("create_quiz makes interactive multiple-choice questions"));
         assert!(instructions.contains("use card unless the user explicitly asks"));

@@ -90,18 +90,11 @@ function readingOrder<T extends { box: MapBox }>(items: T[]): T[] {
 }
 
 /**
- * Describes the canvas for the model. `citations` maps a card's note ID to
- * the citation numbers of its blocks in this request. Over budget, positions
- * go first, then the objects furthest from the focus or selection, which are
- * summarised in one line.
+ * Handles in reading order: frames, then free objects, members following
+ * their frame. Deterministic for the same captured map, so Apply can resolve
+ * a handle the model used without sending block IDs.
  */
-export function formatCanvasMap(
-  map: CanvasMapData,
-  citations: Map<string, number[]> = new Map(),
-  budget = CANVAS_MAP_BUDGET,
-): string {
-  if (!map.cards.length && !map.frames.length && !map.mindmaps.length && !map.texts.length)
-    return "";
+function arrange(map: CanvasMapData) {
   // Frames, then free objects, each in reading order; members follow their
   // frame so handles read like the canvas.
   const inFrame = new Map<string, string>();
@@ -137,6 +130,49 @@ export function formatCanvasMap(
   mindmaps.forEach((m, i) => handle.set(m.id, `M${i + 1}`));
   const texts = readingOrder(map.texts);
   texts.forEach((t, i) => handle.set(t.id, `T${i + 1}`));
+  return { inFrame, cardsById, units, orderedCards, frameOrder, handle, mindmaps, texts };
+}
+
+/** What a request-local handle (K3, F1, T2, M1, G1) points at. */
+export type CanvasHandleTarget = {
+  id: string;
+  title: string;
+  box?: MapBox;
+};
+
+/** Handle → canvas object for a captured map, as formatCanvasMap named them. */
+export function canvasHandles(map: CanvasMapData): Map<string, CanvasHandleTarget> {
+  const { handle } = arrange(map);
+  const objects = new Map<string, CanvasHandleTarget>();
+  for (const c of map.cards) objects.set(c.id, { id: c.id, title: c.title, box: c.box });
+  for (const f of map.frames) objects.set(f.id, { id: f.id, title: f.title, box: f.box });
+  for (const g of map.groups) objects.set(g.id, { id: g.id, title: g.title });
+  for (const m of map.mindmaps)
+    objects.set(m.id, { id: m.id, title: m.nodes[0]?.text ?? "", box: m.box });
+  for (const t of map.texts) objects.set(t.id, { id: t.id, title: t.text, box: t.box });
+  const result = new Map<string, CanvasHandleTarget>();
+  for (const [id, name] of handle) {
+    const target = objects.get(id);
+    if (target) result.set(name, target);
+  }
+  return result;
+}
+
+/**
+ * Describes the canvas for the model. `citations` maps a card's note ID to
+ * the citation numbers of its blocks in this request. Over budget, positions
+ * go first, then the objects furthest from the focus or selection, which are
+ * summarised in one line.
+ */
+export function formatCanvasMap(
+  map: CanvasMapData,
+  citations: Map<string, number[]> = new Map(),
+  budget = CANVAS_MAP_BUDGET,
+): string {
+  if (!map.cards.length && !map.frames.length && !map.mindmaps.length && !map.texts.length)
+    return "";
+  const { inFrame, cardsById, units, orderedCards, handle, mindmaps, texts } =
+    arrange(map);
   const groupOf = new Map<string, string>();
   for (const group of map.groups)
     for (const id of group.members) if (!groupOf.has(id)) groupOf.set(id, group.id);

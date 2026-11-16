@@ -108,6 +108,7 @@ import {
 } from "../features/editor/blocksuite/ai";
 import { quizLines } from "../services/ai-quiz";
 import { uncoveredPassages } from "../services/ai-atomize";
+import { canvasHandles } from "../services/canvas-map-format";
 import { savedSearchText } from "../features/editor/blocksuite/search";
 import {
   attachments,
@@ -265,6 +266,13 @@ type AskKnotProps = Omit<
   "initialChats" | "initialError"
 >;
 /** Loads the workspace's saved chats before the panel's state starts. */
+
+/** The title of a canvas object a proposal named by its map handle. */
+function mapTitle(turn: Turn, handle: string | undefined) {
+  if (!handle || !turn.context?.canvasMap) return "";
+  const title = canvasHandles(turn.context.canvasMap).get(handle)?.title ?? "";
+  return title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title;
+}
 
 export function AskKnot(props: AskKnotProps) {
   const [loaded, setLoaded] = useState<{ chats: Chat[]; error: string }>();
@@ -2634,7 +2642,7 @@ function AskKnotPanel({
                           : turn.mode === "note"
                             ? "Create note in this notebook"
                             : turn.mode === "quiz"
-                              ? `${turn.proposal.target === "note" ? "Add" : "Create quiz card with"} ${turn.proposal.questions?.length ?? 0} ${turn.proposal.questions?.length === 1 ? "question" : "questions"}${turn.proposal.target === "note" ? " to note" : ""}`
+                              ? `${turn.proposal.target === "note" ? "Add" : `Create quiz card${mapTitle(turn, turn.proposal.about) ? ` about “${mapTitle(turn, turn.proposal.about)}”` : ""} with`} ${turn.proposal.questions?.length ?? 0} ${turn.proposal.questions?.length === 1 ? "question" : "questions"}${turn.proposal.target === "note" ? " to note" : ""}`
                               : "Append to note"}
                     </span>
                     <AiProposalPreview>
@@ -2674,6 +2682,32 @@ function AskKnotPanel({
                               Card {c.from + 1} → Card {c.to + 1}: {c.label}
                             </p>
                           ))}
+                        {turn.mode === "canvas" &&
+                          !!turn.proposal.links?.length && (
+                            <>
+                              <p className="ask-links-title">
+                                Links to existing cards
+                              </p>
+                              {turn.proposal.links.map((link, i) => {
+                                const fresh =
+                                  aiBlockText(
+                                    turn.proposal!.blocks[link.card],
+                                  ).split("\n")[0] || `Card ${link.card + 1}`;
+                                const old =
+                                  mapTitle(turn, link.existing) ||
+                                  "an existing card";
+                                const [a, b] = link.toExisting
+                                  ? [fresh, old]
+                                  : [old, fresh];
+                                return (
+                                  <p key={`link-${i}`}>
+                                    {a} → {link.label ? `${link.label} → ` : ""}
+                                    {b}
+                                  </p>
+                                );
+                              })}
+                            </>
+                          )}
                         {turn.proposal.questions && (
                           <ol className="ask-quiz-preview">
                             {turn.proposal.questions.map((q, n) => (

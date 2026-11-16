@@ -46,6 +46,12 @@ export function cleanAiProposal(proposal: AiProposal): AiProposal {
         text: stripAiSourceMarkers(node.text),
       })),
     }),
+    ...(proposal.links && {
+      links: proposal.links.map((link) => ({
+        ...link,
+        label: stripAiSourceMarkers(link.label),
+      })),
+    }),
     ...(proposal.questions && {
       questions: proposal.questions.map((q) => ({
         ...q,

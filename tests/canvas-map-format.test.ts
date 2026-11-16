@@ -111,3 +111,13 @@ it("the composer names each card's citation markers", () => {
   expect(sent.canvasMap).toContain('"Testing finds defects" [S1–S2]');
   expect(JSON.parse(cardRequestContext("doc", structure)).canvasMap).toBeUndefined();
 });
+
+it("resolves the handles the description used", async () => {
+  const { canvasHandles } = await import("../src/services/canvas-map-format");
+  const handles = canvasHandles(map);
+  expect(handles.get("K1")?.title).toBe("Course plan");
+  expect(handles.get("K3")?.id).toBe("early");
+  expect(handles.get("F1")?.title).toBe("Testing principles");
+  expect(handles.get("T1")?.id).toBe("t");
+  expect(handles.get("K9")).toBeUndefined();
+});
