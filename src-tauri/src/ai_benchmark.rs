@@ -53,8 +53,19 @@ fn live_quality_benchmark() {
         include_str!("../../tests/benchmarks/cases.v1.json")
     })
     .unwrap();
-    let cases = suite["cases"].as_array().unwrap();
-    assert_eq!(cases.len(), if routing { 34 } else { 60 });
+    let all = suite["cases"].as_array().unwrap();
+    assert_eq!(all.len(), if routing { 34 } else { 60 });
+    // KNOT_BENCHMARK_CASES (comma-separated IDs) repeats a few cases cheaply.
+    let only = std::env::var("KNOT_BENCHMARK_CASES").ok();
+    let cases: &Vec<Value> = &match &only {
+        Some(ids) => {
+            let ids: Vec<&str> = ids.split(',').map(str::trim).collect();
+            let picked: Vec<Value> = all.iter().filter(|c| ids.contains(&c["id"].as_str().unwrap())).cloned().collect();
+            assert_eq!(picked.len(), ids.len(), "Unknown case ID in KNOT_BENCHMARK_CASES");
+            picked
+        }
+        None => all.clone(),
+    };
     let reserved = cases.iter().map(|case| limits(case).2).sum::<f64>();
     let largest = cases.iter().map(|case| limits(case).2).fold(0.0, f64::max);
     assert!(
@@ -110,7 +121,7 @@ fn live_quality_benchmark() {
         .open(&result_path)
         .unwrap();
     if resume.is_none() {
-        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserved,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"input_reserve_tokens":20_000,"web_input_reserve_tokens":80_000})).unwrap();
+        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserved,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"cases":only,"input_reserve_tokens":20_000,"web_input_reserve_tokens":80_000})).unwrap();
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

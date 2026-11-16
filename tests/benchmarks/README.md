@@ -3,6 +3,8 @@
 Status: **60 live Luna cases executed on November 5, 2026 under an approved US$5 limit;
 provisional AI-assisted review complete, independent human grading pending**.
 See [results and findings](../../docs/AI-QUALITY-BASELINE-2026-11-05.md).
+Three reruns on November 16, 2026 (source `5600ffa`, US$0.019) met the acceptance
+targets in two of three runs and led to a citation-instruction fix; see [the rerun](../../docs/AI-QUALITY-RERUN-2026-11-16.md).
 Offline mocks and regression checks verify mechanics, never model quality.
 
 `cases.v1.json` contains 60 synthetic cases: 12 questions/citations, 8 summaries,
@@ -44,7 +46,9 @@ nonstandard service tiers, failures or an exceeded reservation stop further requ
 Unknown cost with reported standard tier and bounded input/output consumes the full
 reservation. No automatic retries. The reservation is a conservative client check, not a
 substitute for a provider-side account cap. For Luna the full reservation is $0.48; this
-is an estimate, not authorization. `KNOT_BENCHMARK_LABEL` optionally names a run in its
+is an estimate, not authorization. `KNOT_BENCHMARK_CASES` (comma-separated case IDs) runs only those cases, so a few
+cases can be repeated cheaply; the reservation covers only the chosen cases.
+`KNOT_BENCHMARK_LABEL` optionally names a run in its
 result header. See the [11 November comparison](../../docs/AI-INSTRUCTION-TRIM-BENCHMARK-2026-11-11.md).
 
 Results are separate JSONL files in `results/` (git-ignored), containing synthetic
