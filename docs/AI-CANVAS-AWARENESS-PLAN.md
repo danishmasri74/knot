@@ -154,7 +154,7 @@ Size: small–medium; costs image tokens per use, so it stays a tool the model c
 
 ## 8. Open questions
 
-1. Should the map be sent for every message while a canvas is open, or only when the message seems to be about the canvas (like web search's intent check)? Always is simpler and more reliable; intent-gated saves tokens on unrelated questions.
+1. ~~Should the map be sent for every message while a canvas is open, or only when the message seems to be about the canvas?~~ **Decided 16 November 2026: every message while a canvas is open.** Simpler and more reliable than guessing intent; the budget in §4.3 bounds the cost.
 2. Should Phase 3's connection suggestions also appear as an ambient canvas suggestion, or only when asked?
 3. Is the 3,000-token map budget right for your largest canvases?
 4. Phase 5: worth doing at all, given drawings and pictures on canvases?
