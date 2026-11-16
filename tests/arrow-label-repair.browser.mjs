@@ -52,14 +52,23 @@ try {
       labelXYWH: [0, 0, 92, 26],
       labelStyle: style("#000000"),
     });
-    // A label typed in the editor: a theme colour token, untouched.
+    // The same arrow as the real editor stores it: the default black token.
+    const token = surface.addElement({
+      type: "connector",
+      source: { id: a },
+      target: { id: b },
+      text: new Y.Text("part of"),
+      labelXYWH: [0, 0, 83, 26],
+      labelStyle: style("--affine-palette-line-black"),
+    });
+    // A label given another colour on purpose: untouched.
     const typed = surface.addElement({
       type: "connector",
       source: { id: b },
       target: { id: a },
       text: new Y.Text("mine"),
       labelXYWH: [0, 0, 56, 26],
-      labelStyle: style("--affine-palette-line-black"),
+      labelStyle: style("--affine-palette-line-red"),
     });
     const repaired = repairArrowLabelColors(d);
     const again = repairArrowLabelColors(d);
@@ -76,16 +85,18 @@ try {
       repaired,
       again,
       old: surface.getElementById(old).labelStyle.color,
+      token: surface.getElementById(token).labelStyle.color,
       typed: surface.getElementById(typed).labelStyle.color,
     };
   });
   await page.screenshot({ path: "test-results/arrow-label-repair-dark.png" });
-  assert.equal(result.repaired, 1, "only the old black label");
+  assert.equal(result.repaired, 2, "both default blacks");
   assert.equal(result.again, 0, "repairs once");
   assert.deepEqual(result.old, { light: "#2b2b2b", dark: "#e3e3e3" });
-  assert.equal(result.typed, "--affine-palette-line-black");
+  assert.deepEqual(result.token, { light: "#2b2b2b", dark: "#e3e3e3" });
+  assert.equal(result.typed, "--affine-palette-line-red");
   assert.deepEqual(errors, []);
-  console.log("Arrow labels: old black AI labels get the theme colour once; typed labels untouched");
+  console.log("Arrow labels: default black labels (raw and token) get the theme colour once; chosen colours untouched");
 } finally {
   await browser.close();
 }
