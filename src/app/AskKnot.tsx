@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { topicIndex } from "../services/workspace-topic";
 import {
   editIntent,
+  connectIntent,
   webIntent,
   resolveSourceMode,
   outgoingSourceHistory,
@@ -2109,7 +2110,10 @@ function AskKnotPanel({
               action === "auto"
                 ? tools.length && editIntent(input)
                   ? "rewrite"
-                  : "ask"
+                  : // Connections and map checks on a canvas need judgement.
+                    (tools.includes("connect_cards") && connectIntent(input))
+                    ? "connect"
+                    : "ask"
                 : action,
               input,
               !!(selectedImage || pdfSource),

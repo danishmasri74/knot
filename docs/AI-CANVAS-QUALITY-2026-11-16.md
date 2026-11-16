@@ -51,8 +51,9 @@ No answer showed a handle (K3, F1) to the user. All 16 requests succeeded.
 ## Still open
 
 - Connection suggestions on Luna are often unsupported (for example "Defects cluster
-  together → part of → Dynamic testing"). Terra is more cautious and correct; consider
-  steering connection suggestions to a writing or reasoning model in automatic model choice.
+  together → part of → Dynamic testing"). Terra is more cautious and correct. **Done the same
+  day:** with Automatic model choice, connection and map-check requests on a canvas now go
+  to a writing model (Terra first); choosing Luna by hand still uses Luna.
 - Break this into ideas can produce few arrows (Terra drew one), which leaves the flow,
   tree or hub layout little to work with.
 - Luna "requires" and similar labels are chosen loosely; the map check on Terra notices this.

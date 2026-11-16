@@ -138,3 +138,22 @@ test("web search is offered only when a message seems to need it", () => {
   ])
     expect(webIntent(prompt), prompt).toBe(false);
 });
+
+test("connection and map-check requests are recognised for model choice", async () => {
+  const { connectIntent } = await import("../src/services/ai-source-scope");
+  const { automaticAiModel } = await import("../src/services/ai-preferences");
+  for (const prompt of [
+    "What connections are missing between my cards?",
+    "Link related cards",
+    "Check my map for problems",
+    "Review the arrows on this canvas",
+  ])
+    expect(connectIntent(prompt), prompt).toBe(true);
+  for (const prompt of ["What does the Course plan card say?", "Summarize this canvas"])
+    expect(connectIntent(prompt), prompt).toBe(false);
+  // Sent as "connect", automatic choice prefers a writing model.
+  expect(
+    automaticAiModel(["gpt-6-luna", "gpt-6.1-terra"], "connect", "What connections are missing?", false, 0),
+  ).toBe("gpt-6.1-terra");
+  expect(automaticAiModel(["gpt-6-luna"], "connect", "x", false, 0)).toBe("gpt-6-luna");
+});

@@ -64,6 +64,15 @@ export function editIntent(prompt: string): boolean {
     )
   );
 }
+/**
+ * Asking about missing connections or reviewing a canvas map needs careful
+ * judgement: automatic model choice sends it to a writing model rather than
+ * the quick one (live test, 16 November 2026).
+ */
+export function connectIntent(prompt: string): boolean {
+  return /\b(connections?|connect|links?|linked|relationships?|relations?|related)\b/i.test(prompt) ||
+    /\b(check|review|audit)\b.*\b(map|canvas|arrows?|board)\b/i.test(prompt);
+}
 export function usesNoteSources(
   scope: "auto" | "workspace" | "current" | "none",
   mode: string,
