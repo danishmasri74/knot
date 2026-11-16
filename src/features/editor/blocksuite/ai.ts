@@ -37,6 +37,7 @@ import {
 } from "../../../services/ai-quiz";
 import { youtubeVideoId } from "../../../services/youtube-transcript";
 import { aiConnectorPorts, layoutCards, type LayoutKind } from "./ai-layout";
+import { dissolveDotsAmong, isRerouteDot } from "./reroute";
 import type { AiPdfSource } from "../../../services/pdf-input";
 import type { BlockModel, Doc } from "@blocksuite/store";
 import type { AffineEditorContainer } from "@blocksuite/presets";
@@ -866,7 +867,11 @@ function applyArrange(
       .map((b) => b.model)
       .filter((m) => !moving.has(m.id)),
     ...(surface?.elementModels ?? []).filter(
-      (e) => e.type !== "connector" && e.type !== "group" && !moving.has(e.id),
+      (e) =>
+        e.type !== "connector" &&
+        e.type !== "group" &&
+        !isRerouteDot(e) &&
+        !moving.has(e.id),
     ),
   ].flatMap((e) => {
     // Cards sharing a frame with the arranged ones may stay inside it.
@@ -885,6 +890,9 @@ function applyArrange(
   );
   doc.captureSync();
   doc.transact(() => {
+    // Reroute points between the arranged cards would stay in the old
+    // layout; their arrows are joined back into direct ones.
+    if (surface) dissolveDotsAmong(surface, moving);
     cards.forEach((card, i) =>
       doc.updateBlock(card.model, {
         xywh: `[${next[i].join(",")}]`,
@@ -1168,7 +1176,7 @@ export function applyAiProposal(
         .filter((m) => m.id !== note.id),
       // Arrows and groups don't block; the arrows to the original move.
       ...(surface?.elementModels ?? []).filter(
-        (e) => e.type !== "connector" && e.type !== "group",
+        (e) => e.type !== "connector" && e.type !== "group" && !isRerouteDot(e),
       ),
     ].flatMap((e) => {
       const b = "xywh" in e ? parseBox(e.xywh) : undefined;
@@ -1226,7 +1234,7 @@ export function applyAiProposal(
     const occupied = [
       ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
       ...(surface?.elementModels ?? []).filter(
-        (e) => e.type !== "connector" && e.type !== "group",
+        (e) => e.type !== "connector" && e.type !== "group" && !isRerouteDot(e),
       ),
     ].flatMap((e) => {
       const b = "xywh" in e ? parseBox(e.xywh) : undefined;

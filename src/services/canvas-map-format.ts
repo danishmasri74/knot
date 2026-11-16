@@ -28,6 +28,8 @@ export type CanvasMapData = {
     label: string;
     /** Arrowheads: at the "to" end, the "from" end, both, or none. */
     heads: "to" | "from" | "both" | "none";
+    /** Reroute points the arrow passes through, in order. */
+    via?: string[];
   }[];
   mindmaps: {
     id: string;
@@ -130,6 +132,10 @@ function arrange(map: CanvasMapData) {
   mindmaps.forEach((m, i) => handle.set(m.id, `M${i + 1}`));
   const texts = readingOrder(map.texts);
   texts.forEach((t, i) => handle.set(t.id, `T${i + 1}`));
+  // Reroute points, in the order arrows first pass through them.
+  let dots = 0;
+  for (const arrow of map.arrows)
+    for (const id of arrow.via ?? []) if (!handle.has(id)) handle.set(id, `R${++dots}`);
   return { inFrame, cardsById, units, orderedCards, frameOrder, handle, mindmaps, texts };
 }
 
@@ -305,7 +311,10 @@ export function formatCanvasMap(
             : arrow.heads === "both"
               ? `<-${arrow.label ? `${arrow.label}-` : ""}>`
               : `-${arrow.label ? `${arrow.label}-` : ""}-`;
-      lines.push(`arrow ${end(arrow.from)} ${arrowhead} ${end(arrow.to)}`);
+      const via = arrow.via?.length
+        ? ` via ${arrow.via.map((id) => handle.get(id)).join(" ")}`
+        : "";
+      lines.push(`arrow ${end(arrow.from)} ${arrowhead} ${end(arrow.to)}${via}`);
     }
     for (const mindmap of mindmaps) {
       lines.push(

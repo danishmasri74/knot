@@ -8,6 +8,7 @@ import { createSearchReveal } from "./search-reveal";
 import { createNotePageView } from "./note-page-view";
 import { waitForEditorView } from "../../../app/view-readiness";
 import { openCardMenu } from "./card-menu";
+import { observeReroutes } from "./reroute";
 import { CardDeck, cardEmbedFlavour, cardInsertion, cardMcq, cardMedia, cardQuestionReferences, mcqReferenceFlavour, resolveDeckMcq, standaloneMedia, type DeckData } from "./card-deck";
 import { mediaSize } from "./media-cards";
 import { McqReferenceSchema, McqSchema, McqSpec, mcqContexts, mcqDecks } from "./mcq-block";
@@ -623,6 +624,8 @@ export async function openEditor(
     editor.addEventListener("dragover", dragOver, true);
     editor.addEventListener("drop", dropCard, true);
     editor.addEventListener("contextmenu", cardContext, true);
+    // After cardContext, so a card's own menu wins over an arrow behind it.
+    const stopReroutes = observeReroutes(editor, doc);
     const stopEditorPreferences = observeEditorPreferences(editor);
     editor.doc = doc;
     const stopFloatingToc = observeFloatingToc(editor);
@@ -1844,6 +1847,7 @@ export async function openEditor(
         editor.removeEventListener("dragover", dragOver, true);
         editor.removeEventListener("drop", dropCard, true);
         editor.removeEventListener("contextmenu", cardContext, true);
+        stopReroutes();
         stopEditorPreferences();
         stopMcqMenu();
         stopFloatingToc();

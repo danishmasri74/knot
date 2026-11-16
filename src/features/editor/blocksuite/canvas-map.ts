@@ -6,6 +6,7 @@ import type {
 } from "@blocksuite/blocks";
 import type { CanvasMapData, MapBox } from "../../../services/canvas-map-format";
 import { structuredAiBlocks } from "./ai";
+import { canvasRoutes, isRerouteDot } from "./reroute";
 
 function box(xywh: unknown): MapBox | undefined {
   try {
@@ -116,20 +117,9 @@ export function captureCanvasMap(
   }
   for (const element of surface.elementModels) {
     const raw = element as unknown as Record<string, unknown>;
-    if (element.type === "connector") {
-      const end = (value: unknown) => {
-        const id = (value as { id?: unknown } | undefined)?.id;
-        return typeof id === "string" && id ? id : undefined;
-      };
-      const head = (style: unknown) => !!style && style !== "None";
-      const atTo = head(raw.rearEndpointStyle);
-      const atFrom = head(raw.frontEndpointStyle);
-      map.arrows.push({
-        from: end(raw.source),
-        to: end(raw.target),
-        label: text(raw.text),
-        heads: atTo && atFrom ? "both" : atTo ? "to" : atFrom ? "from" : "none",
-      });
+    // Arrows are read from the routes below, through reroute points.
+    if (element.type === "connector" || isRerouteDot(element)) {
+      continue;
     } else if (element.type === "group") {
       map.groups.push({
         id: element.id,
@@ -144,6 +134,20 @@ export function captureCanvasMap(
       const b = box(element.xywh);
       if (label && b) map.texts.push({ id: element.id, text: label, box: b });
     }
+  }
+  // An arrow through reroute points (A → • → B) is the link A → B; the
+  // dots it shares with other arrows show they are bundled.
+  const head = (style: string) => !!style && style !== "None";
+  for (const route of canvasRoutes(surface)) {
+    const atTo = head(route.rear);
+    const atFrom = head(route.front);
+    map.arrows.push({
+      from: route.from,
+      to: route.to,
+      label: text(route.label),
+      heads: atTo && atFrom ? "both" : atTo ? "to" : atFrom ? "from" : "none",
+      ...(route.via.length ? { via: route.via } : {}),
+    });
   }
   return map;
 }

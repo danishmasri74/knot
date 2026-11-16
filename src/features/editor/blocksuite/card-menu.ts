@@ -1,5 +1,10 @@
 import { shellIconPaths } from "../../../app/ShellIcon";
-type Action = { label: string; run: () => void; trash?: boolean };
+type Action = {
+  label: string;
+  run: () => void;
+  trash?: boolean;
+  icon?: keyof typeof shellIconPaths;
+};
 
 export function openCardMenu(
   x: number,
@@ -32,11 +37,12 @@ export function openCardMenu(
     path.setAttribute(
       "d",
       shellIconPaths[
-        action.trash
+        action.icon ??
+        (action.trash
           ? "trash"
           : action.label === "Add to canvas"
             ? "plus"
-            : "close"
+            : "close")
       ],
     );
     svg.append(path);
