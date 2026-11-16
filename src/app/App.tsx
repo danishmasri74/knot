@@ -3751,6 +3751,8 @@ export function App() {
               <p className="settings-description">
                 Make Knot feel like your space.
               </p>
+              <h3 className="settings-section-title">Startup and links</h3>
+              <div className="settings-group">
 
               <div className="settings-row">
                 <div>
@@ -3799,27 +3801,6 @@ export function App() {
 
               <div className="settings-row">
                 <div>
-                  <label htmlFor="sidebar-side">
-                    <strong>Sidebar</strong>
-                  </label>
-                  <p>Show the sidebar on the left or right of the window.</p>
-                </div>
-                <select
-                  id="sidebar-side"
-                  value={sidebarSide}
-                  onChange={(event) => {
-                    const side = event.target.value as SidebarSide;
-                    setSidebarSide(side);
-                    updateSidebarSide(side);
-                  }}
-                >
-                  <option value="left">Left</option>
-                  <option value="right">Right</option>
-                </select>
-              </div>
-
-              <div className="settings-row">
-                <div>
                   <strong>Web links</strong>
                   <p>Choose where links from notes open.</p>
                 </div>
@@ -3836,6 +3817,9 @@ export function App() {
                   <option value="external">Default browser</option>
                 </select>
               </div>
+              </div>
+              <h3 className="settings-section-title">Look and layout</h3>
+              <div className="settings-group">
               <div className="settings-row">
                 <div>
                   <strong id="appearance-label">Appearance</strong>
@@ -3864,6 +3848,29 @@ export function App() {
               </div>
               <div className="settings-row">
                 <div>
+                  <label htmlFor="sidebar-side">
+                    <strong>Sidebar</strong>
+                  </label>
+                  <p>Show the sidebar on the left or right of the window.</p>
+                </div>
+                <select
+                  id="sidebar-side"
+                  value={sidebarSide}
+                  onChange={(event) => {
+                    const side = event.target.value as SidebarSide;
+                    setSidebarSide(side);
+                    updateSidebarSide(side);
+                  }}
+                >
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </select>
+              </div>
+              </div>
+              <h3 className="settings-section-title">Learn Knot</h3>
+              <div className="settings-group">
+              <div className="settings-row">
+                <div>
                   <strong>Getting Started</strong>
                   <p>
                     Learn Knot with editable notes, a whiteboard, PDFs,
@@ -3890,6 +3897,7 @@ export function App() {
                   )}
                 </div>
               </div>
+              </div>
             </section>
           )}
           {surface === "workspaceSettings" && (
@@ -3909,6 +3917,7 @@ export function App() {
                   <small>Local workspace · Stored on this device</small>
                 </div>
               </div>
+              <div className="settings-group">
               <div className="settings-row">
                 <div>
                   <strong>Workspace location</strong>
@@ -3942,6 +3951,7 @@ export function App() {
                 >
                   Manage workspaces
                 </button>
+              </div>
               </div>
             </section>
           )}

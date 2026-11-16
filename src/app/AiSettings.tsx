@@ -44,6 +44,7 @@ export function AiSettings({
       <p className="settings-description">
         Make room for a little help with your notes.
       </p>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="ai-enabled-label">AI features</strong>
@@ -130,11 +131,14 @@ export function AiSettings({
           ))}
         </div>
       </div>
+      </div>
       <h3 className="settings-section-title">Abilities</h3>
       <p className="settings-description">
         What Ask Knot can do on its own when you send a message. You review
         every change before it is applied.
       </p>
+      <h4 className="settings-group-title">Finding information</h4>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="ai-workspace-search-label">Search my workspace</strong>
@@ -222,6 +226,9 @@ export function AiSettings({
           <span />
         </button>
       </div>
+      </div>
+      <h4 className="settings-group-title">Suggesting changes</h4>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="ai-edit-note-label">Edit the current note</strong>
@@ -331,13 +338,14 @@ export function AiSettings({
           <span />
         </button>
       </div>
+      </div>
       <h3 className="settings-section-title">Model list</h3>
       <p id="ai-models-description" className="settings-description">
         Choose which models appear in Ask Knot on this device. Keep at least one
         enabled.
       </p>
       <div
-        className="ai-model-list"
+        className="settings-group ai-model-list"
         role="group"
         aria-label="AI models"
         aria-describedby="ai-models-description"

@@ -20,6 +20,8 @@ export function EditorSettings() {
         Make your notes comfortable to read and write. Preferences apply to all
         notes on this device.
       </p>
+      <h3 className="settings-section-title">Text</h3>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="font-style-label">Font style</strong>
@@ -102,6 +104,7 @@ export function EditorSettings() {
           <output htmlFor="editor-font-size">{settings.fontSize}px</output>
         </div>
       </div>
+      </div>
       <div
         className="editor-font-preview"
         style={{
@@ -112,6 +115,8 @@ export function EditorSettings() {
         <span>The space for your next idea.</span>
         <p>A small thought today, something worth keeping tomorrow.</p>
       </div>
+      <h3 className="settings-section-title">Writing</h3>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="spell-check-label">Automatic spell check</strong>
@@ -127,7 +132,9 @@ export function EditorSettings() {
           <span />
         </button>
       </div>
+      </div>
       <h3 className="settings-section-title">Card Deck</h3>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="blank-card-cleanup-label">Delete unused blank cards</strong>
@@ -183,6 +190,7 @@ export function EditorSettings() {
           </div>
         </div>
       )}
+      </div>
     </section>
   );
 }

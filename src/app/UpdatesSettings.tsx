@@ -205,6 +205,8 @@ export function UpdatesSettings({
         </div>
       )}
 
+      <h3 className="settings-section-title">Preferences</h3>
+      <div className="settings-group">
       <div className="settings-row">
         <div>
           <strong id="updates-auto-label">
@@ -239,6 +241,7 @@ export function UpdatesSettings({
         >
           Open <ShellIcon name="external" />
         </button>
+      </div>
       </div>
     </section>
   );

@@ -2872,8 +2872,10 @@ main:has(.settings-modal) > .editor-area {
   width: 160px;
   accent-color: var(--control-accent);
 }
+/* Fixed width, so a longer value (1 month) doesn't shift the slider. */
 .editor-size-control output {
-  min-width: 38px;
+  width: 64px;
+  min-width: 64px;
   color: var(--shell-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -4033,18 +4035,34 @@ main:has(.settings-modal) > .editor-area {
   background: var(--ask-hover);
 }
 
-.ai-model-list {
-  margin-top: 20px;
+/* Settings rows sit in bordered groups under a section title. */
+.settings-group {
+  margin-top: 12px;
   border: 1px solid var(--shell-border);
   border-radius: 10px;
   overflow: hidden;
 }
-.settings-modal .settings-page .ai-model-row {
-  padding: 20px;
+.settings-modal .settings-page .settings-group > .settings-row {
+  padding: 18px 20px;
   margin: 0;
 }
-.settings-page .ai-model-row:last-child {
+.settings-page .settings-group > .settings-row:last-child {
   border-bottom: 0;
+}
+.settings-page .settings-group-title {
+  margin: 20px 0 0;
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.settings-page .settings-description + .settings-group-title {
+  margin-top: 8px;
+}
+.settings-page .settings-group + .editor-font-preview {
+  margin-top: 12px;
+}
+.ai-model-list {
+  margin-top: 20px;
 }
 .ai-model-tag {
   margin-left: 8px;

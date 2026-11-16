@@ -4,3 +4,4 @@
 - Typing an arrow label works again: the text goes into the label instead of sitting over an "Add text" placeholder, it is readable on a dark canvas, and it uses the same font as the canvas instead of a serif one.
 - Note in a column's + menu now lists the notebook's notes, with a search box for long lists, so you choose which note opens.
 - New setting (Settings → Editor → Card Deck): permanently delete blank cards that aren't on any canvas, every 1 day to 1 month. It is off unless you turn it on.
+- Settings are easier to scan: each page groups its options into titled sections, like the model list.

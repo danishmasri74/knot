@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
-  const page = await browser.newPage({ viewport: { width: 1000, height: 800 }, colorScheme: "dark" });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1100 }, colorScheme: "dark" });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(process.env.KNOT_TEST_URL ?? "http://127.0.0.1:1420");
@@ -97,10 +97,18 @@ try {
   await toggle.click();
   assert.equal(await toggle.getAttribute("aria-checked"), "true");
   assert.equal(await page.textContent('output[for="blank-card-cleanup-days"]'), "1 week");
-  await page.locator("#blank-card-cleanup-days").fill("0");
+  const slider = page.locator("#blank-card-cleanup-days");
+  await slider.fill("0");
   assert.equal(await page.textContent('output[for="blank-card-cleanup-days"]'), "1 day");
-  await page.locator("#blank-card-cleanup-days").fill("4");
+  const short = await slider.boundingBox();
+  await slider.fill("4");
   assert.equal(await page.textContent('output[for="blank-card-cleanup-days"]'), "1 month");
+  const long = await slider.boundingBox();
+  assert.deepEqual(
+    [Math.round(long.x), Math.round(long.width)],
+    [Math.round(short.x), Math.round(short.width)],
+    "a longer value label doesn't move or resize the slider",
+  );
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("knot.editor-preferences")));
   assert.equal(saved.blankCardCleanup, true);
   assert.equal(saved.blankCardCleanupDays, 30);
