@@ -460,7 +460,7 @@ fn edit_schema(mode: &str, web: bool, map: bool) -> Value {
 }
 /// Write tools an automatic request may offer, with the edit mode each one
 /// proposes. Forced edit modes keep their response-format path.
-pub(crate) const TOOLS: [(&str, &str); 5] = [
+pub(crate) const TOOLS: [(&str, &str); 6] = [
     ("rewrite_selection", "rewrite"),
     ("insert_blocks", "insert"),
     ("create_on_canvas", "canvas"),
@@ -468,6 +468,8 @@ pub(crate) const TOOLS: [(&str, &str); 5] = [
     ("create_note", "note"),
     // Multiple-choice questions added to the current note.
     ("create_quiz", "quiz"),
+    // Rearranges existing canvas cards; offered only with a canvas map.
+    ("arrange_cards", "arrange"),
 ];
 pub(crate) fn tool_mode(name: &str) -> Option<&'static str> {
     TOOLS.iter().find(|(tool, _)| *tool == name).map(|(_, mode)| *mode)
@@ -482,6 +484,7 @@ fn tool_rules(name: &str) -> String {
         "insert_blocks" => format!("insert_blocks appends new content to the current note; use it to add, draft or insert content into the note. {BASE_INSERT}"),
         "create_note" => format!("create_note adds one new note to the open notebook. Use it only when the user asks for a new, separate or standalone note, for example draft a note about a topic or make a new note summarising this; to add to the current note use insert_blocks instead. The first block is an h1 holding a short title (under 60 characters); the content follows. {BASE_INSERT}"),
         "create_quiz" => QUIZ_RULES.to_string(),
+        "arrange_cards" => ARRANGE_RULES.to_string(),
         _ => format!("create_on_canvas adds cards, arrows and/or a native mind map to the open canvas; use it when the user asks to put content on the canvas or to make cards, a mind map or a diagram. {CANVAS_RULES} {CANVAS_CLOSE}"),
     }
 }
@@ -491,6 +494,11 @@ fn tool_rules(name: &str) -> String {
 fn tool_schema(mode: &str, web: bool, map: bool) -> Value {
     if mode == "quiz" {
         return quiz_schema(map);
+    }
+    if mode == "arrange" {
+        return json!({"type":"object","additionalProperties":false,"required":["cards","layout"],"properties":{
+            "cards":{"type":"array","items":{"type":"string"}},
+            "layout":{"type":"string","enum":["auto","flow","tree","hub","grid"]}}});
     }
     let mut schema = edit_schema(mode, web, map);
     let unused = if mode == "rewrite" { "blocks" } else { "replacements" };
@@ -508,6 +516,7 @@ fn tool_description(name: &str) -> &'static str {
         "insert_blocks" => "Propose new content to append to the current note.",
         "create_note" => "Propose one new note for the open notebook: an h1 title block, then its content.",
         "create_quiz" => "Propose multiple-choice questions for a new quiz card, or for the current note when asked.",
+        "arrange_cards" => "Propose a new arrangement for cards already on the canvas.",
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
 }
@@ -533,6 +542,8 @@ fn quiz_schema(map: bool) -> Value {
     }
     schema
 }
+/// Rules for arrange_cards. Knot computes positions; the model picks cards.
+const ARRANGE_RULES: &str = "arrange_cards moves cards that are already on the canvas into a tidy arrangement; use it when the user asks to arrange, tidy, organise, lay out or clean up cards, a frame or a cluster, and never to create or change content. cards lists the canvasMap handles of the cards to move (K handles only, at least 2, at most 40): the cards the user means, for example every card in a named frame, or the selected cards. layout is auto unless the user asks for a shape: flow (left to right, following the arrows), tree (top-down hierarchy from part of and example of arrows), hub (one central card with the rest around it) or grid. Knot computes the positions from the cards' arrows, keeps the group where it was and fits frames around their cards.";
 /// Sent with canvas proposals when the context has a canvas map.
 const CANVAS_LINK_RULES: &str = "links connects new cards to objects already on the canvas: card is the zero-based index of a new top-level card, existing is the handle of a card, frame or text from canvasMap, label names the relation (prefer leads to, causes, requires, part of, example of or contrasts with), and toExisting is true when the arrow points from the new card to the existing object. Link only where the content supports a relation, at most 20 links; leave links empty otherwise. Never link to a card that the request replaces, and never put handles in card text. New cards with links are placed beside the existing objects they link to.";
 /// Sent with create_quiz when the context has a canvas map.
@@ -1333,6 +1344,12 @@ mod tests {
         let plain_text = auto_plain["instructions"].as_str().unwrap();
         assert!(!plain_text.contains(CANVAS_LINK_RULES) && !plain_text.contains(QUIZ_MAP_RULES));
         assert!(auto_plain["tools"][1]["parameters"]["properties"].get("about").is_none());
+        // Phase 4: arrange_cards picks cards and a layout kind; Knot places them.
+        assert_eq!(tool_mode("arrange_cards"), Some("arrange"));
+        let arrange = tool_request_body(MODELS[0], &messages, with, &["arrange_cards".into()], &[], &[], None, None);
+        assert_eq!(arrange["tools"][0]["parameters"]["required"], json!(["cards", "layout"]));
+        assert_eq!(arrange["tools"][0]["parameters"]["properties"]["layout"]["enum"], json!(["auto", "flow", "tree", "hub", "grid"]));
+        assert!(arrange["instructions"].as_str().unwrap().contains("arrange_cards moves cards"));
     }
     #[test]
     fn create_quiz_offers_questions_only_even_with_web_evidence() {

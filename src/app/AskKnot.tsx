@@ -109,6 +109,10 @@ import {
 import { quizLines } from "../services/ai-quiz";
 import { uncoveredPassages } from "../services/ai-atomize";
 import { canvasHandles } from "../services/canvas-map-format";
+import {
+  chooseLayout,
+  type LayoutKind,
+} from "../features/editor/blocksuite/ai-layout";
 import { savedSearchText } from "../features/editor/blocksuite/search";
 import {
   attachments,
@@ -145,7 +149,7 @@ type Turn = {
   failed?: boolean;
   proposal?: AiProposal;
   context?: AiContext;
-  mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz";
+  mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange";
   /** What an applied proposal created (a note, quiz or the first canvas
    * card): its first block, for the Open button. */
   createdNote?: { block: string; text: string };
@@ -272,6 +276,32 @@ function mapTitle(turn: Turn, handle: string | undefined) {
   if (!handle || !turn.context?.canvasMap) return "";
   const title = canvasHandles(turn.context.canvasMap).get(handle)?.title ?? "";
   return title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title;
+}
+
+/** The arrangement an arrange_cards proposal will use, for the preview. */
+function arrangeKind(turn: Turn): LayoutKind {
+  const requested = turn.proposal?.layout;
+  if (requested && requested !== "auto") return requested;
+  const map = turn.context?.canvasMap;
+  if (!map || !turn.proposal?.cards) return "grid";
+  const handles = canvasHandles(map);
+  const ids = turn.proposal.cards.map((h) => handles.get(h)?.id);
+  const edges = map.arrows.flatMap((a) => {
+    const from = ids.indexOf(a.from);
+    const to = ids.indexOf(a.to);
+    return from < 0 || to < 0 ? [] : [{ from, to, label: a.label }];
+  });
+  return chooseLayout(ids.length, edges).kind;
+}
+/** How a canvas proposal's cards will be laid out, for the preview. */
+function layoutName(kind: LayoutKind) {
+  return kind === "flow"
+    ? ", laid out as a flow from left to right"
+    : kind === "tree"
+      ? ", laid out as a tree"
+      : kind === "hub"
+        ? ", laid out around a central card"
+        : "";
 }
 
 export function AskKnot(props: AskKnotProps) {
@@ -2016,6 +2046,7 @@ function AskKnotPanel({
                   sentRuns === editContext.ranges.length,
                 note: !!editContext.note,
                 canvas: !!editContext.canvas,
+                map: !!editContext.canvasMap,
                 editable:
                   !s.doc.readonly &&
                   !editContext.pdf &&
@@ -2166,7 +2197,9 @@ function AskKnotPanel({
               ? "Suggested note"
               : proposed === "quiz"
                 ? "Suggested quiz"
-                : "Suggested addition";
+                : proposed === "arrange"
+                  ? "Suggested arrangement"
+                  : "Suggested addition";
         draft.content = action === "auto" ? output.trim() || label : label;
       }
       draft.preparing = undefined;
@@ -2639,7 +2672,9 @@ function AskKnotPanel({
                                 !turn.proposal.blocks.length
                               ? "Create mind map"
                               : "Create on canvas"
-                          : turn.mode === "note"
+                          : turn.mode === "arrange"
+                            ? `Arrange ${turn.proposal.cards?.length ?? 0} cards${layoutName(arrangeKind(turn))}`
+                            : turn.mode === "note"
                             ? "Create note in this notebook"
                             : turn.mode === "quiz"
                               ? `${turn.proposal.target === "note" ? "Add" : `Create quiz card${mapTitle(turn, turn.proposal.about) ? ` about “${mapTitle(turn, turn.proposal.about)}”` : ""} with`} ${turn.proposal.questions?.length ?? 0} ${turn.proposal.questions?.length === 1 ? "question" : "questions"}${turn.proposal.target === "note" ? " to note" : ""}`
@@ -2673,7 +2708,14 @@ function AskKnotPanel({
                           !!turn.proposal.blocks.length && (
                             <p>
                               Create {turn.proposal.blocks.length} cards and{" "}
-                              {turn.proposal.connections?.length ?? 0} arrows.
+                              {turn.proposal.connections?.length ?? 0} arrows
+                              {layoutName(
+                                chooseLayout(
+                                  turn.proposal.blocks.length,
+                                  turn.proposal.connections ?? [],
+                                ).kind,
+                              )}
+                              .
                             </p>
                           )}
                         {turn.mode === "canvas" &&
@@ -2708,6 +2750,19 @@ function AskKnotPanel({
                               })}
                             </>
                           )}
+                        {turn.mode === "arrange" && (
+                          <>
+                            {turn.proposal.cards?.map((handle, i) => (
+                              <p key={`card-${i}`}>
+                                {mapTitle(turn, handle) || `Card ${i + 1}`}
+                              </p>
+                            ))}
+                            <p className="ask-replace-note">
+                              Only positions change; frames are fitted around
+                              their cards.
+                            </p>
+                          </>
+                        )}
                         {turn.proposal.questions && (
                           <ol className="ask-quiz-preview">
                             {turn.proposal.questions.map((q, n) => (
@@ -2846,7 +2901,9 @@ function AskKnotPanel({
                             >
                               {turn.mode === "quiz"
                                 ? "Open quiz"
-                                : turn.mode === "canvas"
+                                : turn.mode === "arrange"
+                                  ? "Show cards"
+                                  : turn.mode === "canvas"
                                   ? turn.proposal!.blocks.length > 1
                                     ? "Open cards"
                                     : "Open card"

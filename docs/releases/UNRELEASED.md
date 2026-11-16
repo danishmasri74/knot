@@ -11,3 +11,5 @@
 - The canvas suggestion is now "Break this into ideas?": it replaces a long card with short one-idea cards in a frame where the card was, with colored arrows showing how the ideas relate. Anything the cards leave out is kept on an "Other details" card, and the original goes to Trash (Undo brings it back).
 - Ask Knot now understands how your canvas is arranged: which cards are in which frame, what your arrows connect, mind map branches and roughly where things are. Ask "what depends on this?" or "walk me through this frame".
 - New cards from Ask Knot can connect to cards already on your canvas, and are placed next to them; "Break this into ideas" can link ideas to related cards elsewhere. Ask for a quiz on a frame and the quiz card goes beside that frame.
+- Cards Ask Knot makes are laid out by how they connect: steps run left to right, "part of" and "example of" form a tree, and a central idea sits in the middle. Ask it to "tidy up this frame" to rearrange cards that are already there.
+- Labels on Ask Knot's arrows now show on the canvas.

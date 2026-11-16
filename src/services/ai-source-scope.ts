@@ -108,7 +108,9 @@ export function exchangeHistory<
           ? "content for the canvas"
           : reply.mode === "quiz"
             ? "multiple-choice questions for the note"
-            : "an addition to the note";
+            : reply.mode === "arrange"
+              ? "a new arrangement of canvas cards"
+              : "an addition to the note";
     const outcome =
       reply.status === "applied"
         ? "The user applied it."

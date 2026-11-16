@@ -36,7 +36,7 @@ import {
   type QuizTarget,
 } from "../../../services/ai-quiz";
 import { youtubeVideoId } from "../../../services/youtube-transcript";
-import { aiConnectorPorts, layoutAiCards } from "./ai-layout";
+import { aiConnectorPorts, layoutCards, type LayoutKind } from "./ai-layout";
 import type { AiPdfSource } from "../../../services/pdf-input";
 import type { BlockModel, Doc } from "@blocksuite/store";
 import type { AffineEditorContainer } from "@blocksuite/presets";
@@ -73,6 +73,9 @@ export type AiProposal = {
   about?: string;
   /** Canvas with a canvas map: arrows from new cards to existing objects. */
   links?: AiLink[];
+  /** arrange_cards: the existing cards to move (K handles) and how. */
+  cards?: string[];
+  layout?: LayoutKind | "auto";
 };
 export type { AiQuestion } from "../../../services/ai-quiz";
 export type AiLink = {
@@ -553,6 +556,19 @@ export function validateProposal(
         (p.about !== "" && !/^[KFT]\d{1,4}$/.test(p.about))))
   )
     throw new Error("Invalid links to existing cards.");
+  if (
+    (p.cards !== undefined &&
+      (!Array.isArray(p.cards) ||
+        p.cards.length < 2 ||
+        p.cards.length > 40 ||
+        p.cards.some((c) => typeof c !== "string" || !/^K\d{1,4}$/.test(c)) ||
+        new Set(p.cards).size !== p.cards.length ||
+        p.blocks.length ||
+        p.replacements.length)) ||
+    (p.layout !== undefined &&
+      !["auto", "flow", "tree", "hub", "grid"].includes(p.layout))
+  )
+    throw new Error("Invalid card arrangement.");
   validateSourceRefs(p, webContext);
   return cleanAiProposal(p);
 }
@@ -728,6 +744,132 @@ function applyQuiz(
   return Object.assign(undo, { noteId });
 }
 
+/**
+ * Moves existing canvas cards into the arrangement their arrows describe (or
+ * the requested one). The group stays where it was, moved down only past
+ * other objects; frames holding any of the cards are fitted around their
+ * members. One undo step.
+ */
+function applyArrange(
+  doc: Doc,
+  workspace: string,
+  context: AiContext,
+  proposal: AiProposal,
+): (() => void) & { noteId?: string } {
+  if (
+    doc !== context.instance ||
+    doc.id !== context.document ||
+    workspace !== context.workspace ||
+    version(doc) !== context.version ||
+    doc.readonly
+  )
+    throw new Error("This edit is stale. Capture fresh context and try again.");
+  const map = context.canvasMap;
+  if (!map || !proposal.cards?.length)
+    throw new Error("Open the canvas to arrange cards.");
+  const handles = canvasHandles(map);
+  const cards = proposal.cards.map((handle) => {
+    const target = handles.get(handle);
+    const model = target ? doc.getBlock(target.id)?.model : undefined;
+    const box = model ? parseBox((model as { xywh?: unknown }).xywh) : undefined;
+    if (!target || !model || !box)
+      throw new Error(
+        "Some of these cards aren't on the canvas any more. Try again.",
+      );
+    return { model, box, title: target.title };
+  });
+  const index = new Map(cards.map((c, i) => [c.model.id, i]));
+  const edges = map.arrows.flatMap((arrow) => {
+    const from = arrow.from ? index.get(arrow.from) : undefined;
+    const to = arrow.to ? index.get(arrow.to) : undefined;
+    return from === undefined || to === undefined
+      ? []
+      : [{ from, to, label: arrow.label }];
+  });
+  const laid = layoutCards(
+    cards.map((c) => c.title),
+    edges,
+    0,
+    cards.map((c) => ({ width: c.box[2], height: c.box[3] })),
+    proposal.layout ?? "auto",
+    0,
+    false,
+  );
+  const width = Math.max(...laid.bounds.map((b) => b[0] + b[2]));
+  const height = Math.max(...laid.bounds.map((b) => b[1] + b[3]));
+  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+    | SurfaceBlockModel
+    | undefined;
+  const moving = new Set(cards.map((c) => c.model.id));
+  const frames = map.frames.filter((f) => f.members.some((id) => moving.has(id)));
+  const occupied = [
+    ...doc
+      .getBlocksByFlavour("affine:note")
+      .map((b) => b.model)
+      .filter((m) => !moving.has(m.id)),
+    ...(surface?.elementModels ?? []).filter(
+      (e) => e.type !== "connector" && e.type !== "group" && !moving.has(e.id),
+    ),
+  ].flatMap((e) => {
+    // Cards sharing a frame with the arranged ones may stay inside it.
+    if (frames.some((f) => f.members.includes(e.id))) return [];
+    const b = "xywh" in e ? parseBox(e.xywh) : undefined;
+    return b ? [b] : [];
+  });
+  const region = clearPlacement(
+    Math.min(...cards.map((c) => c.box[0])),
+    Math.min(...cards.map((c) => c.box[1])),
+    occupied,
+    [width, height],
+  );
+  const next = laid.bounds.map(
+    ([x, y, w, h]): Box => [x + region[0], y + region[1], w, h],
+  );
+  doc.captureSync();
+  doc.transact(() => {
+    cards.forEach((card, i) =>
+      doc.updateBlock(card.model, {
+        xywh: `[${next[i].join(",")}]`,
+      } as never),
+    );
+    // Fit each frame around its members, moved or not.
+    for (const frame of frames) {
+      const model = doc.getBlock(frame.id)?.model;
+      if (!model) continue;
+      const boxes = frame.members.flatMap((id) => {
+        const i = index.get(id);
+        if (i !== undefined) return [next[i]];
+        const other =
+          doc.getBlock(id)?.model ?? surface?.getElementById(id) ?? undefined;
+        const b = other && "xywh" in other ? parseBox(other.xywh) : undefined;
+        return b ? [b] : [];
+      });
+      if (!boxes.length) continue;
+      const left = Math.min(...boxes.map((b) => b[0])) - FRAME_PAD;
+      const top = Math.min(...boxes.map((b) => b[1])) - FRAME_TOP;
+      const right = Math.max(...boxes.map((b) => b[0] + b[2])) + FRAME_PAD;
+      const bottom = Math.max(...boxes.map((b) => b[1] + b[3])) + FRAME_PAD;
+      doc.updateBlock(model, {
+        xywh: `[${left},${top},${right - left},${bottom - top}]`,
+      } as never);
+    }
+  });
+  doc.captureSync();
+  const item = doc.history.undoStack.at(-1);
+  const appliedVersion = version(doc);
+  const undo = () => {
+    if (
+      version(doc) !== appliedVersion ||
+      doc.history.undoStack.at(-1) !== item
+    )
+      throw new Error(
+        "There are newer edits. Use the editor\u2019s Undo to undo them in order.",
+      );
+    doc.undo();
+  };
+  return Object.assign(undo, { noteId: cards[0].model.id });
+}
+
 /** Save one chat response as one editable card, including structured previews. */
 export function addAiMessageCard(doc: Doc, blocks: AiBlock[]) {
   blocks = blocks.map(cleanAiBlock);
@@ -766,7 +908,7 @@ export function applyAiProposal(
   workspace: string,
   context: AiContext,
   input: AiProposal,
-  mode: "rewrite" | "insert" | "canvas" | "note" | "quiz",
+  mode: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange",
   options?: {
     /** Break this into ideas: the canvas card the new cards replace. */
     replaces?: string;
@@ -774,6 +916,8 @@ export function applyAiProposal(
 ): (() => void) & { noteId?: string } {
   const proposal = validateProposal(input, context.webContext);
   if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
+  if (mode === "arrange")
+    return applyArrange(doc, workspace, context, proposal);
   const allRefs = [
     ...new Set([
       ...proposal.blocks.flatMap((b) => [
@@ -883,12 +1027,12 @@ export function applyAiProposal(
       });
     // Lay the cards out, then move the whole group where the original was,
     // or down past anything in the way.
-    const laid = layoutAiCards(
+    const laid = layoutCards(
       proposal.blocks.map(aiBlockText),
       connections,
       0,
       proposal.blocks.map(aiBlockSize),
-    );
+    ).bounds;
     const minX = Math.min(...laid.map((b) => b[0]));
     const minY = Math.min(...laid.map((b) => b[1]));
     const width = Math.max(...laid.map((b) => b[0] + b[2])) - minX + 2 * FRAME_PAD;
@@ -943,12 +1087,12 @@ export function applyAiProposal(
     ? { shift: replaced.shift, top: replaced.region[1] }
     : undefined;
   if (!placed && links.length && proposal.blocks.length) {
-    const laid = layoutAiCards(
+    const laid = layoutCards(
       proposal.blocks.map(aiBlockText),
       connections,
       0,
       proposal.blocks.map(aiBlockSize),
-    );
+    ).bounds;
     const minX = Math.min(...laid.map((b) => b[0]));
     const minY = Math.min(...laid.map((b) => b[1]));
     const size: [number, number] = [
@@ -1028,12 +1172,13 @@ export function applyAiProposal(
           );
       }
     } else if (mode === "canvas") {
-      const bounds = layoutAiCards(
+      // Laid out by the structure the arrows describe (flow, tree, hub or grid).
+      const bounds = layoutCards(
         proposal.blocks.map(aiBlockText),
         connections,
         placed ? 0 : right,
         proposal.blocks.map(aiBlockSize),
-      ).map(([x, y, w, h]): [number, number, number, number] =>
+      ).bounds.map(([x, y, w, h]): [number, number, number, number] =>
         placed
           ? [x + placed.shift[0], y + placed.shift[1], w, h]
           : [x, y, w, h],
@@ -1122,6 +1267,7 @@ export function applyAiProposal(
           source: { id: ids[c.from], position: ports.source },
           target: { id: ids[c.to], position: ports.target },
           text: new Y.Text(c.label),
+          ...connectorLabel(c.label),
         });
       }
       // Arrows between new cards and the existing objects they link to.
@@ -1139,6 +1285,7 @@ export function applyAiProposal(
           source: link.toExisting ? fromNew : toOld,
           target: link.toExisting ? toOld : fromNew,
           text: new Y.Text(link.label),
+          ...connectorLabel(link.label),
         });
       }
       if (replaced) {
@@ -1224,6 +1371,19 @@ export function applyAiProposal(
     if (trashed) deck!.restore(replacedCard!);
   };
   return Object.assign(undo, { noteId });
+}
+
+/**
+ * BlockSuite draws a connector label only once it has a label box, which its
+ * label editor measures as you type. Programmatic labels get an estimated
+ * box; BlockSuite re-centres it on the arrow whenever the path changes.
+ */
+function connectorLabel(label: string): Record<string, unknown> {
+  const text = label.trim();
+  if (!text) return {};
+  const width = Math.min(320, Math.max(36, Array.from(text).length * 9 + 20));
+  const lines = Math.ceil((Array.from(text).length * 9 + 20) / 320);
+  return { labelXYWH: [0, 0, width, 26 * lines] as Box, labelDisplay: true };
 }
 
 const FRAME_PAD = 40;

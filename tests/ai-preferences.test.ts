@@ -151,3 +151,19 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     ),
   ).not.toContain("create_note");
 });
+
+it("offers arrange_cards only with a canvas map and card abilities", async () => {
+  const { automaticAiTools, normalizeAiAbilities } = await import(
+    "../src/services/ai-preferences"
+  );
+  const all = normalizeAiAbilities(null);
+  const open = { selection: false, note: false, canvas: true, editable: true };
+  expect(automaticAiTools(all, { ...open, map: true })).toContain("arrange_cards");
+  expect(automaticAiTools(all, open)).not.toContain("arrange_cards");
+  expect(
+    automaticAiTools({ ...all, canvasCards: false }, { ...open, map: true }),
+  ).not.toContain("arrange_cards");
+  expect(
+    automaticAiTools(all, { ...open, map: true, editable: false }),
+  ).not.toContain("arrange_cards");
+});

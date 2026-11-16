@@ -1,6 +1,15 @@
 # Ask Knot canvas awareness
 
-Plan · 16 November 2026 · Phases 1–2 implemented 16 November 2026
+Plan · 16 November 2026 · Phases 1, 2 and 4 implemented 16 November 2026
+
+## Phase 4 as built
+
+- The model doesn't choose a layout for new cards: Knot infers it from the arrows' relation types (`chooseLayout`), so no schema changed for canvas proposals. Only `arrange_cards` takes an explicit layout, when the user asks for one.
+- Engines: flow (longest-path columns, prerequisites pulled next to their dependents, columns centred, 140 px gaps so same-row arrows join sides), tree (top-down, parents centred over children, unrelated cards in a row underneath), hub (centre card with the rest on an ellipse), grid (the earlier compact layout). A final pass pushes any overlapping cards apart.
+- Caps keep arrangements from sprawling (6 flow columns and 6 cards per column, 8 tree children, 10 hub cards); larger sets use the grid, as the 20-card summary test expects.
+- `arrange_cards` is offered only with a canvas map and Create cards on canvas. It moves the named cards, fits their frames (which also covers the frame-fit polish item for arranged frames), and leaves other cards alone.
+- Found while checking screenshots: connector labels created by code were never drawn, because BlockSuite needs a label box. Knot now sets an estimated one and BlockSuite re-centres it.
+- Verification: unit tests for the choice, each engine, caps and arrow ends; Rust test for the tool; `tests/ai-arrange.browser.mjs` (a jumbled chain becomes a flow in place, frame fitted, other cards untouched, stale handle refused, Undo). Tree, hub and flow proposals were checked in screenshots. Live answer quality is not measured.
 
 ## Phase 2 as built
 
