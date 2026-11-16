@@ -1581,9 +1581,15 @@ function AskKnotPanel({
     let draft: Turn | undefined;
     try {
       if (!retry) {
-        const detected = detectWebUrls(input).filter(
-          (url) => !excludedUrls.current.has(url),
-        );
+        // A selected website card has no text of its own: read its page
+        // like a pasted URL, unless the user removed that source.
+        const card =
+          !starterContext && !cardContext && context?.label === "Selection"
+            ? context.websiteUrl
+            : undefined;
+        const detected = [
+          ...new Set([...detectWebUrls(input), ...(card ? [card] : [])]),
+        ].filter((url) => !excludedUrls.current.has(url));
         if (
           new Set([...webSourcesRef.current.map((s) => s.url), ...detected])
             .size > WEB_LIMITS.urls

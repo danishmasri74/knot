@@ -1,5 +1,7 @@
 export async function createNotebook(page, canvas = false) {
+  // The Library tab has its own copy of this button; use the sidebar's.
   await page
+    .getByRole("complementary", { name: "Workspace navigation" })
     .getByRole("button", { name: "New notebook…", exact: true })
     .click();
   await page

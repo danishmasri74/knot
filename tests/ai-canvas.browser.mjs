@@ -48,7 +48,11 @@ try {
       );
       if (d.getBlocksByFlavour("affine:note").length !== 2)
         throw Error("cards missing");
-      if (d.getBlocksByFlavour("affine:paragraph").some(({ model }) => /\[S\d+\]/.test(String(model.text))))
+      if (
+        d
+          .getBlocksByFlavour("affine:paragraph")
+          .some(({ model }) => /\[S\d+\]/.test(String(model.text)))
+      )
         throw Error("Internal source markers leaked into cards");
       const surface = d.getBlocksByFlavour("affine:surface")[0].model;
       const edge = surface.elementModels[0];
@@ -92,7 +96,11 @@ try {
         map.tree.children[0].children.length !== 1
       )
         throw Error("Mind map hierarchy missing");
-      if (surface.elementModels.some(element => /\[S\d+\]/.test(String(element.text))))
+      if (
+        surface.elementModels.some((element) =>
+          /\[S\d+\]/.test(String(element.text)),
+        )
+      )
         throw Error("Internal source markers leaked into mind map");
       undoMap();
       if (surface.elementModels.length)
@@ -409,7 +417,8 @@ try {
       const website = captureAiContext(editor, "test", null);
       if (
         website.selectionKind !== "website" ||
-        website.selectionLabel !== "example.org"
+        website.selectionLabel !== "example.org" ||
+        website.websiteUrl !== "https://example.org/guide"
       )
         throw Error("Untitled website did not use its domain");
       d.updateBlock(d.getBlock(bookmarkId).model, { title: "Example guide" });
@@ -418,6 +427,11 @@ try {
         "Example guide"
       )
         throw Error("Website title was not used");
+      d.updateBlock(d.getBlock(bookmarkId).model, {
+        url: "https://youtu.be/dQw4w9WgXcQ",
+      });
+      if (captureAiContext(editor, "test", null).websiteUrl)
+        throw Error("A YouTube link must not be fetched as a page");
       const card = d.getBlocksByFlavour("affine:note")[0]?.model;
       if (card) {
         selectionCanvas.gfx.selection.set({

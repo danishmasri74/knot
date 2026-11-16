@@ -124,6 +124,8 @@ See [Milestone 1 diagnostics](AI-DIAGNOSTICS.md) for local measurement, privacy,
 
 
 
+**Selected website cards (16 November 2026).** A website card (bookmark) selected on the canvas or in a note has no text of its own, so sending a message adds its URL as a website source, exactly like a pasted URL: it is fetched, can be removed or retried, and its passages are cited. Removing it keeps it out of later sends. YouTube cards, and cards whose link is a YouTube video, are not fetched; YouTube cards use their saved transcripts.
+
 Paste one or several explicit HTTP/HTTPS URLs in your message, including Markdown links, or choose **+ Context → Website URLs** to add addresses (bare hostnames are accepted there). Review detected sources before sending. Remove excludes a detected URL for that submission even if it remains in the prose. Up to eight URLs can be attached; ordinary anchor variants share a fetch while retaining requested addresses. Query values are preserved; chips omit query strings. Review the exact requested/final address in source details when pasting punctuation beside a signed URL.
 
 

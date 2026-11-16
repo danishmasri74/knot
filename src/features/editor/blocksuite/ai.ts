@@ -10,6 +10,7 @@ import {
   webProvenance,
 } from "../../../services/web-ai-evidence";
 import { appendWebProvenance } from "./web-source";
+import { youtubeVideoId } from "../../../services/youtube-transcript";
 import { aiConnectorPorts, layoutAiCards } from "./ai-layout";
 import type { AiPdfSource } from "../../../services/pdf-input";
 import type { BlockModel, Doc } from "@blocksuite/store";
@@ -55,6 +56,8 @@ export type AiContext = {
   selectionKey?: string;
   selectionLabel?: string;
   selectionKind?: "website" | "file";
+  /** A selected website card's page, captured like a pasted URL on send. */
+  websiteUrl?: string;
   /** Blocks selected as whole objects (cards, embeds, files), if any. */
   selectedBlocks?: string[];
   pdf?: boolean;
@@ -236,11 +239,20 @@ export function captureAiContext(
       ? selected.title.trim()
       : "";
   let websiteLabel: string | undefined;
+  let websiteUrl: string | undefined;
   if (selectedUrl) {
     try {
       const url = new URL(selectedUrl);
-      if (url.protocol === "http:" || url.protocol === "https:")
+      if (url.protocol === "http:" || url.protocol === "https:") {
         websiteLabel = websiteTitle || url.hostname;
+        // YouTube cards bring their saved transcript instead; a YouTube
+        // page itself has no readable text.
+        if (
+          selected?.flavour !== "affine:embed-youtube" &&
+          !youtubeVideoId(url.href)
+        )
+          websiteUrl = url.href;
+      }
     } catch {
       if (selected?.flavour === "affine:bookmark")
         websiteLabel = websiteTitle || selectedUrl;
@@ -348,6 +360,7 @@ export function captureAiContext(
     canvas: editor.mode === "edgeless",
     selectionKey,
     selectionKind: websiteLabel ? "website" : selectedFile ? "file" : undefined,
+    ...(websiteUrl && { websiteUrl }),
     ...(selectedBlocks.length && {
       selectedBlocks: selectedBlocks.map((block) => block.id),
     }),
