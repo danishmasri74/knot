@@ -1931,7 +1931,10 @@ function AskKnotPanel({
         },
       };
       // Images view_images may show: the focused note's, else the document's.
-      const pictures = action === "auto" ? noteImages(s, current.note) : [];
+      // Not with a PDF or slide deck: it is sent itself, and other pictures on
+      // the canvas were mistaken for its pages.
+      const pictures =
+        action === "auto" && !pdfSource ? noteImages(s, current.note) : [];
       // The context a proposal applies to: the retried one, or this capture.
       const editContext: AiContext = retry?.context ?? {
         ...current,
