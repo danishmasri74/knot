@@ -20,6 +20,8 @@ fn live_quality_benchmark() {
     assert!(MODELS.contains(&model.as_str()));
     // KNOT_BENCHMARK_SUITE=routing runs the automatic-routing cases instead.
     let routing = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("routing");
+    // KNOT_BENCHMARK_SUITE=canvas runs the canvas awareness cases (16 November 2026).
+    let canvas = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("canvas");
     // Per-case input reservation. The largest v1 case used 1,219 input tokens
     // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
     // more stops the run. Maximum output is capped by the request (6,000).
@@ -47,14 +49,16 @@ fn live_quality_benchmark() {
             + searches as f64 * crate::diagnostics::WEB_SEARCH_USD;
         (input, searches, usd)
     };
-    let suite: Value = serde_json::from_str(if routing {
+    let suite: Value = serde_json::from_str(if canvas {
+        include_str!("../../tests/benchmarks/canvas.v1.json")
+    } else if routing {
         include_str!("../../tests/benchmarks/routing.v1.json")
     } else {
         include_str!("../../tests/benchmarks/cases.v1.json")
     })
     .unwrap();
     let all = suite["cases"].as_array().unwrap();
-    assert_eq!(all.len(), if routing { 34 } else { 60 });
+    assert_eq!(all.len(), if canvas { 16 } else if routing { 34 } else { 60 });
     // KNOT_BENCHMARK_CASES (comma-separated IDs) repeats a few cases cheaply.
     let only = std::env::var("KNOT_BENCHMARK_CASES").ok();
     let cases: &Vec<Value> = &match &only {

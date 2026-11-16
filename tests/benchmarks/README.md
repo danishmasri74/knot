@@ -22,6 +22,14 @@ plus `KNOT_BENCHMARK_SUITE=routing`. Result rows add `route`, `expected_route` a
 `route_ok`. Phase 1 of [automatic actions](../../docs/AI-AUTO-ACTIONS-PLAN.md) should not
 ship to a release before a routing run is reviewed.
 
+## Canvas suite
+
+`canvas.v1.json` holds 16 canvas awareness cases (16 November 2026): reading the canvas map,
+checking it, suggesting connections, arranging, quizzing a frame, linking to existing cards,
+looking at the canvas and Break this into ideas. Run with `KNOT_BENCHMARK_SUITE=canvas`;
+replay its proposals with `node tests/benchmarks/replay-canvas.mjs <run-uuid>` (no paid
+calls). See [the first run](../../docs/AI-CANVAS-QUALITY-2026-11-16.md).
+
 ## Paid execution gate
 
 The initial run was explicitly authorized for GPT-6 Luna and US$5 total. New runs

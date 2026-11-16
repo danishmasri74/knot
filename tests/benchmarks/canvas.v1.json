@@ -1,0 +1,2827 @@
+{
+ "version": "knot-canvas-v1",
+ "cases": [
+  {
+   "id": "canvas-01",
+   "category": "canvas_read",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What depends on static testing?"
+    }
+   ],
+   "expected": "Early testing saves time and money requires static testing (the arrow), cited from the cards; card titles, no handles.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "Early testing saves time and money requires static testing (the arrow), cited from the cards; card titles, no handles."
+   ]
+  },
+  {
+   "id": "canvas-02",
+   "category": "canvas_read",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Walk me through the Testing principles frame in order."
+    }
+   ],
+   "expected": "The four cards of the frame in reading order (presence, exhaustive, early, cluster) with their points cited; mentions the contrasts-with link.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "The four cards of the frame in reading order (presence, exhaustive, early, cluster) with their points cited; mentions the contrasts-with link."
+   ]
+  },
+  {
+   "id": "canvas-03",
+   "category": "canvas_read",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Which cards aren't connected to anything?"
+    }
+   ],
+   "expected": "Defects cluster together and Test levels, by title; no handles.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "Defects cluster together and Test levels, by title; no handles."
+   ]
+  },
+  {
+   "id": "canvas-04",
+   "category": "canvas_read",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "How does early testing relate to static testing?"
+    }
+   ],
+   "expected": "Early testing requires static testing; explains via reviewing requirements, cited.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "Early testing requires static testing; explains via reviewing requirements, cited."
+   ]
+  },
+  {
+   "id": "canvas-05",
+   "category": "canvas_read",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What's on the top right of my canvas?"
+    }
+   ],
+   "expected": "The Testing principles frame and its cards (approximate region).",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "The Testing principles frame and its cards (approximate region)."
+   ]
+  },
+  {
+   "id": "canvas-06",
+   "category": "canvas_check",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Check my map for problems."
+    }
+   ],
+   "expected": "Flags the static testing part-of dynamic testing arrow as contradicting the card text (static runs no code); mentions unconnected cards; cites.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "Flags the static testing part-of dynamic testing arrow as contradicting the card text (static runs no code); mentions unconnected cards; cites."
+   ]
+  },
+  {
+   "id": "canvas-07",
+   "category": "canvas_read",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Summarize this canvas in a few sentences."
+    }
+   ],
+   "expected": "A short cited summary; no arrangement, cards or connections proposed.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "A short cited summary; no arrangement, cards or connections proposed."
+   ]
+  },
+  {
+   "id": "canvas-08",
+   "category": "canvas_connect",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "connect_cards",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What connections are missing between my cards?"
+    }
+   ],
+   "expected": "connect_cards with valid K/F/T handles, supported relations from the vocabulary, a reason each, no arrow that already exists.",
+   "rubric": [
+    "Choose the expected route: connect_cards.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "connect_cards with valid K/F/T handles, supported relations from the vocabulary, a reason each, no arrow that already exists."
+   ]
+  },
+  {
+   "id": "canvas-09",
+   "category": "canvas_arrange",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "arrange_cards",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Tidy up the Testing principles frame."
+    }
+   ],
+   "expected": "arrange_cards with exactly the four frame cards' handles; layout auto.",
+   "rubric": [
+    "Choose the expected route: arrange_cards.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "arrange_cards with exactly the four frame cards' handles; layout auto."
+   ]
+  },
+  {
+   "id": "canvas-10",
+   "category": "canvas_arrange",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "arrange_cards",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Lay out all my cards as a flow."
+    }
+   ],
+   "expected": "arrange_cards with the card handles (K), layout flow.",
+   "rubric": [
+    "Choose the expected route: arrange_cards.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "arrange_cards with the card handles (K), layout flow."
+   ]
+  },
+  {
+   "id": "canvas-11",
+   "category": "canvas_quiz",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "create_quiz",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Quiz me on the Testing principles frame."
+    }
+   ],
+   "expected": "create_quiz, target card, about = the frame's handle F1, questions only from the four frame cards.",
+   "rubric": [
+    "Choose the expected route: create_quiz.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "create_quiz, target card, about = the frame's handle F1, questions only from the four frame cards."
+   ]
+  },
+  {
+   "id": "canvas-12",
+   "category": "canvas_links",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "create_on_canvas",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Add a card about reviews and connect it to the static testing card."
+    }
+   ],
+   "expected": "create_on_canvas with a reviews card and a link to static testing's handle; no handles in card text.",
+   "rubric": [
+    "Choose the expected route: create_on_canvas.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "create_on_canvas with a reviews card and a link to static testing's handle; no handles in card text."
+   ]
+  },
+  {
+   "id": "canvas-13",
+   "category": "canvas_view",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "view_canvas",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What colour is the circle I drew?"
+    }
+   ],
+   "expected": "Calls view_canvas because the map has no colours.",
+   "rubric": [
+    "Choose the expected route: view_canvas.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "Calls view_canvas because the map has no colours."
+   ]
+  },
+  {
+   "id": "canvas-14",
+   "category": "canvas_view",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards",
+    "view_canvas"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What does the Course plan card say?"
+    }
+   ],
+   "expected": "Answers from the card text with citation; does not call view_canvas.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Never show handles such as K3 or F1 to the user; cite card text.",
+    "Answers from the card text with citation; does not call view_canvas."
+   ]
+  },
+  {
+   "id": "canvas-15",
+   "category": "canvas_view_result",
+   "mode": "auto",
+   "tools": [
+    "search_workspace",
+    "create_on_canvas",
+    "create_quiz",
+    "arrange_cards",
+    "connect_cards"
+   ],
+   "expected_route": "answer",
+   "context": {
+    "sourceMode": "current",
+    "title": "Software Testing",
+    "scope": "Canvas text",
+    "document": "synthetic-canvas",
+    "citationSources": [
+     {
+      "id": "plan-0",
+      "parent": "plan",
+      "note": "plan",
+      "type": "h2",
+      "text": "Course plan",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     },
+     {
+      "id": "plan-1",
+      "parent": "plan",
+      "note": "plan",
+      "type": "paragraph",
+      "text": "Study chapter 1 this week, chapter 2 next week, then take the mock exam on 20 May.",
+      "document": "synthetic-canvas",
+      "citation": "[S2]"
+     },
+     {
+      "id": "presence-0",
+      "parent": "presence",
+      "note": "presence",
+      "type": "h2",
+      "text": "Testing shows the presence of defects",
+      "document": "synthetic-canvas",
+      "citation": "[S3]"
+     },
+     {
+      "id": "presence-1",
+      "parent": "presence",
+      "note": "presence",
+      "type": "paragraph",
+      "text": "Testing can show that defects are present, but cannot prove that there are none.",
+      "document": "synthetic-canvas",
+      "citation": "[S4]"
+     },
+     {
+      "id": "exhaustive-0",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "h2",
+      "text": "Exhaustive testing is impossible",
+      "document": "synthetic-canvas",
+      "citation": "[S5]"
+     },
+     {
+      "id": "exhaustive-1",
+      "parent": "exhaustive",
+      "note": "exhaustive",
+      "type": "paragraph",
+      "text": "Testing every combination of inputs is not feasible except in trivial cases; risk and priorities focus the effort.",
+      "document": "synthetic-canvas",
+      "citation": "[S6]"
+     },
+     {
+      "id": "early-0",
+      "parent": "early",
+      "note": "early",
+      "type": "h2",
+      "text": "Early testing saves time and money",
+      "document": "synthetic-canvas",
+      "citation": "[S7]"
+     },
+     {
+      "id": "early-1",
+      "parent": "early",
+      "note": "early",
+      "type": "paragraph",
+      "text": "Defects removed early, for example by reviewing requirements, cost far less to fix than defects found late.",
+      "document": "synthetic-canvas",
+      "citation": "[S8]"
+     },
+     {
+      "id": "cluster-0",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "h2",
+      "text": "Defects cluster together",
+      "document": "synthetic-canvas",
+      "citation": "[S9]"
+     },
+     {
+      "id": "cluster-1",
+      "parent": "cluster",
+      "note": "cluster",
+      "type": "paragraph",
+      "text": "A small number of modules usually contains most of the defects found before release.",
+      "document": "synthetic-canvas",
+      "citation": "[S10]"
+     },
+     {
+      "id": "static-0",
+      "parent": "static",
+      "note": "static",
+      "type": "h2",
+      "text": "Static testing",
+      "document": "synthetic-canvas",
+      "citation": "[S11]"
+     },
+     {
+      "id": "static-1",
+      "parent": "static",
+      "note": "static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements and code without executing them, for example in reviews.",
+      "document": "synthetic-canvas",
+      "citation": "[S12]"
+     },
+     {
+      "id": "dynamic-0",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "h2",
+      "text": "Dynamic testing",
+      "document": "synthetic-canvas",
+      "citation": "[S13]"
+     },
+     {
+      "id": "dynamic-1",
+      "parent": "dynamic",
+      "note": "dynamic",
+      "type": "paragraph",
+      "text": "Dynamic testing executes the software and compares actual with expected results.",
+      "document": "synthetic-canvas",
+      "citation": "[S14]"
+     },
+     {
+      "id": "levels-0",
+      "parent": "levels",
+      "note": "levels",
+      "type": "h2",
+      "text": "Test levels",
+      "document": "synthetic-canvas",
+      "citation": "[S15]"
+     },
+     {
+      "id": "levels-1",
+      "parent": "levels",
+      "note": "levels",
+      "type": "paragraph",
+      "text": "Component, integration, system and acceptance testing, each with its own objectives.",
+      "document": "synthetic-canvas",
+      "citation": "[S16]"
+     }
+    ],
+    "surroundingReadOnly": [],
+    "mode": "auto",
+    "runs": [],
+    "addedNotes": [],
+    "canvasMap": "F1 frame \"Testing principles\" [top-right]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" [S3–S4] short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" [S5–S6] short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" [S7–S8] short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" [S9–S10] short, in F1, below K2, right of K3\nK5 \"Course plan\" [S1–S2] short, top-left, above K6\nK6 \"Static testing\" [S11–S12] short, left, left of K7, above K8\nK7 \"Dynamic testing\" [S13–S14] short, middle, right of K6, left of K3\nK8 \"Test levels\" [S15–S16] short, bottom-left, below K6, left of K7\narrow K3 -requires-> K6\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K6 -part of-> K7\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom-right]\nnot connected: K4 K8",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What colour is the circle I drew, and what does it say?"
+    }
+   ],
+   "viewed": [
+    {
+     "call_id": "call_synthetic_canvas",
+     "names": [
+      "Visible canvas"
+     ],
+     "images": [
+      "data:image/jpeg;base64,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"
+     ],
+     "tool": "view_canvas"
+    }
+   ],
+   "expected": "Red circle labelled Risk, from the returned image; no further tool call.",
+   "rubric": [
+    "Choose the expected route: answer.",
+    "Ground the answer in the returned canvas image.",
+    "Red circle labelled Risk."
+   ]
+  },
+  {
+   "id": "canvas-16",
+   "category": "canvas_atomize",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-canvas",
+    "scope": "Focused note",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "long-0",
+      "parent": "long",
+      "note": "long",
+      "type": "paragraph",
+      "text": "Testing principles help testers plan their work. Testing shows the presence of defects but cannot prove their absence. Exhaustive testing is impossible except in trivial cases, so risk analysis and priorities focus the effort. Early testing saves time and money because defects found in requirements cost far less to fix than defects found in production. Defects cluster together: a small number of modules usually contains most defects. Repeating the same tests finds fewer new defects over time, so tests must be reviewed and revised. Testing is context dependent: safety-critical software is tested differently from a mobile game. Finally, the absence of defects is a fallacy if the system does not meet users' needs.",
+      "document": "synthetic-canvas",
+      "citation": "[S1]"
+     }
+    ],
+    "canvasMap": "F1 frame \"Testing principles\" [top]: K1 K2 K3 K4\nK1 \"Testing shows the presence of defects\" short, in F1, left of K2, above K3\nK2 \"Exhaustive testing is impossible\" short, in F1, right of K1, above K4\nK3 \"Early testing saves time and money\" short, in F1, below K1, left of K4\nK4 \"Defects cluster together\" short, in F1, below K2, right of K3\nK5 \"Course plan\" short, top-left, above K7\nK6 \"Testing principles help testers plan the\" [S1] medium, top-right\nK7 \"Static testing\" short, left, left of K8, above K9\nK8 \"Dynamic testing\" short, left, right of K7, left of K3\nK9 \"Test levels\" short, bottom-left, below K7, left of K8\narrow K3 -requires-> K7\narrow K1 -contrasts with-> K2\narrow K5 -> F1\narrow K7 -part of-> K8\nM1 mind map [bottom-left]:\n  Test types\n    Functional\n    Non-functional\nT1 text \"Risk\" [bottom]\nnot connected: K4 K6 K9\nselected: K6",
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Break this card into atomic idea cards that replace it, so it is easier to digest and the connections between ideas are visible. Use cards and connections only; leave mindmap empty. Each card holds exactly one idea and makes sense on its own: a short title that states the point as a claim (for example \"Early testing is cheaper\", not \"Early testing\"), then at most about 60 words of formatted detail, with lists or a table only when they help. Keep every fact, number, example, exception and qualification from the source in some card, because the original card is removed; never add facts the source does not state. Prefer 5 to 12 cards, at most 20. Connect related cards with directional arrows labelled with exactly one of: leads to, causes, requires, part of, example of, contrasts with. The arrow points from the card the label describes, for example A requires B, A is an example of B, A is part of B. Only connect ideas the source relates; do not invent relationships. When the canvas map lists other cards whose content relates to an idea, you may link the idea card to them, never to the card being replaced."
+    }
+   ],
+   "expected": "5-12 one-idea cards with claim titles, every principle kept (seven principles plus the intro), arrows only from the six relation labels, mindmap empty; links (if any) never to the long card itself.",
+   "rubric": [
+    "One idea per card, claim titles, about 60 words or fewer.",
+    "Every fact kept; nothing invented.",
+    "Arrows use the relation vocabulary; valid links."
+   ]
+  }
+ ]
+}

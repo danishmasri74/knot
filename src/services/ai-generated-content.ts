@@ -29,6 +29,13 @@ export function cleanAiBlock(block: AiBlock): AiBlock {
   };
 }
 
+/** A suggestion's reason as its first sentence, at most 240 characters. */
+export function shortReason(text: string): string {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  const first = trimmed.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? trimmed;
+  return first.length > 240 ? `${first.slice(0, 239).trimEnd()}…` : first;
+}
+
 export function cleanAiProposal(proposal: AiProposal): AiProposal {
   return {
     ...proposal,
@@ -50,7 +57,7 @@ export function cleanAiProposal(proposal: AiProposal): AiProposal {
       arrows: proposal.arrows.map((arrow) => ({
         ...arrow,
         label: stripAiSourceMarkers(arrow.label),
-        reason: stripAiSourceMarkers(arrow.reason).trim(),
+        reason: shortReason(stripAiSourceMarkers(arrow.reason)),
       })),
     }),
     ...(proposal.links && {

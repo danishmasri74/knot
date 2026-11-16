@@ -184,11 +184,43 @@ const version = (doc: Doc) => {
             keys.size === 1 &&
             keys.has("prop:xywh"),
         );
-      if (!measuredNotes) revisions.set(doc, revisions.get(doc)! + 1);
+      // BlockSuite also re-centres a connector's label box whenever its
+      // path changes (for example after a card is measured). Derived too.
+      const labelBoxes =
+        transaction.local &&
+        transaction.changed.size > 0 &&
+        [...transaction.changed].every(
+          ([type, keys]) =>
+            type instanceof Y.Map &&
+            type.get("type") === "connector" &&
+            [...keys].every((key) => key === "labelXYWH"),
+        );
+      if (!measuredNotes && !labelBoxes)
+        revisions.set(doc, revisions.get(doc)! + 1);
     });
   }
   return String(revisions.get(doc));
 };
+/**
+ * Undoes an applied proposal. Only derived layout updates, which leave the
+ * version unchanged (re-centred arrow labels), may sit above it on the undo
+ * stack; they are stepped back first. Anything else is a newer edit.
+ */
+function undoApplied(doc: Doc, item: unknown, appliedVersion: string) {
+  const newer = () =>
+    new Error(
+      "There are newer edits. Use the editor’s Undo to undo them in order.",
+    );
+  if (
+    version(doc) !== appliedVersion ||
+    !(doc.history.undoStack as unknown[]).includes(item)
+  )
+    throw newer();
+  for (let i = 0; i < 50 && doc.history.undoStack.at(-1) !== item; i++)
+    doc.undo();
+  if (doc.history.undoStack.at(-1) !== item) throw newer();
+  doc.undo();
+}
 const readable = (model: BlockModel): string =>
   [model.text?.toString() ?? "", ...model.children.map(readable)]
     .filter(Boolean)
@@ -597,7 +629,7 @@ export function validateProposal(
           typeof a.label !== "string" ||
           a.label.length > 200 ||
           typeof a.reason !== "string" ||
-          a.reason.length > 400,
+          a.reason.length > 4000,
       ) ||
       new Set(p.arrows.map((a) => `${a.from}>${a.to}`)).size !== p.arrows.length)
   )
@@ -764,14 +796,7 @@ function applyQuiz(
   const item = doc.history.undoStack.at(-1);
   const appliedVersion = version(doc);
   const undo = () => {
-    if (
-      version(doc) !== appliedVersion ||
-      doc.history.undoStack.at(-1) !== item
-    )
-      throw new Error(
-        "There are newer edits. Use the editor’s Undo to undo them in order.",
-      );
-    doc.undo();
+    undoApplied(doc, item, appliedVersion);
     ids.forEach((id) => deck.delete(id));
   };
   return Object.assign(undo, { noteId });
@@ -891,14 +916,7 @@ function applyArrange(
   const item = doc.history.undoStack.at(-1);
   const appliedVersion = version(doc);
   const undo = () => {
-    if (
-      version(doc) !== appliedVersion ||
-      doc.history.undoStack.at(-1) !== item
-    )
-      throw new Error(
-        "There are newer edits. Use the editor\u2019s Undo to undo them in order.",
-      );
-    doc.undo();
+    undoApplied(doc, item, appliedVersion);
   };
   return Object.assign(undo, { noteId: cards[0].model.id });
 }
@@ -969,14 +987,7 @@ function applyConnect(
   const item = doc.history.undoStack.at(-1);
   const appliedVersion = version(doc);
   return () => {
-    if (
-      version(doc) !== appliedVersion ||
-      doc.history.undoStack.at(-1) !== item
-    )
-      throw new Error(
-        "There are newer edits. Use the editor\u2019s Undo to undo them in order.",
-      );
-    doc.undo();
+    undoApplied(doc, item, appliedVersion);
   };
 }
 
@@ -1472,14 +1483,7 @@ export function applyAiProposal(
   if (proposal.mindmap?.length) queueMicrotask(finishCapture);
   else finishCapture();
   const undo = () => {
-    if (
-      version(doc) !== appliedVersion ||
-      doc.history.undoStack.at(-1) !== item
-    )
-      throw new Error(
-        "There are newer edits. Use the editor’s Undo to undo them in order.",
-      );
-    doc.undo();
+    undoApplied(doc, item, appliedVersion);
     if (trashed) deck!.restore(replacedCard!);
   };
   return Object.assign(undo, { noteId });

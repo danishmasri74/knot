@@ -133,6 +133,8 @@ try {
       color: arrow?.stroke,
       besideTarget: JSON.parse(created.xywh)[0] >= 300 + 160,
     };
+    // BlockSuite re-centres arrow labels shortly after; Undo must still work.
+    await new Promise((r) => setTimeout(r, 600));
     undo();
     const undone = {
       cards: d.getBlocksByFlavour("affine:note").length,

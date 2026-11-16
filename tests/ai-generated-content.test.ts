@@ -79,3 +79,12 @@ test("cleans every generated surface while retaining provenance, structure, and 
   expect(input.blocks[0].text).toBe("Overview [S1]");
   expect(cleanAiProposal(cleaned)).toEqual(cleaned);
 });
+
+test("a suggestion's reason keeps its first sentence", async () => {
+  const { shortReason } = await import("../src/services/ai-generated-content");
+  expect(shortReason("Tests run in an environment. No, wait: maybe not.")).toBe(
+    "Tests run in an environment.",
+  );
+  expect(shortReason("  No full stop here  ")).toBe("No full stop here");
+  expect(shortReason("x".repeat(300)).length).toBe(240);
+});

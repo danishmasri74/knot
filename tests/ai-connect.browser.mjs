@@ -99,6 +99,8 @@ try {
       color: added?.stroke,
       labelBox: Array.isArray(added?.labelXYWH),
     };
+    // BlockSuite re-centres arrow labels shortly after; Undo must still work.
+    await new Promise((r) => setTimeout(r, 600));
     undo();
     return {
       stale,
