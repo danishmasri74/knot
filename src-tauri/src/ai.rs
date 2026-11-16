@@ -460,7 +460,7 @@ fn edit_schema(mode: &str, web: bool, map: bool) -> Value {
 }
 /// Write tools an automatic request may offer, with the edit mode each one
 /// proposes. Forced edit modes keep their response-format path.
-pub(crate) const TOOLS: [(&str, &str); 6] = [
+pub(crate) const TOOLS: [(&str, &str); 7] = [
     ("rewrite_selection", "rewrite"),
     ("insert_blocks", "insert"),
     ("create_on_canvas", "canvas"),
@@ -470,6 +470,8 @@ pub(crate) const TOOLS: [(&str, &str); 6] = [
     ("create_quiz", "quiz"),
     // Rearranges existing canvas cards; offered only with a canvas map.
     ("arrange_cards", "arrange"),
+    // Suggests arrows between existing canvas objects; also map-only.
+    ("connect_cards", "connect"),
 ];
 pub(crate) fn tool_mode(name: &str) -> Option<&'static str> {
     TOOLS.iter().find(|(tool, _)| *tool == name).map(|(_, mode)| *mode)
@@ -485,6 +487,7 @@ fn tool_rules(name: &str) -> String {
         "create_note" => format!("create_note adds one new note to the open notebook. Use it only when the user asks for a new, separate or standalone note, for example draft a note about a topic or make a new note summarising this; to add to the current note use insert_blocks instead. The first block is an h1 holding a short title (under 60 characters); the content follows. {BASE_INSERT}"),
         "create_quiz" => QUIZ_RULES.to_string(),
         "arrange_cards" => ARRANGE_RULES.to_string(),
+        "connect_cards" => CONNECT_RULES.to_string(),
         _ => format!("create_on_canvas adds cards, arrows and/or a native mind map to the open canvas; use it when the user asks to put content on the canvas or to make cards, a mind map or a diagram. {CANVAS_RULES} {CANVAS_CLOSE}"),
     }
 }
@@ -494,6 +497,13 @@ fn tool_rules(name: &str) -> String {
 fn tool_schema(mode: &str, web: bool, map: bool) -> Value {
     if mode == "quiz" {
         return quiz_schema(map);
+    }
+    if mode == "connect" {
+        return json!({"type":"object","additionalProperties":false,"required":["arrows"],"properties":{
+            "arrows":{"type":"array","items":{"type":"object","additionalProperties":false,
+                "required":["from","to","label","reason"],"properties":{
+                    "from":{"type":"string"},"to":{"type":"string"},
+                    "label":{"type":"string"},"reason":{"type":"string"}}}}}});
     }
     if mode == "arrange" {
         return json!({"type":"object","additionalProperties":false,"required":["cards","layout"],"properties":{
@@ -517,6 +527,7 @@ fn tool_description(name: &str) -> &'static str {
         "create_note" => "Propose one new note for the open notebook: an h1 title block, then its content.",
         "create_quiz" => "Propose multiple-choice questions for a new quiz card, or for the current note when asked.",
         "arrange_cards" => "Propose a new arrangement for cards already on the canvas.",
+        "connect_cards" => "Propose arrows between cards already on the canvas, each with a reason.",
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
 }
@@ -544,6 +555,8 @@ fn quiz_schema(map: bool) -> Value {
 }
 /// Rules for arrange_cards. Knot computes positions; the model picks cards.
 const ARRANGE_RULES: &str = "arrange_cards moves cards that are already on the canvas into a tidy arrangement; use it when the user asks to arrange, tidy, organise, lay out or clean up cards, a frame or a cluster, and never to create or change content. cards lists the canvasMap handles of the cards to move (K handles only, at least 2, at most 40): the cards the user means, for example every card in a named frame, or the selected cards. layout is auto unless the user asks for a shape: flow (left to right, following the arrows), tree (top-down hierarchy from part of and example of arrows), hub (one central card with the rest around it) or grid. Knot computes the positions from the cards' arrows, keeps the group where it was and fits frames around their cards.";
+/// Rules for connect_cards: missing relations between existing objects.
+const CONNECT_RULES: &str = "connect_cards suggests arrows between objects already on the canvas; use it when the user asks to find, suggest or add missing connections or links between existing cards, and never to create cards. Each arrow has from and to (canvasMap handles of cards, frames or text, K, F or T), a label (prefer leads to, causes, requires, part of, example of or contrasts with; A requires B points from A to B) and a reason: one short sentence on what in the cards' text supports the relation. Suggest only relations the cards' text supports, never an arrow that already exists between the same two objects in the same direction, at most 20, strongest first. If nothing is missing, answer in chat instead.";
 /// Sent with canvas proposals when the context has a canvas map.
 const CANVAS_LINK_RULES: &str = "links connects new cards to objects already on the canvas: card is the zero-based index of a new top-level card, existing is the handle of a card, frame or text from canvasMap, label names the relation (prefer leads to, causes, requires, part of, example of or contrasts with), and toExisting is true when the arrow points from the new card to the existing object. Link only where the content supports a relation, at most 20 links; leave links empty otherwise. Never link to a card that the request replaces, and never put handles in card text. New cards with links are placed beside the existing objects they link to.";
 /// Sent with create_quiz when the context has a canvas map.
@@ -709,7 +722,7 @@ const BASE_LIMITS: &str = "Canvas text does not describe spatial or connector re
 /// Sent instead of the first sentence of BASE_LIMITS when the context
 /// describes the open canvas (docs/AI-CANVAS-AWARENESS-PLAN.md).
 const CANVAS_MAP_LIMITS: &str = "No browsing, tools, diagram edits or cross-document edits. Do not claim to have edited or saved anything.";
-const CANVAS_MAP_RULES: &str = "canvasMap describes how the open canvas is arranged, one line per object: K cards (notes and media cards, with their citation markers, size and nearby cards), F frames and G groups with their members, M mind maps as indented trees, T shapes and text boxes, and arrow lines. An arrow line reads from its first object to its second: -label-> points to the second object, <-label- to the first, <-label-> both ways, -label-- has no arrowhead. Treat an arrow as a relation the user drew between the two objects, named by its label; an unlabelled arrow is a relation of unspecified kind. Regions such as top-left and nearby cards are approximate. A trailing line may say that some cards are not described; then say your answer may not cover the whole canvas. Use the map for questions about structure, order, grouping, connections and position, and cite the card text that supports a claim with its citation markers. Never show handles such as K3, F1 or M2 to the user: name cards, frames and mind maps by their titles.";
+const CANVAS_MAP_RULES: &str = "canvasMap describes how the open canvas is arranged, one line per object: K cards (notes and media cards, with their citation markers, size and nearby cards), F frames and G groups with their members, M mind maps as indented trees, T shapes and text boxes, and arrow lines. An arrow line reads from its first object to its second: -label-> points to the second object, <-label- to the first, <-label-> both ways, -label-- has no arrowhead. Treat an arrow as a relation the user drew between the two objects, named by its label; an unlabelled arrow is a relation of unspecified kind. Regions such as top-left and nearby cards are approximate. A trailing line may say that some cards are not described; then say your answer may not cover the whole canvas. Use the map for questions about structure, order, grouping, connections and position, and cite the card text that supports a claim with its citation markers. Never show handles such as K3, F1 or M2 to the user: name cards, frames and mind maps by their titles. When asked to check or review the map, point out arrows whose label contradicts the cards' text, relations that look reversed, cards that repeat each other, and the cards listed as not connected, citing the card text.";
 const BASE_REWRITE: &str = "For rewrite, return exactly one replacement string per supplied text run, in the same order. Retain reference/link runs exactly. Keep formatting boundaries meaningful.";
 /// Added 11 November 2026: benchmark rewrites sometimes also returned a duplicate block.
 const BASE_REWRITE_BLOCKS: &str = "For rewrite, leave blocks empty.";
@@ -1350,6 +1363,12 @@ mod tests {
         assert_eq!(arrange["tools"][0]["parameters"]["required"], json!(["cards", "layout"]));
         assert_eq!(arrange["tools"][0]["parameters"]["properties"]["layout"]["enum"], json!(["auto", "flow", "tree", "hub", "grid"]));
         assert!(arrange["instructions"].as_str().unwrap().contains("arrange_cards moves cards"));
+        // Phase 3: connect_cards suggests arrows with reasons.
+        assert_eq!(tool_mode("connect_cards"), Some("connect"));
+        let connect = tool_request_body(MODELS[0], &messages, with, &["connect_cards".into()], &[], &[], None, None);
+        assert_eq!(connect["tools"][0]["parameters"]["properties"]["arrows"]["items"]["required"], json!(["from", "to", "label", "reason"]));
+        assert!(connect["instructions"].as_str().unwrap().contains(CONNECT_RULES));
+        assert!(text.contains("When asked to check or review the map"));
     }
     #[test]
     fn create_quiz_offers_questions_only_even_with_web_evidence() {

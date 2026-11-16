@@ -13,3 +13,4 @@
 - New cards from Ask Knot can connect to cards already on your canvas, and are placed next to them; "Break this into ideas" can link ideas to related cards elsewhere. Ask for a quiz on a frame and the quiz card goes beside that frame.
 - Cards Ask Knot makes are laid out by how they connect: steps run left to right, "part of" and "example of" form a tree, and a central idea sits in the middle. Ask it to "tidy up this frame" to rearrange cards that are already there.
 - Labels on Ask Knot's arrows now show on the canvas.
+- Ask Knot can suggest missing connections between your canvas cards, each with a reason; tick the ones you want and apply. Ask it to check your map and it points out arrows that don't match the cards, repeated cards and cards that aren't connected.

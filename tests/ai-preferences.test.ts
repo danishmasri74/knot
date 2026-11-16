@@ -167,3 +167,13 @@ it("offers arrange_cards only with a canvas map and card abilities", async () =>
     automaticAiTools(all, { ...open, map: true, editable: false }),
   ).not.toContain("arrange_cards");
 });
+
+it("offers connect_cards alongside arrange_cards with a canvas map", async () => {
+  const { automaticAiTools, normalizeAiAbilities } = await import(
+    "../src/services/ai-preferences"
+  );
+  const open = { selection: false, note: false, canvas: true, editable: true };
+  const all = normalizeAiAbilities(null);
+  expect(automaticAiTools(all, { ...open, map: true })).toContain("connect_cards");
+  expect(automaticAiTools(all, open)).not.toContain("connect_cards");
+});

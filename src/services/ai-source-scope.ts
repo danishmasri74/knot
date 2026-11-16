@@ -110,6 +110,8 @@ export function exchangeHistory<
             ? "multiple-choice questions for the note"
             : reply.mode === "arrange"
               ? "a new arrangement of canvas cards"
+              : reply.mode === "connect"
+                ? "new arrows between canvas cards"
               : "an addition to the note";
     const outcome =
       reply.status === "applied"

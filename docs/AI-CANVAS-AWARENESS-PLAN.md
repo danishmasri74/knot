@@ -1,6 +1,14 @@
 # Ask Knot canvas awareness
 
-Plan · 16 November 2026 · Phases 1, 2 and 4 implemented 16 November 2026
+Plan · 16 November 2026 · Phases 1–4 implemented 16 November 2026
+
+## Phase 3 as built
+
+- `connect_cards` (offered with `arrange_cards`, map only): arrows `{from, to, label, reason}` between existing K/F/T objects, at most 20. Validation refuses self-arrows and duplicate pairs; Apply skips arrows already on the canvas in the same direction.
+- Preview: a checkbox per suggestion with its reason; the header counts the ticked ones; Apply uses only those. Saved chats can't apply, so their checkboxes are disabled.
+- Check the map: no tool. The map rules (only sent with a map) say what to look for when asked; the map's `not connected:` line lists loose cards, computed locally. Empty frames already read "empty".
+- Decided defaults kept (§8): suggestions only when asked, no ambient canvas suggestion.
+- Verification: Rust test for the tool and review rules, unit tests for the loose-ends line and tool offering, `tests/ai-connect.browser.mjs` (arrow added with color and visible label, existing arrow skipped, stale and nothing-to-add refused, Undo; preview reasons, count and read-only saved choices in both themes). Toggling a live checkbox is covered only by the count logic, not a browser test. Live answer quality not measured.
 
 ## Phase 4 as built
 

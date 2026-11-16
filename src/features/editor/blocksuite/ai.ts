@@ -73,6 +73,8 @@ export type AiProposal = {
   about?: string;
   /** Canvas with a canvas map: arrows from new cards to existing objects. */
   links?: AiLink[];
+  /** connect_cards: arrows to add between existing objects. */
+  arrows?: AiArrow[];
   /** arrange_cards: the existing cards to move (K handles) and how. */
   cards?: string[];
   layout?: LayoutKind | "auto";
@@ -86,6 +88,14 @@ export type AiLink = {
   label: string;
   /** The arrow points from the new card to the existing object. */
   toExisting: boolean;
+};
+/** An arrow connect_cards suggests between two existing objects. */
+export type AiArrow = {
+  from: string;
+  to: string;
+  label: string;
+  /** What in the cards' text supports it. */
+  reason: string;
 };
 /** Links one canvas proposal may add; matches CANVAS_LINK_RULES in ai.rs. */
 export const MAX_LINKS = 20;
@@ -569,6 +579,29 @@ export function validateProposal(
       !["auto", "flow", "tree", "hub", "grid"].includes(p.layout))
   )
     throw new Error("Invalid card arrangement.");
+  if (
+    p.arrows !== undefined &&
+    (!Array.isArray(p.arrows) ||
+      !p.arrows.length ||
+      p.arrows.length > MAX_LINKS ||
+      p.blocks.length ||
+      p.replacements.length ||
+      p.arrows.some(
+        (a) =>
+          !a ||
+          typeof a.from !== "string" ||
+          typeof a.to !== "string" ||
+          !HANDLE.test(a.from) ||
+          !HANDLE.test(a.to) ||
+          a.from === a.to ||
+          typeof a.label !== "string" ||
+          a.label.length > 200 ||
+          typeof a.reason !== "string" ||
+          a.reason.length > 400,
+      ) ||
+      new Set(p.arrows.map((a) => `${a.from}>${a.to}`)).size !== p.arrows.length)
+  )
+    throw new Error("Invalid suggested connections.");
   validateSourceRefs(p, webContext);
   return cleanAiProposal(p);
 }
@@ -870,6 +903,83 @@ function applyArrange(
   return Object.assign(undo, { noteId: cards[0].model.id });
 }
 
+/**
+ * Adds the suggested arrows between existing objects, skipping any that
+ * already exist in the same direction. One undo step.
+ */
+function applyConnect(
+  doc: Doc,
+  workspace: string,
+  context: AiContext,
+  proposal: AiProposal,
+): (() => void) & { noteId?: string } {
+  if (
+    doc !== context.instance ||
+    doc.id !== context.document ||
+    workspace !== context.workspace ||
+    version(doc) !== context.version ||
+    doc.readonly
+  )
+    throw new Error("This edit is stale. Capture fresh context and try again.");
+  const map = context.canvasMap;
+  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+    | SurfaceBlockModel
+    | undefined;
+  if (!map || !surface || !proposal.arrows?.length)
+    throw new Error("Choose at least one connection to add.");
+  const handles = canvasHandles(map);
+  const resolve = (handle: string) => {
+    const target = handles.get(handle);
+    if (
+      !target?.box ||
+      !(doc.getBlock(target.id) || surface.getElementById(target.id))
+    )
+      throw new Error(
+        "Some of these cards aren't on the canvas any more. Try again.",
+      );
+    return target as Required<CanvasHandleTarget>;
+  };
+  const existing = new Set(map.arrows.map((a) => `${a.from}>${a.to}`));
+  const todo = proposal.arrows
+    .map((arrow) => ({ arrow, from: resolve(arrow.from), to: resolve(arrow.to) }))
+    .filter(({ from, to }) => !existing.has(`${from.id}>${to.id}`));
+  if (!todo.length)
+    throw new Error("These connections are already on the canvas.");
+  const mode = {
+    curve: ConnectorMode.Curve,
+    elbowed: ConnectorMode.Orthogonal,
+    straight: ConnectorMode.Straight,
+  }[getAiConnectorShape()];
+  doc.captureSync();
+  doc.transact(() => {
+    todo.forEach(({ arrow, from, to }, index) => {
+      const ports = aiConnectorPorts(from.box, to.box);
+      surface.addElement({
+        type: "connector",
+        mode,
+        stroke: relationStroke(arrow.label) || aiConnectorStroke(index),
+        source: { id: from.id, position: ports.source },
+        target: { id: to.id, position: ports.target },
+        text: new Y.Text(arrow.label),
+        ...connectorLabel(arrow.label),
+      });
+    });
+  });
+  doc.captureSync();
+  const item = doc.history.undoStack.at(-1);
+  const appliedVersion = version(doc);
+  return () => {
+    if (
+      version(doc) !== appliedVersion ||
+      doc.history.undoStack.at(-1) !== item
+    )
+      throw new Error(
+        "There are newer edits. Use the editor\u2019s Undo to undo them in order.",
+      );
+    doc.undo();
+  };
+}
+
 /** Save one chat response as one editable card, including structured previews. */
 export function addAiMessageCard(doc: Doc, blocks: AiBlock[]) {
   blocks = blocks.map(cleanAiBlock);
@@ -908,7 +1018,7 @@ export function applyAiProposal(
   workspace: string,
   context: AiContext,
   input: AiProposal,
-  mode: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange",
+  mode: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange" | "connect",
   options?: {
     /** Break this into ideas: the canvas card the new cards replace. */
     replaces?: string;
@@ -918,6 +1028,8 @@ export function applyAiProposal(
   if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
   if (mode === "arrange")
     return applyArrange(doc, workspace, context, proposal);
+  if (mode === "connect")
+    return applyConnect(doc, workspace, context, proposal);
   const allRefs = [
     ...new Set([
       ...proposal.blocks.flatMap((b) => [

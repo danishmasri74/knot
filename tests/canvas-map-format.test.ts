@@ -121,3 +121,19 @@ it("resolves the handles the description used", async () => {
   expect(handles.get("T1")?.id).toBe("t");
   expect(handles.get("K9")).toBeUndefined();
 });
+
+it("lists cards that no arrow touches", () => {
+  const loose: CanvasMapData = {
+    ...map,
+    cards: [
+      ...map.cards,
+      { id: "alone", title: "Exam tips", length: 50, box: [1500, 1000, 200, 100] },
+    ],
+  };
+  const text = formatCanvasMap(loose);
+  expect(text).toMatch(/^not connected: K\d+$/m);
+  const handle = text.split("\n").find((l) => l.includes('"Exam tips"'))!.split(" ")[0];
+  expect(text).toContain(`not connected: ${handle}`);
+  // No arrows at all: nothing to call loose.
+  expect(formatCanvasMap({ ...loose, arrows: [] })).not.toContain("not connected");
+});

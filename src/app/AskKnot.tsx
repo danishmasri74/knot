@@ -149,7 +149,9 @@ type Turn = {
   failed?: boolean;
   proposal?: AiProposal;
   context?: AiContext;
-  mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange";
+  mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange" | "connect";
+  /** connect_cards: suggestions the user unticked (indexes). */
+  skipped?: number[];
   /** What an applied proposal created (a note, quiz or the first canvas
    * card): its first block, for the Open button. */
   createdNote?: { block: string; text: string };
@@ -278,6 +280,12 @@ function mapTitle(turn: Turn, handle: string | undefined) {
   return title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title;
 }
 
+/** The suggested arrows the user kept ticked. */
+function chosenArrows(turn: Turn) {
+  return (turn.proposal?.arrows ?? []).filter(
+    (_, i) => !turn.skipped?.includes(i),
+  );
+}
 /** The arrangement an arrange_cards proposal will use, for the preview. */
 function arrangeKind(turn: Turn): LayoutKind {
   const requested = turn.proposal?.layout;
@@ -2199,6 +2207,8 @@ function AskKnotPanel({
                 ? "Suggested quiz"
                 : proposed === "arrange"
                   ? "Suggested arrangement"
+                  : proposed === "connect"
+                    ? "Suggested connections"
                   : "Suggested addition";
         draft.content = action === "auto" ? output.trim() || label : label;
       }
@@ -2672,7 +2682,9 @@ function AskKnotPanel({
                                 !turn.proposal.blocks.length
                               ? "Create mind map"
                               : "Create on canvas"
-                          : turn.mode === "arrange"
+                          : turn.mode === "connect"
+                            ? `Add ${chosenArrows(turn).length} of ${turn.proposal.arrows?.length ?? 0} connections`
+                            : turn.mode === "arrange"
                             ? `Arrange ${turn.proposal.cards?.length ?? 0} cards${layoutName(arrangeKind(turn))}`
                             : turn.mode === "note"
                             ? "Create note in this notebook"
@@ -2750,6 +2762,41 @@ function AskKnotPanel({
                               })}
                             </>
                           )}
+                        {turn.mode === "connect" && (
+                          <ul className="ask-connect-list">
+                            {turn.proposal.arrows?.map((arrow, n) => (
+                              <li key={n}>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={!turn.skipped?.includes(n)}
+                                    disabled={
+                                      !!turn.status || busy || !turn.context
+                                    }
+                                    onChange={(event) => {
+                                      const skipped = new Set(turn.skipped);
+                                      if (event.target.checked) skipped.delete(n);
+                                      else skipped.add(n);
+                                      turn.skipped = [...skipped].sort(
+                                        (a, b) => a - b,
+                                      );
+                                      update([...turns]);
+                                    }}
+                                  />
+                                  <span>
+                                    <strong>
+                                      {mapTitle(turn, arrow.from) || "A card"}
+                                      {" → "}
+                                      {arrow.label ? `${arrow.label} → ` : ""}
+                                      {mapTitle(turn, arrow.to) || "a card"}
+                                    </strong>
+                                    {arrow.reason && <small>{arrow.reason}</small>}
+                                  </span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                         {turn.mode === "arrange" && (
                           <>
                             {turn.proposal.cards?.map((handle, i) => (
@@ -2813,7 +2860,11 @@ function AskKnotPanel({
                     ) : !turn.status ? (
                       <div className="ask-proposal-actions">
                         <button
-                          disabled={busy}
+                          disabled={
+                            busy ||
+                            (turn.mode === "connect" &&
+                              !chosenArrows(turn).length)
+                          }
                           onClick={() => {
                             try {
                               const s = getSession();
@@ -2822,7 +2873,12 @@ function AskKnotPanel({
                                 s.doc,
                                 workspace,
                                 turn.context!,
-                                turn.proposal!,
+                                turn.mode === "connect"
+                                  ? {
+                                      ...turn.proposal!,
+                                      arrows: chosenArrows(turn),
+                                    }
+                                  : turn.proposal!,
                                 turn.mode!,
                                 turn.replaces
                                   ? { replaces: turn.replaces }

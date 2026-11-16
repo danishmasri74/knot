@@ -3766,6 +3766,34 @@ main:has(.settings-modal) > .editor-area {
   margin: 2px 0 8px;
   font-size: 15px;
 }
+.ask-connect-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  white-space: normal;
+}
+.ask-connect-list li + li {
+  margin-top: 8px;
+}
+.ask-connect-list label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.ask-connect-list input {
+  margin-top: 4px;
+}
+.ask-connect-list strong {
+  display: block;
+  font-weight: 600;
+}
+.ask-connect-list small {
+  display: block;
+  color: var(--ask-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .ask-preview p.ask-links-title {
   margin-top: 10px;
   font-weight: 600;

@@ -252,6 +252,7 @@ export const AI_TOOL_MODES = {
   create_note: "note",
   create_quiz: "quiz",
   arrange_cards: "arrange",
+  connect_cards: "connect",
 } as const;
 /** Searches the workspace on this device; results go back to the model. */
 export type AiTool =
@@ -295,7 +296,7 @@ export function automaticAiTools(
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
   // Tidying existing cards needs the canvas map to name them.
   if (abilities.canvasCards && target.canvas && target.map)
-    tools.push("arrange_cards");
+    tools.push("arrange_cards", "connect_cards");
   if (abilities.createNotes && target.notebook) tools.push("create_note");
   // A quiz card needs a notebook; questions go into the note only when
   // editing it is allowed (the app falls back to a card otherwise).

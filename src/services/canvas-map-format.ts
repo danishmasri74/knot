@@ -318,6 +318,15 @@ export function formatCanvasMap(
       lines.push(
         `${handle.get(text.id)} text ${quote(text.text)}${detail ? ` [${region(text.box)}]` : ""}`,
       );
+    // Loose ends, found here rather than left to the model.
+    const touched = new Set(map.arrows.flatMap((a) => [a.from, a.to]));
+    const loose = orderedCards
+      .filter((c) => keep.has(c.id) && !touched.has(c.id))
+      .map((c) => handle.get(c.id));
+    if (loose.length && map.arrows.length)
+      lines.push(
+        `not connected: ${loose.slice(0, 30).join(" ")}${loose.length > 30 ? " …" : ""}`,
+      );
     const selected = map.selected.filter(described).map((id) => handle.get(id));
     if (selected.length) lines.push(`selected: ${selected.join(" ")}`);
     const hidden = orderedCards.filter((c) => !keep.has(c.id)).length;
