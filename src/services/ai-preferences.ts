@@ -259,7 +259,8 @@ export type AiTool =
   | keyof typeof AI_TOOL_MODES
   | "search_workspace"
   | "web_search"
-  | "view_images";
+  | "view_images"
+  | "view_canvas";
 /** Searches one message may run; matches MAX_SEARCHES in ai.rs. */
 export const MAX_SEARCHES = 2;
 /**
@@ -290,6 +291,8 @@ export function automaticAiTools(
     tools.push("search_workspace");
   if (abilities.searchWeb && target.web) tools.push("web_search");
   if (abilities.viewImages && target.images) tools.push("view_images");
+  // An image of the visible canvas, for questions about how it looks.
+  if (abilities.viewImages && target.map) tools.push("view_canvas");
   if (!target.editable) return tools;
   if (abilities.editNote && target.selection) tools.push("rewrite_selection");
   if (abilities.editNote && target.note) tools.push("insert_blocks");

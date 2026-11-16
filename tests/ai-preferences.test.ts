@@ -177,3 +177,16 @@ it("offers connect_cards alongside arrange_cards with a canvas map", async () =>
   expect(automaticAiTools(all, { ...open, map: true })).toContain("connect_cards");
   expect(automaticAiTools(all, open)).not.toContain("connect_cards");
 });
+
+it("offers view_canvas with a canvas map when images are allowed", async () => {
+  const { automaticAiTools, normalizeAiAbilities } = await import(
+    "../src/services/ai-preferences"
+  );
+  const open = { selection: false, note: false, canvas: true, editable: false };
+  const all = normalizeAiAbilities(null);
+  expect(automaticAiTools(all, { ...open, map: true })).toContain("view_canvas");
+  expect(automaticAiTools(all, open)).not.toContain("view_canvas");
+  expect(
+    automaticAiTools({ ...all, viewImages: false }, { ...open, map: true }),
+  ).not.toContain("view_canvas");
+});

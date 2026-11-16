@@ -14,3 +14,4 @@
 - Cards Ask Knot makes are laid out by how they connect: steps run left to right, "part of" and "example of" form a tree, and a central idea sits in the middle. Ask it to "tidy up this frame" to rearrange cards that are already there.
 - Labels on Ask Knot's arrows now show on the canvas.
 - Ask Knot can suggest missing connections between your canvas cards, each with a reason; tick the ones you want and apply. Ask it to check your map and it points out arrows that don't match the cards, repeated cards and cards that aren't connected.
+- Ask Knot can look at your canvas when a question is about how it looks, such as drawings, colours or handwriting. The image is made on your computer from what you see and isn't saved with the chat.

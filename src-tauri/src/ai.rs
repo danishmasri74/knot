@@ -290,7 +290,7 @@ pub async fn ai_respond(
         || id.len() > 80
         // Automatic requests offer 1-3 distinct known tools; no other mode offers any.
         || (mode == "auto") == tools.is_empty()
-        || tools.iter().any(|name| tool_mode(name).is_none() && ![SEARCH_TOOL, WEB_TOOL, IMAGES_TOOL].contains(&name.as_str()))
+        || tools.iter().any(|name| tool_mode(name).is_none() && ![SEARCH_TOOL, WEB_TOOL, IMAGES_TOOL, CANVAS_TOOL].contains(&name.as_str()))
         || tools.iter().enumerate().any(|(i, name)| tools[..i].contains(name))
         // Search results only follow an automatic request's own search calls.
         || (!searches.is_empty() && mode != "auto")
@@ -298,10 +298,14 @@ pub async fn ai_respond(
         || (searches.len() == MAX_SEARCHES && tools.iter().any(|name| name == SEARCH_TOOL))
         || searches.iter().any(|s| s.call_id.is_empty() || s.call_id.len() > 100 || s.query.len() > 2000)
         || searches.iter().map(|s| s.evidence.len()).sum::<usize>() > 60000
-        // At most one look at up to three images, after the model's own call.
-        || (!viewed.is_empty() && (mode != "auto" || viewed.len() > 1 || tools.iter().any(|name| name == IMAGES_TOOL)))
+        // At most one look at up to three images and one at the canvas, each
+        // after the model's own call, which is then no longer offered.
+        || (!viewed.is_empty() && mode != "auto")
+        || viewed.len() > 2
+        || viewed.iter().enumerate().any(|(i, v)| viewed[..i].iter().any(|w| w.tool() == v.tool()))
+        || viewed.iter().any(|v| tools.iter().any(|name| name == v.tool()))
         || viewed.iter().any(|v| v.call_id.is_empty() || v.call_id.len() > 100 || v.images.is_empty()
-            || v.images.len() > MAX_IMAGES || v.names.len() != v.images.len()
+            || v.images.len() > if v.tool() == CANVAS_TOOL { 1 } else { MAX_IMAGES } || v.names.len() != v.images.len()
             || v.names.iter().any(|n| n.len() > 200) || !v.images.iter().all(|i| valid_image(i)))
         // Captured website evidence has its own rules; web search is not mixed in.
         || (tools.iter().any(|name| name == WEB_TOOL)
@@ -573,7 +577,7 @@ const WEB_RULES: &str = "web_search searches the public web through OpenAI. Use 
 pub(crate) const IMAGES_TOOL: &str = "view_images";
 pub(crate) const MAX_IMAGES: usize = 3;
 const IMAGES_RULES: &str = "view_images shows you up to three images from the open note or canvas. Call it when the question is about pictures, diagrams, charts or screenshots there that the supplied text does not describe. Text already read from those images may be in citationSources (kind image): use it for questions about their words, and call view_images only for what text can't show, such as layout, shapes or colours. Do not call it otherwise, and call it at most once.";
-/// Images the app sent for a view_images call.
+/// Images the app sent for a view_images or view_canvas call.
 #[derive(Deserialize)]
 pub struct ImageResult {
     // The renderer sends camelCase (`callId`).
@@ -582,7 +586,19 @@ pub struct ImageResult {
     names: Vec<String>,
     /// PNG or JPEG data URLs, prepared on the device.
     images: Vec<String>,
+    /// The call this answers; view_images when absent (older chats).
+    #[serde(default)]
+    tool: Option<String>,
 }
+impl ImageResult {
+    fn tool(&self) -> &str {
+        if self.tool.as_deref() == Some(CANVAS_TOOL) { CANVAS_TOOL } else { IMAGES_TOOL }
+    }
+}
+/// Shows the model the part of the canvas the user is looking at; the app
+/// renders it on the device (docs/AI-CANVAS-AWARENESS-PLAN.md, phase 5).
+pub(crate) const CANVAS_TOOL: &str = "view_canvas";
+const CANVAS_VIEW_RULES: &str = "view_canvas shows you an image of the part of the canvas the user is looking at. Call it only when the question is about how the canvas looks and canvasMap and the card text cannot answer it: colours, drawings, handwriting, sketches, shapes, pictures placed on the canvas, or visual layout. Do not call it for card text, structure or connections, which canvasMap already gives, and call it at most once. Describe only what is visible; small text may be unreadable.";
 fn valid_image(data: &str) -> bool {
     data.len() <= 8_000_000 && (data.starts_with("data:image/jpeg;base64,") || data.starts_with("data:image/png;base64,"))
 }
@@ -663,9 +679,13 @@ fn tool_request_body(
         instructions.push('\n');
         instructions.push_str(WEB_RULES);
     }
-    if tools.iter().any(|name| name == IMAGES_TOOL) || !viewed.is_empty() {
+    if tools.iter().any(|name| name == IMAGES_TOOL) || viewed.iter().any(|v| v.tool() == IMAGES_TOOL) {
         instructions.push('\n');
         instructions.push_str(IMAGES_RULES);
+    }
+    if tools.iter().any(|name| name == CANVAS_TOOL) || viewed.iter().any(|v| v.tool() == CANVAS_TOOL) {
+        instructions.push('\n');
+        instructions.push_str(CANVAS_VIEW_RULES);
     }
     if !viewed.is_empty() && !instructions.contains(BASE_VISUAL) {
         instructions.push('\n');
@@ -681,9 +701,14 @@ fn tool_request_body(
         }
         for view in viewed {
             let names = view.names.iter().enumerate().map(|(i, name)| format!("{}. {name}", i + 1)).collect::<Vec<_>>().join("\n");
-            let mut output = vec![json!({"type": "input_text", "text": format!("Images from the open document, in order:\n{names}")})];
+            let text = if view.tool() == CANVAS_TOOL {
+                format!("The part of the canvas the user is looking at: {names}")
+            } else {
+                format!("Images from the open document, in order:\n{names}")
+            };
+            let mut output = vec![json!({"type": "input_text", "text": text})];
             output.extend(view.images.iter().map(|url| json!({"type": "input_image", "image_url": url, "detail": "high"})));
-            input.push(json!({"type": "function_call", "call_id": view.call_id, "name": IMAGES_TOOL, "arguments": "{}"}));
+            input.push(json!({"type": "function_call", "call_id": view.call_id, "name": view.tool(), "arguments": "{}"}));
             input.push(json!({"type": "function_call_output", "call_id": view.call_id, "output": output}));
         }
     }
@@ -696,6 +721,9 @@ fn tool_request_body(
             Some(mode) => json!({"type": "function", "name": name, "description": tool_description(name),
                 "strict": true, "parameters": tool_schema(mode, web, map)}),
             None if name == WEB_TOOL => json!({"type": "web_search"}),
+            None if name == CANVAS_TOOL => json!({"type": "function", "name": CANVAS_TOOL,
+                "description": "Look at an image of the part of the canvas the user is viewing.",
+                "strict": true, "parameters": {"type": "object", "additionalProperties": false, "required": [], "properties": {}}}),
             None if name == IMAGES_TOOL => json!({"type": "function", "name": IMAGES_TOOL,
                 "description": "Look at up to three images from the user's open note or canvas.",
                 "strict": true, "parameters": {"type": "object", "additionalProperties": false, "required": [], "properties": {}}}),
@@ -957,6 +985,7 @@ async fn consume_response(
                     let Some(mode) = tool_mode(&name)
                         .or((name == SEARCH_TOOL).then_some("search"))
                         .or((name == IMAGES_TOOL).then_some("images"))
+                        .or((name == CANVAS_TOOL).then_some("canvas_view"))
                         .filter(|_| call.is_none() && tools.contains(&name))
                     else {
                         return Err("The response used an unavailable action. Please retry.".into());
@@ -1259,7 +1288,7 @@ mod tests {
         let images = tool_request_body(MODELS[0], &messages, context, &["view_images".into()], &[], &[], None, None);
         assert!(images["instructions"].as_str().unwrap().contains("No browsing, diagram edits"));
         // The images the app sent come back as the call's result.
-        let viewed = vec![ImageResult { call_id: "call_img".into(), names: vec!["Diagram".into()], images: vec!["data:image/png;base64,AA==".into()] }];
+        let viewed = vec![ImageResult { call_id: "call_img".into(), names: vec!["Diagram".into()], images: vec!["data:image/png;base64,AA==".into()], tool: None }];
         let body = tool_request_body(MODELS[0], &messages, context, &[], &[], &viewed, None, None);
         let input = body["input"].as_array().unwrap();
         let n = input.len();
@@ -1363,6 +1392,22 @@ mod tests {
         assert_eq!(arrange["tools"][0]["parameters"]["required"], json!(["cards", "layout"]));
         assert_eq!(arrange["tools"][0]["parameters"]["properties"]["layout"]["enum"], json!(["auto", "flow", "tree", "hub", "grid"]));
         assert!(arrange["instructions"].as_str().unwrap().contains("arrange_cards moves cards"));
+        // Phase 5: view_canvas is offered like view_images and its result
+        // goes back under its own name with the canvas rules.
+        let offered = tool_request_body(MODELS[0], &messages, with, &[CANVAS_TOOL.into()], &[], &[], None, None);
+        assert_eq!(offered["tools"][0]["name"], CANVAS_TOOL);
+        assert_eq!(offered["tools"][0]["parameters"]["properties"], json!({}));
+        assert!(offered["instructions"].as_str().unwrap().contains(CANVAS_VIEW_RULES));
+        let seen = vec![ImageResult { call_id: "call_c".into(), names: vec!["Visible canvas".into()], images: vec!["data:image/jpeg;base64,AA==".into()], tool: Some(CANVAS_TOOL.into()) }];
+        let after = tool_request_body(MODELS[0], &messages, with, &[], &[], &seen, None, None);
+        let input = after["input"].as_array().unwrap();
+        let call = input.iter().find(|i| i["type"] == "function_call").unwrap();
+        assert_eq!(call["name"], CANVAS_TOOL);
+        let output = input.iter().find(|i| i["type"] == "function_call_output").unwrap();
+        assert!(output["output"][0]["text"].as_str().unwrap().starts_with("The part of the canvas"));
+        let after_text = after["instructions"].as_str().unwrap();
+        assert!(after_text.contains(CANVAS_VIEW_RULES) && after_text.contains(BASE_VISUAL));
+        assert!(!after_text.contains(IMAGES_RULES), "view_images rules only for its own results");
         // Phase 3: connect_cards suggests arrows with reasons.
         assert_eq!(tool_mode("connect_cards"), Some("connect"));
         let connect = tool_request_body(MODELS[0], &messages, with, &["connect_cards".into()], &[], &[], None, None);

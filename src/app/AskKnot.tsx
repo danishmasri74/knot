@@ -108,6 +108,7 @@ import {
 } from "../features/editor/blocksuite/ai";
 import { quizLines } from "../services/ai-quiz";
 import { uncoveredPassages } from "../services/ai-atomize";
+import { renderVisibleCanvas } from "../features/editor/blocksuite/canvas-snapshot";
 import { canvasHandles } from "../services/canvas-map-format";
 import {
   chooseLayout,
@@ -138,6 +139,8 @@ type Turn = {
     links?: LinkCitation[];
     /** Names of the images Knot looked at (the pixels are never stored). */
     imagesViewed?: string[];
+    /** The model looked at an image of the visible canvas (not stored). */
+    canvasViewed?: boolean;
     sourceMode?: SourceMode;
     pdfSource?: AiPdfSource;
     image?: { key: string; name: string };
@@ -1368,7 +1371,12 @@ function AskKnotPanel({
     const searches: NonNullable<NonNullable<Turn["request"]>["searches"]> = [];
     let tools = r.tools;
     let attempt = r.id;
-    const viewed: { callId: string; names: string[]; images: string[] }[] = [];
+    const viewed: {
+      callId: string;
+      names: string[];
+      images: string[];
+      tool?: "view_canvas";
+    }[] = [];
     const abort = new AbortController();
     if (tools.includes("search_workspace")) {
       retrievalAbort.current?.abort();
@@ -1424,6 +1432,8 @@ function AskKnotPanel({
               r.draft.activity = "Searching workspace";
             else if (call === "view_images")
               r.draft.activity = "Looking at images";
+            else if (call === "view_canvas")
+              r.draft.activity = "Looking at the canvas";
             else r.draft.preparing = true;
             update([...turnsRef.current]);
           }
@@ -1486,8 +1496,28 @@ function AskKnotPanel({
           names: chosen.map((image) => image.name.slice(0, 200)),
           images: prepared.map((image) => image.pixels),
         });
-        r.request.imagesViewed = viewed[0].names;
+        r.request.imagesViewed = chosen.map((image) => image.name.slice(0, 200));
         tools = tools.filter((tool) => tool !== "view_images");
+        r.draft.content = "";
+        attempt = crypto.randomUUID();
+        continue;
+      }
+      if (toolCall === "view_canvas") {
+        // Rendered on this device from what the user sees; only sent with
+        // the next request, never stored with the chat.
+        const editor = getSession()?.editor;
+        if (!editor || !callId)
+          throw new Error("Open the canvas to let Ask Knot look at it.");
+        const image = await renderVisibleCanvas(editor);
+        if (request.current !== r.id || !mounted.current) return;
+        viewed.push({
+          callId,
+          names: ["Visible canvas"],
+          images: [image],
+          tool: "view_canvas",
+        });
+        r.request.canvasViewed = true;
+        tools = tools.filter((tool) => tool !== "view_canvas");
         r.draft.content = "";
         attempt = crypto.randomUUID();
         continue;
@@ -3956,6 +3986,7 @@ function WorkspaceCoverage({ context }: { context?: string }) {
       data.imagesViewed?.length
         ? `Looked at ${data.imagesViewed.length} image${data.imagesViewed.length === 1 ? "" : "s"}`
         : "",
+      data.canvasViewed ? "Looked at the canvas" : "",
     ].filter(Boolean);
     if (extra.length && !data.workspaceSearch)
       return <small className="ask-model-notice">{extra.join(" · ")}</small>;
@@ -4000,7 +4031,8 @@ function shownContext(request?: Turn["request"]): string | undefined {
     !request?.searches?.length &&
     !request?.links?.length &&
     !request?.webSearches &&
-    !request?.imagesViewed?.length
+    !request?.imagesViewed?.length &&
+    !request?.canvasViewed
   )
     return request?.context;
   try {
@@ -4022,6 +4054,7 @@ function shownContext(request?: Turn["request"]): string | undefined {
         : undefined,
       webSearches: request.webSearches,
       imagesViewed: request.imagesViewed,
+      canvasViewed: request.canvasViewed,
     });
   } catch {
     return request.context;

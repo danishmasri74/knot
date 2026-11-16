@@ -1,6 +1,14 @@
 # Ask Knot canvas awareness
 
-Plan · 16 November 2026 · Phases 1–4 implemented 16 November 2026
+Plan · 16 November 2026 · All phases implemented 16 November 2026
+
+## Phase 5 as built
+
+- `view_canvas` is a function tool with no arguments, offered with a canvas map when Look at images is on. The app renders the visible area (`renderVisibleCanvas`), falling back to the whole canvas when nothing is in view, using the same BlockSuite export renderer as canvas export.
+- The result reuses the view_images path: `ImageResult` gained an optional `tool`, Rust names the function call after it, adds its own rules, and allows one look per tool per message (each tool is removed once used).
+- Limits: one JPEG, at most 1,600 px on its longest side and 2.5 MP, under the 8 MB image limit. Not stored with the chat; the answer notes "Looked at the canvas".
+- Card chrome (borders, backgrounds) is not drawn by the export renderer, as in canvas export; card text, shapes, drawings, connectors and images are.
+- Verification: Rust test for the tool, its result and rules; unit test for when it is offered; `tests/canvas-snapshot.browser.mjs` renders a real canvas (JPEG within limits, a red shape detected in the pixels, fallback and clipping of the visible area, Page view refused). The full round trip in the panel (call, render, resend) is not covered by a browser test because the mocked Ask Knot harness (`ask-auto-actions.browser.mjs`) already fails before these changes.
 
 ## Phase 3 as built
 
