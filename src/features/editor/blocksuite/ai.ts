@@ -13,9 +13,14 @@ import { appendWebProvenance } from "./web-source";
 import { mcqDecks } from "./mcq-block";
 import { mcqReferenceFlavour } from "./card-deck";
 import {
+  quizCardPlacement,
+  quizCardSize,
+  quizCardTitle,
   quizDefinition,
   validQuizQuestions,
   type AiQuestion,
+  type QuizBounds,
+  type QuizTarget,
 } from "../../../services/ai-quiz";
 import { youtubeVideoId } from "../../../services/youtube-transcript";
 import { aiConnectorPorts, layoutAiCards } from "./ai-layout";
@@ -47,8 +52,10 @@ export type AiProposal = {
     sourceRefs?: string[];
   }[];
   mindmap?: { text: string; parent: number; sourceRefs?: string[] }[];
-  /** create_quiz: multiple-choice questions for the current note. */
+  /** create_quiz: multiple-choice questions. */
   questions?: AiQuestion[];
+  /** create_quiz: a new linked quiz card (default) or the current note. */
+  target?: QuizTarget;
 };
 export type { AiQuestion } from "../../../services/ai-quiz";
 type Range = {
@@ -470,12 +477,15 @@ export function validateProposal(
   )
     throw new Error("Invalid canvas connections.");
   if (
-    p.questions !== undefined &&
-    (!validQuizQuestions(p.questions) ||
-      p.blocks.length ||
-      p.replacements.length ||
-      p.mindmap?.length ||
-      connections.length)
+    (p.target !== undefined &&
+      (p.questions === undefined ||
+        (p.target !== "card" && p.target !== "note"))) ||
+    (p.questions !== undefined &&
+      (!validQuizQuestions(p.questions) ||
+        p.blocks.length ||
+        p.replacements.length ||
+        p.mindmap?.length ||
+        connections.length))
   )
     throw new Error("Invalid quiz questions.");
   validateSourceRefs(p, webContext);
@@ -502,17 +512,18 @@ function aiConnectorStroke(index: number) {
 }
 
 /**
- * Adds a quiz proposal's questions to the end of the captured note: each one
- * is written as a Card Deck question (like the /mcq composer) and shown by a
- * reference block. Undo removes the references and moves the questions to
- * Trash.
+ * Applies a quiz proposal. Each question is written as a Card Deck question
+ * (like the /mcq composer) and shown by a reference block: on a new quiz card
+ * beside the source note with an arrow from it (target card, the default),
+ * or at the end of the source note (target note). One undo step; Undo also
+ * moves the questions to Trash.
  */
 function applyQuiz(
   doc: Doc,
   workspace: string,
   context: AiContext,
   proposal: AiProposal,
-): () => void {
+): (() => void) & { noteId?: string } {
   const deck = mcqDecks.get(doc.spaceDoc);
   if (
     doc !== context.instance ||
@@ -522,39 +533,109 @@ function applyQuiz(
     doc.readonly
   )
     throw new Error("This edit is stale. Capture fresh context and try again.");
-  const note = context.note ? doc.getBlock(context.note)?.model : undefined;
-  if (
-    note?.flavour !== "affine:note" ||
-    (note as NoteBlockModel).isLocked() ||
-    !proposal.questions?.length ||
-    !deck
-  )
+  const found = context.note ? doc.getBlock(context.note)?.model : undefined;
+  const source =
+    found?.flavour === "affine:note" ? (found as NoteBlockModel) : undefined;
+  const card = proposal.target !== "note";
+  if (!proposal.questions?.length || !deck || !doc.root)
+    throw new Error("Open a notebook before adding questions.");
+  if (!card && (!source || source.isLocked()))
     throw new Error("Open a note before adding questions.");
   // Check every question before anything is written.
   const definitions = proposal.questions.map((q) =>
     quizDefinition(q, doc.id),
   );
+  const parse = (xywh: unknown): QuizBounds | undefined => {
+    try {
+      const b: unknown = JSON.parse(String(xywh));
+      return Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)
+        ? (b as QuizBounds)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+    | SurfaceBlockModel
+    | undefined;
+  const sourceBounds = source ? parse(source.xywh) : undefined;
+  const bounds = card
+    ? quizCardPlacement(
+        sourceBounds,
+        [
+          ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
+          ...(surface?.elementModels ?? []),
+        ].flatMap((element) => {
+          const b = "xywh" in element ? parse(element.xywh) : undefined;
+          return b ? [b] : [];
+        }),
+        quizCardSize(proposal.questions),
+      )
+    : undefined;
+  const title = quizCardTitle(
+    (source && structuredAiBlocks(source).find((b) => b.text.trim())?.text) ||
+      doc.meta?.title,
+  );
   const ids = definitions.map((definition) => deck.writeMcq(definition));
+  const top = doc.history.undoStack.at(-1);
   const added: string[] = [];
+  let noteId: string | undefined;
   try {
     doc.captureSync();
     doc.transact(() => {
+      if (card) {
+        noteId = doc.addBlock(
+          "affine:note",
+          { xywh: `[${bounds!.join(",")}]` as `[${number},${number},${number},${number}]` },
+          doc.root!.id,
+        );
+        appendAiBlock(doc, noteId, {
+          type: "h1",
+          text: title,
+          columns: [],
+          rows: [],
+          children: [],
+        });
+      }
+      const host = noteId ?? source!.id;
       for (const cardId of ids)
         added.push(
-          doc.addBlock(mcqReferenceFlavour as never, { cardId }, note.id),
+          doc.addBlock(mcqReferenceFlavour as never, { cardId }, host),
         );
+      // The arrow shows which note the quiz tests.
+      if (noteId && source && sourceBounds && surface)
+        surface.addElement({
+          type: "connector",
+          mode: {
+            curve: ConnectorMode.Curve,
+            elbowed: ConnectorMode.Orthogonal,
+            straight: ConnectorMode.Straight,
+          }[getAiConnectorShape()],
+          stroke: aiConnectorStroke(0),
+          source: { id: source.id, position: [1, 0.5] },
+          target: { id: noteId, position: [0, 0.5] },
+        });
     });
     doc.captureSync();
   } catch {
     // Handled below: BlockSuite can also log a failed transaction and return.
   }
-  if (added.length !== ids.length || added.some((id) => !doc.getBlock(id))) {
+  if (
+    added.length !== ids.length ||
+    added.some((id) => !doc.getBlock(id)) ||
+    (card && (!noteId || !doc.getBlock(noteId)))
+  ) {
+    if (doc.history.undoStack.at(-1) !== top) doc.undo();
     ids.forEach((id) => deck.delete(id));
-    throw new Error("Could not add the questions to this note.");
+    throw new Error(
+      card
+        ? "Could not add the quiz card."
+        : "Could not add the questions to this note.",
+    );
   }
   const item = doc.history.undoStack.at(-1);
   const appliedVersion = version(doc);
-  return () => {
+  const undo = () => {
     if (
       version(doc) !== appliedVersion ||
       doc.history.undoStack.at(-1) !== item
@@ -565,6 +646,7 @@ function applyQuiz(
     doc.undo();
     ids.forEach((id) => deck.delete(id));
   };
+  return Object.assign(undo, { noteId });
 }
 
 /** Save one chat response as one editable card, including structured previews. */

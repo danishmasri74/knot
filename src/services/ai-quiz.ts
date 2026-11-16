@@ -74,3 +74,50 @@ export function quizLines(questions: AiQuestion[] | undefined): string[] {
     ...(q.explanation ? [q.explanation] : []),
   ]);
 }
+
+/** Where create_quiz puts its questions: a new linked card, or the note. */
+export type QuizTarget = "card" | "note";
+
+/** A quiz card's h1, named after the note it tests. */
+export function quizCardTitle(source: string | undefined): string {
+  const name = (source ?? "").split("\n")[0].replace(/\s+/g, " ").trim();
+  if (!name) return "Quiz";
+  return `Quiz: ${name.length > 60 ? `${name.slice(0, 59).trimEnd()}…` : name}`;
+}
+
+export type QuizBounds = [x: number, y: number, w: number, h: number];
+const GAP = 40;
+
+/** Rough rendered size of a quiz card, used only to keep it clear of others. */
+export function quizCardSize(questions: AiQuestion[]): [number, number] {
+  return [
+    448,
+    80 + questions.reduce((h, q) => h + 96 + q.options.length * 40, 0),
+  ];
+}
+
+/**
+ * Bounds for a new quiz card: right of its source note, moving down past
+ * anything in the way; without a source, right of everything.
+ */
+export function quizCardPlacement(
+  source: QuizBounds | undefined,
+  occupied: QuizBounds[],
+  [w, h]: [number, number],
+): QuizBounds {
+  const rightOfAll = Math.max(0, ...occupied.map((b) => b[0] + b[2] + 80));
+  const x = source ? source[0] + source[2] + 120 : rightOfAll;
+  let y = source ? source[1] : 0;
+  for (let tries = 0; tries < 100; tries++) {
+    const hits = occupied.filter(
+      (b) =>
+        x < b[0] + b[2] + GAP &&
+        x + w + GAP > b[0] &&
+        y < b[1] + b[3] + GAP &&
+        y + h + GAP > b[1],
+    );
+    if (!hits.length) return [x, y, w, h];
+    y = Math.max(...hits.map((b) => b[1] + b[3])) + GAP * 1.5;
+  }
+  return [rightOfAll, source ? source[1] : 0, w, h];
+}

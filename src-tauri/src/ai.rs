@@ -499,15 +499,17 @@ fn tool_description(name: &str) -> &'static str {
         "rewrite_selection" => "Propose replacement text for the user's selected text.",
         "insert_blocks" => "Propose new content to append to the current note.",
         "create_note" => "Propose one new note for the open notebook: an h1 title block, then its content.",
-        "create_quiz" => "Propose multiple-choice questions to add to the current note.",
+        "create_quiz" => "Propose multiple-choice questions for a new quiz card, or for the current note when asked.",
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
 }
-const QUIZ_RULES: &str = "create_quiz adds interactive multiple-choice questions to the end of the current note; use it when the user asks for a quiz, MCQs, multiple-choice or practice questions, or to test them on the material. Base every question on the supplied context unless the user asks for general knowledge; never test facts the context does not state. Return the number of questions the user asks for (default 5, maximum 20). Each question is self-contained and unambiguous, with 2 to 4 options (prefer 4), exactly one correct option, and plausible distractors of similar length and style; avoid all of the above, none of the above and trick wording. correct is the zero-based index of the correct option; vary its position across questions. explanation says briefly why the answer is right, in one or two sentences. Plain text only, no Markdown or citation markers. Question under 1000 characters, each option under 500, explanation under 4000.";
+const QUIZ_RULES: &str = "create_quiz makes interactive multiple-choice questions; use it when the user asks for a quiz, MCQs, multiple-choice or practice questions, or to test them on the material. target card puts the questions on a new quiz card beside the note, linked to it; use card unless the user explicitly asks to add the questions into this or the current note, which is target note. Base every question on the supplied context unless the user asks for general knowledge; never test facts the context does not state. Return the number of questions the user asks for (default 5, maximum 20). Each question is self-contained and unambiguous, with 2 to 4 options (prefer 4), exactly one correct option, and plausible distractors of similar length and style; avoid all of the above, none of the above and trick wording. correct is the zero-based index of the correct option; vary its position across questions. explanation says briefly why the answer is right, in one or two sentences. Plain text only, no Markdown or citation markers. Question under 1000 characters, each option under 500, explanation under 4000.";
 /// Strict parameters of create_quiz. The app checks the limits again and
-/// writes each question as a Card Deck question referenced from the note.
+/// writes each question as a Card Deck question, referenced from a new quiz
+/// card (target card) or the end of the current note (target note).
 fn quiz_schema() -> Value {
-    json!({"type":"object","additionalProperties":false,"required":["questions"],"properties":{
+    json!({"type":"object","additionalProperties":false,"required":["target","questions"],"properties":{
+        "target":{"type":"string","enum":["card","note"]},
         "questions":{"type":"array","items":{"type":"object","additionalProperties":false,
             "required":["question","options","correct","explanation"],"properties":{
                 "question":{"type":"string"},
@@ -1266,12 +1268,14 @@ mod tests {
         let quiz = &body["tools"][1];
         assert_eq!(quiz["name"], "create_quiz");
         assert_eq!(quiz["strict"], true);
-        assert_eq!(quiz["parameters"]["required"], json!(["questions"]));
+        assert_eq!(quiz["parameters"]["required"], json!(["target", "questions"]));
+        assert_eq!(quiz["parameters"]["properties"]["target"]["enum"], json!(["card", "note"]));
         let item = &quiz["parameters"]["properties"]["questions"]["items"];
         assert_eq!(item["required"], json!(["question", "options", "correct", "explanation"]));
         assert_eq!(tool_schema("quiz", true), tool_schema("quiz", false), "no sourceRefs");
         let instructions = body["instructions"].as_str().unwrap();
-        assert!(instructions.contains("create_quiz adds interactive multiple-choice questions"));
+        assert!(instructions.contains("create_quiz makes interactive multiple-choice questions"));
+        assert!(instructions.contains("use card unless the user explicitly asks"));
         assert!(instructions.contains("exactly one correct option"));
         let without = tool_request_body(MODELS[0], &messages, context, &["insert_blocks".into()], &[], &[], None, None);
         assert!(!without["instructions"].as_str().unwrap().contains("create_quiz"));

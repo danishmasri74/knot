@@ -1,6 +1,9 @@
 import { expect, it } from "vitest";
 import {
   MAX_QUIZ_QUESTIONS,
+  quizCardPlacement,
+  quizCardSize,
+  quizCardTitle,
   quizDefinition,
   quizLines,
   validQuizQuestions,
@@ -70,4 +73,44 @@ it("copies a quiz as numbered lines with the answer marked", () => {
     "It spaces reviews out over time.",
   ]);
   expect(quizLines(undefined)).toEqual([]);
+});
+
+it("names a quiz card after its note", () => {
+  expect(quizCardTitle("Photosynthesis\nMore text")).toBe(
+    "Quiz: Photosynthesis",
+  );
+  expect(quizCardTitle("  ")).toBe("Quiz");
+  expect(quizCardTitle(undefined)).toBe("Quiz");
+  const long = quizCardTitle("x".repeat(80));
+  expect(long.length).toBeLessThanOrEqual(66);
+  expect(long.endsWith("…")).toBe(true);
+});
+
+it("places a quiz card beside its note, clear of other cards", () => {
+  const size = quizCardSize([question]);
+  expect(size[0]).toBe(448);
+  const note = [0, 0, 400, 300] as const;
+  // Free space: right of the note, level with it.
+  expect(quizCardPlacement([...note], [[...note]], size)).toEqual([
+    520,
+    0,
+    ...size,
+  ]);
+  // Something already there: move down past it.
+  const placed = quizCardPlacement(
+    [...note],
+    [[...note], [520, 0, 448, 500]],
+    size,
+  );
+  expect(placed[0]).toBe(520);
+  expect(placed[1]).toBeGreaterThanOrEqual(540);
+  // A second quiz on the same note doesn't stack on the first.
+  const second = quizCardPlacement(
+    [...note],
+    [[...note], [520, 0, 448, 500], placed],
+    size,
+  );
+  expect(second[1]).toBeGreaterThanOrEqual(placed[1] + placed[3]);
+  // No source note: right of everything.
+  expect(quizCardPlacement(undefined, [[...note]], size)[0]).toBe(480);
 });

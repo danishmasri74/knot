@@ -291,8 +291,9 @@ export function automaticAiTools(
   if (abilities.editNote && target.note) tools.push("insert_blocks");
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
   if (abilities.createNotes && target.notebook) tools.push("create_note");
-  // Questions are added to the note, so editing it must be allowed too.
-  if (abilities.quizzes && abilities.editNote && target.note)
+  // A quiz card needs a notebook; questions go into the note only when
+  // editing it is allowed (the app falls back to a card otherwise).
+  if (abilities.quizzes && (target.note || target.notebook))
     tools.push("create_quiz");
   return tools;
 }

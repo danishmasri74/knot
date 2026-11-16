@@ -1,6 +1,7 @@
 // Applying a create_quiz proposal writes each question to the Card Deck and
-// appends a question reference to the end of the captured note, in one undo
-// step; Undo removes the references and moves the questions to Trash.
+// shows it by a question reference: by default on a new quiz card beside the
+// note with an arrow from it, or at the end of the note (target note). One
+// undo step; Undo removes them and moves the questions to Trash.
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -104,7 +105,7 @@ try {
       d,
       "workspace",
       context,
-      { replacements: [], blocks: [], questions },
+      { replacements: [], blocks: [], questions, target: "note" },
       "quiz",
     );
     const children = d.getBlock(note).model.children;
@@ -123,18 +124,54 @@ try {
       saves,
     };
     undo();
+    const undoneNote = {
+      refs: d
+        .getBlock(note)
+        .model.children.filter((b) => b.flavour === mcqReferenceFlavour)
+        .length,
+      trashed: refs.every((b) => deck.data[b.cardId]?.deleted),
+    };
+    // Default target: a new quiz card linked to the note.
+    const surface = d.getBlocksByFlavour("affine:surface")[0].model;
+    const connectors = () =>
+      surface.elementModels.filter((e) => e.type === "connector");
+    const notesBefore = d.getBlocksByFlavour("affine:note").length;
+    const cardUndo = applyAiProposal(
+      d,
+      "workspace",
+      captureAiContext(editor, "workspace", note),
+      { replacements: [], blocks: [], questions },
+      "quiz",
+    );
+    const quiz = d.getBlock(cardUndo.noteId)?.model;
+    const arrow = connectors()[0];
+    const quizRefs = quiz.children.filter(
+      (b) => b.flavour === mcqReferenceFlavour,
+    );
+    const card = {
+      notes: d.getBlocksByFlavour("affine:note").length - notesBefore,
+      title: [quiz.children[0].type, quiz.children[0].text.toString()],
+      refs: quizRefs.length,
+      noteUntouched: d
+        .getBlock(note)
+        .model.children.every((b) => b.flavour === "affine:paragraph"),
+      rightOfNote: JSON.parse(quiz.xywh)[0] >= 448 + 120,
+      arrow: arrow && [arrow.source.id === note, arrow.target.id === quiz.id],
+    };
+    cardUndo();
+    const undoneCard = {
+      notes: d.getBlocksByFlavour("affine:note").length - notesBefore,
+      connectors: connectors().length,
+      trashed: quizRefs.every((b) => deck.data[b.cardId]?.deleted),
+    };
     return {
+      card,
+      undoneCard,
       invalid,
       mixed,
       before,
       after,
-      undone: {
-        refs: d
-          .getBlock(note)
-          .model.children.filter((b) => b.flavour === mcqReferenceFlavour)
-          .length,
-        trashed: refs.every((b) => deck.data[b.cardId]?.deleted),
-      },
+      undone: undoneNote,
     };
   });
   assert.match(result.invalid, /Invalid quiz questions/);
@@ -151,9 +188,22 @@ try {
   assert.equal(result.after.sources[0].notebookId.length > 0, true);
   assert.ok(result.after.saves >= 2, "deck changes are saved");
   assert.deepEqual(result.undone, { refs: 0, trashed: true });
+  assert.deepEqual(result.card, {
+    notes: 1,
+    title: ["h1", "Quiz: Photosynthesis makes glucose from light."],
+    refs: 2,
+    noteUntouched: true,
+    rightOfNote: true,
+    arrow: [true, true],
+  });
+  assert.deepEqual(result.undoneCard, {
+    notes: 0,
+    connectors: 0,
+    trashed: true,
+  });
   assert.deepEqual(errors, []);
   console.log(
-    "AI quiz: questions saved to the deck, referenced at the note's end, undo removes them",
+    "AI quiz: linked quiz card by default, note target appends, undo removes both",
   );
 } finally {
   await browser.close();

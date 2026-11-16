@@ -89,6 +89,7 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
   expect(automaticAiTools(all, { ...open, editable: false })).toEqual([]);
   expect(automaticAiTools({ ...all, editNote: false }, open)).toEqual([
     "create_on_canvas",
+    "create_quiz",
   ]);
   expect(
     automaticAiTools(all, { ...open, selection: false, canvas: false }),
@@ -100,6 +101,10 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
   expect(automaticAiTools(all, { ...open, note: false })).not.toContain(
     "create_quiz",
   );
+  // A quiz card needs only a notebook.
+  expect(
+    automaticAiTools(all, { ...open, note: false, notebook: true }),
+  ).toContain("create_quiz");
   // Search needs Settings and the chat to allow it, and works read-only.
   expect(
     automaticAiTools(all, { ...open, editable: false, search: true }),

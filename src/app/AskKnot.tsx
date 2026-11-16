@@ -2072,6 +2072,13 @@ function AskKnotPanel({
               : JSON.parse(output),
             requestContext,
           );
+          // Questions go into the note only when it may be edited.
+          if (
+            proposed === "quiz" &&
+            draft.proposal.target === "note" &&
+            (!abilities.editNote || !editContext.note)
+          )
+            draft.proposal.target = "card";
           if (
             action === "auto" &&
             proposed === "rewrite" &&
@@ -2571,7 +2578,7 @@ function AskKnotPanel({
                           : turn.mode === "note"
                             ? "Create note in this notebook"
                             : turn.mode === "quiz"
-                              ? `Add ${turn.proposal.questions?.length ?? 0} ${turn.proposal.questions?.length === 1 ? "question" : "questions"} to note`
+                              ? `${turn.proposal.target === "note" ? "Add" : "Create quiz card with"} ${turn.proposal.questions?.length ?? 0} ${turn.proposal.questions?.length === 1 ? "question" : "questions"}${turn.proposal.target === "note" ? " to note" : ""}`
                               : "Append to note"}
                     </span>
                     <AiProposalPreview>
@@ -2736,7 +2743,7 @@ function AskKnotPanel({
                                 ).catch((e) => setError(String(e)));
                               }}
                             >
-                              Open note
+                              {turn.mode === "quiz" ? "Open quiz" : "Open note"}
                             </button>
                           )}
                         {turn.undo && (

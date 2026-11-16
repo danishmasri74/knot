@@ -306,9 +306,9 @@ export function AiSettings({
         <div>
           <strong id="ai-quizzes-label">Make quizzes</strong>
           <p>
-            Suggest multiple-choice questions from the open note when you ask
-            for a quiz. You review them before they are added. Also needs
-            Edit the current note.
+            Suggest a card of multiple-choice questions beside the open note,
+            with an arrow from it, when you ask for a quiz. You review them
+            before they are added.
           </p>
         </div>
         <button
