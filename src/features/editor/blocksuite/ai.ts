@@ -1547,14 +1547,32 @@ const DEFAULT_LABEL_BLACKS = new Set(["#000000", "--affine-palette-line-black"])
 /** Arrow label text: dark on a light canvas, light on a dark one. */
 const ARROW_LABEL_COLOR = { light: "#2b2b2b", dark: "#e3e3e3" };
 
+/** Gives a connector with a default-black label colour the theme-aware one. */
+function themeArrowLabel(surface: SurfaceBlockModel, element: unknown) {
+  const connector = element as {
+    id: string;
+    type?: string;
+    labelStyle?: Record<string, unknown>;
+  };
+  if (
+    connector?.type !== "connector" ||
+    !DEFAULT_LABEL_BLACKS.has(String(connector.labelStyle?.color))
+  )
+    return false;
+  surface.updateElement(connector.id, {
+    labelStyle: { ...connector.labelStyle, color: ARROW_LABEL_COLOR },
+  });
+  return true;
+}
+
 /**
- * Arrows Knot made before 0.6.3 kept BlockSuite's default label colour:
- * "#000000" without the editor's defaults, or the "--affine-palette-line-black"
- * token the editor fills in. Both stay black on a dark canvas, so only the gap
- * cut into the line shows. Give labelled connectors with either default the
- * theme-aware colour (labels typed with the default colour are just as
- * unreadable, so they are included); any other chosen colour is kept. Runs
- * when a notebook loads; returns the count.
+ * Arrows kept BlockSuite's default label colour: "#000000" without the
+ * editor's defaults, or the "--affine-palette-line-black" token the editor
+ * fills in. Both stay black on a dark canvas, so a label shows only as the
+ * gap cut into the line, and typing one writes black on black. Give every
+ * connector with either default the theme-aware colour, labelled or not (an
+ * unlabelled one gets it for the label typed later); any other chosen colour
+ * is kept. Runs when a notebook loads; returns the count.
  */
 export function repairArrowLabelColors(doc: Doc): number {
   const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
@@ -1562,26 +1580,36 @@ export function repairArrowLabelColors(doc: Doc): number {
     | undefined;
   if (!surface) return 0;
   let repaired = 0;
-  for (const element of surface.elementModels) {
-    if (element.type !== "connector") continue;
-    const connector = element as unknown as {
-      id: string;
-      text?: unknown;
-      labelXYWH?: unknown;
-      labelStyle?: Record<string, unknown>;
-    };
-    if (
-      !DEFAULT_LABEL_BLACKS.has(String(connector.labelStyle?.color)) ||
-      !connector.labelXYWH ||
-      !String(connector.text ?? "").trim()
-    )
-      continue;
-    surface.updateElement(connector.id, {
-      labelStyle: { ...connector.labelStyle, color: ARROW_LABEL_COLOR },
-    });
-    repaired++;
-  }
+  for (const element of surface.elementModels)
+    if (themeArrowLabel(surface, element)) repaired++;
   return repaired;
+}
+
+/**
+ * Arrows drawn in the editor start with the default black label colour
+ * too; give them the theme-aware one as they are added, in the same undo
+ * step (it lands within the history's capture window).
+ */
+export function observeArrowLabelColors(doc: Doc) {
+  let stop: { dispose(): void } | undefined;
+  const watch = () => {
+    const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+      | SurfaceBlockModel
+      | undefined;
+    if (!surface || stop) return;
+    stop = surface.elementAdded.on(({ id, local }) => {
+      if (local && !doc.readonly)
+        queueMicrotask(() => themeArrowLabel(surface, surface.getElementById(id)));
+    });
+  };
+  watch();
+  const added = doc.slots.blockUpdated.on(({ type, flavour }) => {
+    if (type === "add" && flavour === "affine:surface") watch();
+  });
+  return () => {
+    added.dispose();
+    stop?.dispose();
+  };
 }
 
 /**

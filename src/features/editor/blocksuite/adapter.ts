@@ -1,5 +1,5 @@
 import { observeMcqMenu } from "./mcq-menu";
-import { repairArrowLabelColors } from "./ai";
+import { observeArrowLabelColors, repairArrowLabelColors } from "./ai";
 import { BookmarkPreviewSpec } from "./bookmark";
 import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
@@ -9,6 +9,7 @@ import { createNotePageView } from "./note-page-view";
 import { waitForEditorView } from "../../../app/view-readiness";
 import { openCardMenu } from "./card-menu";
 import { observeReroutes } from "./reroute";
+import { editorModeExtension } from "./editor-mode";
 import { CardDeck, cardEmbedFlavour, cardInsertion, cardMcq, cardMedia, cardQuestionReferences, mcqReferenceFlavour, resolveDeckMcq, standaloneMedia, type DeckData } from "./card-deck";
 import { mediaSize } from "./media-cards";
 import { McqReferenceSchema, McqSchema, McqSpec, mcqContexts, mcqDecks } from "./mcq-block";
@@ -626,6 +627,7 @@ export async function openEditor(
     editor.addEventListener("contextmenu", cardContext, true);
     // After cardContext, so a card's own menu wins over an arrow behind it.
     const stopReroutes = observeReroutes(editor, doc);
+    const stopArrowLabelColors = observeArrowLabelColors(doc);
     const stopEditorPreferences = observeEditorPreferences(editor);
     editor.doc = doc;
     const stopFloatingToc = observeFloatingToc(editor);
@@ -721,6 +723,7 @@ export async function openEditor(
     const refExtension = RefNodeSlotsExtension();
     editor.pageSpecs = [
       ...editor.pageSpecs,
+      editorModeExtension("page"),
       BookmarkPreviewSpec,
       NotebookLinkSpec,
       UnsharedSpec,
@@ -732,6 +735,7 @@ export async function openEditor(
     ];
     editor.edgelessSpecs = [
       ...editor.edgelessSpecs,
+      editorModeExtension("edgeless"),
       BookmarkPreviewSpec,
       NotebookLinkSpec,
       UnsharedSpec,
@@ -1848,6 +1852,7 @@ export async function openEditor(
         editor.removeEventListener("drop", dropCard, true);
         editor.removeEventListener("contextmenu", cardContext, true);
         stopReroutes();
+        stopArrowLabelColors();
         stopEditorPreferences();
         stopMcqMenu();
         stopFloatingToc();

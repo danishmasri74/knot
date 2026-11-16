@@ -1,0 +1,213 @@
+/*
+ * BlockSuite's canvas fonts (shape text, text boxes, arrow labels) are
+ * named blocksuite:surface:<Font> and normally downloaded from a CDN that
+ * Knot neither configures nor allows (font-src is local only). Without
+ * them the canvas fell back to sans-serif while the label and text editors,
+ * which name only that family, fell back to the default serif. Map each
+ * family to similar fonts installed with the system, so the canvas and its
+ * editors match and nothing is downloaded.
+ */
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 300;
+  font-style: normal;
+  src: local("Segoe UI Light"), local("Helvetica Neue Light"), local("Arial");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Inter"), local("Segoe UI"), local("Helvetica Neue"), local("Arial");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 500;
+  font-style: normal;
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Medium"), local("Arial Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 600;
+  font-style: normal;
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Bold"), local("Arial Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 300;
+  font-style: italic;
+  src: local("Segoe UI Light Italic"), local("Helvetica Neue Light Italic"), local("Arial Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 400;
+  font-style: italic;
+  src: local("Segoe UI Italic"), local("Helvetica Neue Italic"), local("Arial Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 500;
+  font-style: italic;
+  src: local("Segoe UI Semibold Italic"), local("Helvetica Neue Bold Italic"), local("Arial Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Inter";
+  font-weight: 600;
+  font-style: italic;
+  src: local("Segoe UI Semibold Italic"), local("Helvetica Neue Bold Italic"), local("Arial Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 300;
+  font-style: normal;
+  src: local("Segoe UI Light"), local("Helvetica Neue Light"), local("Arial");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Segoe UI"), local("Helvetica Neue"), local("Arial");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 500;
+  font-style: normal;
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Medium"), local("Arial Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 600;
+  font-style: normal;
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Bold"), local("Arial Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 300;
+  font-style: italic;
+  src: local("Segoe UI Light Italic"), local("Helvetica Neue Light Italic"), local("Arial Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 400;
+  font-style: italic;
+  src: local("Segoe UI Italic"), local("Helvetica Neue Italic"), local("Arial Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 500;
+  font-style: italic;
+  src: local("Segoe UI Semibold Italic"), local("Helvetica Neue Bold Italic"), local("Arial Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Satoshi";
+  font-weight: 600;
+  font-style: italic;
+  src: local("Segoe UI Semibold Italic"), local("Helvetica Neue Bold Italic"), local("Arial Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 300;
+  font-style: normal;
+  src: local("Segoe UI Light"), local("Helvetica Neue Light"), local("Arial");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Segoe UI"), local("Helvetica Neue"), local("Arial");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 500;
+  font-style: normal;
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Medium"), local("Arial Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 600;
+  font-style: normal;
+  src: local("Segoe UI Semibold"), local("Helvetica Neue Bold"), local("Arial Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 300;
+  font-style: italic;
+  src: local("Segoe UI Light Italic"), local("Helvetica Neue Light Italic"), local("Arial Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 400;
+  font-style: italic;
+  src: local("Segoe UI Italic"), local("Helvetica Neue Italic"), local("Arial Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 500;
+  font-style: italic;
+  src: local("Segoe UI Semibold Italic"), local("Helvetica Neue Bold Italic"), local("Arial Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Poppins";
+  font-weight: 600;
+  font-style: italic;
+  src: local("Segoe UI Semibold Italic"), local("Helvetica Neue Bold Italic"), local("Arial Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Lora";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Georgia"), local("Times New Roman");
+}
+@font-face {
+  font-family: "blocksuite:surface:Lora";
+  font-weight: 600;
+  font-style: normal;
+  src: local("Georgia Bold"), local("Times New Roman Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:Lora";
+  font-weight: 400;
+  font-style: italic;
+  src: local("Georgia Italic"), local("Times New Roman Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Lora";
+  font-weight: 600;
+  font-style: italic;
+  src: local("Georgia Bold Italic"), local("Times New Roman Bold Italic");
+}
+@font-face {
+  font-family: "blocksuite:surface:Kalam";
+  font-weight: 300;
+  font-style: normal;
+  src: local("Segoe Print"), local("Comic Sans MS"), local("Segoe UI");
+}
+@font-face {
+  font-family: "blocksuite:surface:Kalam";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Segoe Print"), local("Comic Sans MS"), local("Segoe UI");
+}
+@font-face {
+  font-family: "blocksuite:surface:Kalam";
+  font-weight: 600;
+  font-style: normal;
+  src: local("Segoe Print Bold"), local("Comic Sans MS Bold"), local("Segoe UI Semibold");
+}
+@font-face {
+  font-family: "blocksuite:surface:BebasNeue";
+  font-weight: 300;
+  font-style: normal;
+  src: local("Bahnschrift Condensed"), local("Impact"), local("Arial Narrow");
+}
+@font-face {
+  font-family: "blocksuite:surface:BebasNeue";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Bahnschrift SemiBold Condensed"), local("Impact"), local("Arial Narrow Bold");
+}
+@font-face {
+  font-family: "blocksuite:surface:OrelegaOne";
+  font-weight: 400;
+  font-style: normal;
+  src: local("Georgia Bold"), local("Times New Roman Bold");
+}
