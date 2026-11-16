@@ -4,13 +4,21 @@ export interface EditorPreferences {
   customFont: string;
   fontSize: number;
   spellCheck: boolean;
+  /** Permanently delete blank Card Deck cards no canvas uses. */
+  blankCardCleanup: boolean;
+  /** How often, in days (one of BLANK_CARD_CLEANUP_DAYS). */
+  blankCardCleanupDays: number;
 }
+/** The cleanup slider's stops. */
+export const BLANK_CARD_CLEANUP_DAYS = [1, 3, 7, 14, 30] as const;
 const key = "knot.editor-preferences";
 const defaults: EditorPreferences = {
   fontStyle: "sans",
   customFont: "",
   fontSize: 16,
   spellCheck: true,
+  blankCardCleanup: false,
+  blankCardCleanupDays: 7,
 };
 export function normalizeEditorPreferences(
   value: Partial<EditorPreferences>,
@@ -30,6 +38,12 @@ export function normalizeEditorPreferences(
         ? Math.min(24, Math.max(12, Math.round(value.fontSize)))
         : 16,
     spellCheck: typeof value.spellCheck === "boolean" ? value.spellCheck : true,
+    blankCardCleanup: value.blankCardCleanup === true,
+    blankCardCleanupDays: (BLANK_CARD_CLEANUP_DAYS as readonly number[]).includes(
+      value.blankCardCleanupDays ?? 0,
+    )
+      ? value.blankCardCleanupDays!
+      : 7,
   };
 }
 let preferences = defaults;
@@ -113,4 +127,21 @@ export function observeEditorPreferences(editor: HTMLElement) {
     observer.disconnect();
     listeners.delete(apply);
   };
+}
+
+const DAY = 86_400_000;
+/**
+ * When the blank-card cleanup is due: off, or less than its interval since
+ * the last run, gives null; otherwise the cutoff time, so only cards
+ * unchanged for a whole interval go (never one just made and still empty).
+ */
+export function blankCardCleanupCutoff(
+  settings: Pick<EditorPreferences, "blankCardCleanup" | "blankCardCleanupDays">,
+  lastRun: number | null,
+  now: number,
+): number | null {
+  if (!settings.blankCardCleanup) return null;
+  const span = settings.blankCardCleanupDays * DAY;
+  if (lastRun !== null && now - lastRun < span) return null;
+  return now - span;
 }

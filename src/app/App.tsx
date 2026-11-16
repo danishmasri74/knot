@@ -145,6 +145,7 @@ import {
   surfaceTitles,
 } from "./ToolSurface";
 import { ShellMenu } from "./ShellMenu";
+import { ColumnTabMenu, type ColumnItem } from "./ColumnTabMenu";
 import { ShellIcon } from "./ShellIcon";
 import { AnimatedTrash } from "./AnimatedTrash";
 import { AnimatedFavorite } from "./AnimatedFavorite";
@@ -2040,6 +2041,10 @@ export function App() {
     }
     session.current?.destroy();
     session.current = next;
+    // Deleting unused blank cards loads every notebook; give opening a head start.
+    setTimeout(() => {
+      if (session.current === next) void next.cleanBlankCards().catch(report);
+    }, 5000);
     stopUndoWatch.current();
     stopUndoWatch.current = watchHistoryNotes(next.doc, (type, notes) => {
       if (session.current === next) undoNotice.current(type, notes);
@@ -2873,74 +2878,67 @@ export function App() {
         </ShellMenu>
       </div>
     ) : null;
-  const newTabMenu = (group: string) =>
-    active && !library ? (
-      <>
-        <span className="document-action-heading">Open in this column</span>
-        {(
-          [
-            ["Canvas", "board", () => showNotebookView(null)],
-            [
-              "Note",
-              "note",
-              () => {
-                const note = session.current && pageNote(session.current);
-                if (note) openNoteTab(note);
-              },
-            ],
-            ["PDF reader", "highlight", () => void run(() => openPdf())],
-            ["Browser", "globe", () => openSurface("browser")],
-            [
-              "Card Deck",
-              "cardDeck",
-              () =>
-                void run(async () => {
-                  const cleaned = await session.current?.enrollWorkspaceCards();
-                  if (cleaned)
-                    setNotice(
-                      `Moved ${cleaned} empty ${cleaned === 1 ? "card" : "cards"} to Trash.`,
-                    );
-                  openSurface("cardDeck");
-                }),
-            ],
-            ["Ask Knot", "sparkles", () => showAi()],
-            [
-              "Links",
-              "link",
-              () => {
-                setLinksView("add");
-                openSurface("reference");
-              },
-            ],
-            [
-              "Backlinks",
-              "backlinks",
-              () => {
-                openSurface("reference");
-                setLinksView("backlinks");
-                void run(scanBacklinks);
-              },
-            ],
-          ] as const
-        ).map(([name, icon, open]) => (
-          <button
-            key={name}
-            disabled={busy}
-            onClick={() => {
-              paneTarget.current = group;
-              try {
-                open();
-              } finally {
-                paneTarget.current = null;
-              }
-            }}
-          >
-            <ShellIcon name={icon} />
-            <span>{name}</span>
-          </button>
-        ))}
-      </>
-    ) : null;
+  const newTabMenu = (group: string) => {
+    if (!active || library) return null;
+    // Everything opened from this menu goes into this column.
+    const inColumn = (open: () => void) => () => {
+      paneTarget.current = group;
+      try {
+        open();
+      } finally {
+        paneTarget.current = null;
+      }
+    };
+    const items: ColumnItem[] = (
+      [
+        ["Canvas", "board", () => showNotebookView(null)],
+        ["PDF reader", "highlight", () => void run(() => openPdf())],
+        ["Browser", "globe", () => openSurface("browser")],
+        [
+          "Card Deck",
+          "cardDeck",
+          () =>
+            void run(async () => {
+              const cleaned = await session.current?.enrollWorkspaceCards();
+              if (cleaned)
+                setNotice(
+                  `Moved ${cleaned} empty ${cleaned === 1 ? "card" : "cards"} to Trash.`,
+                );
+              openSurface("cardDeck");
+            }),
+        ],
+        ["Ask Knot", "sparkles", () => showAi()],
+        [
+          "Links",
+          "link",
+          () => {
+            setLinksView("add");
+            openSurface("reference");
+          },
+        ],
+        [
+          "Backlinks",
+          "backlinks",
+          () => {
+            openSurface("reference");
+            setLinksView("backlinks");
+            void run(scanBacklinks);
+          },
+        ],
+      ] as const
+    ).map(([name, icon, open]) => ({ name, icon, run: inColumn(open) }));
+    return (
+      <ColumnTabMenu
+        items={items}
+        disabled={busy}
+        notes={() =>
+          (session.current?.notebookNotes() ?? []).map(({ id, title }) => ({ id, title }))
+        }
+        suggested={() => (session.current ? pageNote(session.current) : null)}
+        openNote={(id) => inColumn(() => openNoteTab(id))()}
+      />
+    );
+  };
   // One undo history per notebook, so one pair of buttons for it.
   const notebookTools = () =>
     active && !library ? (

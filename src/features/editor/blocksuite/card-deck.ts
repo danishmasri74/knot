@@ -829,6 +829,27 @@ export class CardDeck {
     return count;
   }
   /**
+   * Permanently delete blank cards that aren't placed anywhere and haven't
+   * changed since `before` (ms): no Trash, they become content-free
+   * tombstones as when Trash is emptied. Callers make sure every notebook is
+   * loaded first, so placements are complete. Returns the count.
+   */
+  deleteBlankUnplaced(before: number) {
+    const used = this.placements();
+    const ids = Object.values(this.data)
+      .filter(
+        (card) =>
+          !card.deleted &&
+          !card.media &&
+          !used.has(card.id) &&
+          isBlankCard(card) &&
+          (card.updatedAt ?? card.createdAt ?? 0) < before,
+      )
+      .map((card) => card.id);
+    for (const id of ids) this.delete(id);
+    return this.purge(ids);
+  }
+  /**
    * A card whose note was just removed goes to Trash with it, unless it is
    * still shown somewhere else. Like a short leftover card, its generation is
    * kept, so Undo bringing the note back also brings the card back.

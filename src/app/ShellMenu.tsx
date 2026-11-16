@@ -84,7 +84,9 @@ export function ShellMenu({
       <div
         className="shell-menu-content knot-dropdown"
         onClick={(event) => {
-          if ((event.target as Element).closest("button") && root.current) {
+          const button = (event.target as Element).closest("button");
+          // data-keep-open rows switch views inside the menu (a drill-in).
+          if (button && !button.hasAttribute("data-keep-open") && root.current) {
             root.current.open = false;
             root.current.querySelector("summary")?.focus();
           }

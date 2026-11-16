@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  BLANK_CARD_CLEANUP_DAYS,
   editorFontFamily,
   getEditorPreferences,
   setEditorPreferences,
@@ -126,6 +127,65 @@ export function EditorSettings() {
           <span />
         </button>
       </div>
+      <h3 className="settings-section-title">Card Deck</h3>
+      <div className="settings-row">
+        <div>
+          <strong id="blank-card-cleanup-label">Delete unused blank cards</strong>
+          <p>
+            Permanently delete empty cards that aren't on any canvas. They
+            skip Trash and can't be restored.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="blank-card-cleanup-label"
+          aria-checked={settings.blankCardCleanup}
+          onClick={() => update({ blankCardCleanup: !settings.blankCardCleanup })}
+        >
+          <span />
+        </button>
+      </div>
+      {settings.blankCardCleanup && (
+        <div className="settings-row">
+          <div>
+            <label htmlFor="blank-card-cleanup-days">
+              <strong>Clear every</strong>
+            </label>
+            <p>
+              Also how long a blank card must go unchanged, so one you just
+              made is never deleted.
+            </p>
+          </div>
+          <div className="editor-size-control">
+            <input
+              id="blank-card-cleanup-days"
+              type="range"
+              min="0"
+              max={BLANK_CARD_CLEANUP_DAYS.length - 1}
+              step="1"
+              value={Math.max(
+                0,
+                BLANK_CARD_CLEANUP_DAYS.indexOf(
+                  settings.blankCardCleanupDays as (typeof BLANK_CARD_CLEANUP_DAYS)[number],
+                ),
+              )}
+              aria-valuetext={cleanupLabel(settings.blankCardCleanupDays)}
+              onChange={(event) =>
+                update({
+                  blankCardCleanupDays: BLANK_CARD_CLEANUP_DAYS[Number(event.target.value)],
+                })
+              }
+            />
+            <output htmlFor="blank-card-cleanup-days">
+              {cleanupLabel(settings.blankCardCleanupDays)}
+            </output>
+          </div>
+        </div>
+      )}
     </section>
   );
+}
+function cleanupLabel(days: number) {
+  return days === 1 ? "1 day" : days === 7 ? "1 week" : days === 14 ? "2 weeks" : days === 30 ? "1 month" : `${days} days`;
 }

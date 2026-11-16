@@ -7532,6 +7532,65 @@ knot-web-source { display: block; margin-block: 8px; }
   left: auto;
   right: 0;
 }
+/* Note in a column's + menu drills into the notebook's notes. */
+.column-tab-menu .column-item-more {
+  display: flex;
+  margin-left: auto;
+  color: var(--shell-muted);
+}
+.column-tab-menu .column-item-more .shell-icon {
+  width: 14px;
+  height: 14px;
+}
+/* The way back and the filter stay put while a long list scrolls. */
+.column-tab-menu .column-note-top {
+  position: sticky;
+  top: calc(-1 * var(--dropdown-padding, 5px));
+  z-index: 1;
+  margin-top: calc(-1 * var(--dropdown-padding, 5px));
+  padding-top: var(--dropdown-padding, 5px);
+  background: var(--dropdown-surface, var(--shell-surface));
+}
+.column-tab-menu .column-note-top > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+}
+.column-tab-menu .column-back {
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.column-tab-menu .column-note-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.column-tab-menu .column-note-hint {
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--shell-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.column-tab-menu .column-note-filter {
+  width: 100%;
+  margin: 2px 0 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--dropdown-row-radius, 5px);
+  background: transparent;
+  color: var(--shell-text);
+  font: inherit;
+}
+.column-tab-menu .column-note-empty {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--shell-muted);
+}
 
 /* Sidebar on the right: the shell mirrors, including the resize edge and
    the collapsed rail's border. */

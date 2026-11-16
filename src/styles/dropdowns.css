@@ -42,6 +42,7 @@
 
 .knot-dropdown :is(.library-filter-options, .collection-action-list) button,
 .knot-dropdown.shell-menu-content > button,
+.knot-dropdown .column-tab-menu > button,
 .knot-dropdown .document-action-group button,
 .card-deck-menu.knot-dropdown button,
 .pane-tab-menu.knot-dropdown button {

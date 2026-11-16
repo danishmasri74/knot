@@ -26,7 +26,11 @@ import {
   type CitedExcerptModel,
 } from "./cited-excerpt";
 import { type PdfCitation } from "./pdf-highlights";
-import { observeEditorPreferences } from "../../../services/editor-preferences";
+import {
+  blankCardCleanupCutoff,
+  getEditorPreferences,
+  observeEditorPreferences,
+} from "../../../services/editor-preferences";
 import { observeCanvasImages } from "./canvas-images";
 import { observeCanvasNotePreviews } from "./canvas-note-preview";
 import {
@@ -317,6 +321,38 @@ export async function openEditor(
       } finally {
         loading.delete(id);
       }
+    }
+    /**
+     * Settings → Editor → Delete unused blank cards: when due, permanently
+     * delete blank cards no canvas in the workspace uses and that haven't
+     * changed for the chosen interval. Loads every notebook first, so
+     * placements are complete. Returns how many were deleted.
+     */
+    async function cleanBlankCards() {
+      const key = `knot.cleanup.blank-cards-deleted.${workspace}`;
+      let last: number | null = null;
+      try {
+        const stored = Number(localStorage.getItem(key));
+        last = Number.isFinite(stored) && stored > 0 ? stored : null;
+      } catch {
+        return 0;
+      }
+      const now = Date.now();
+      const cutoff = blankCardCleanupCutoff(getEditorPreferences(), last, now);
+      if (cutoff === null) return 0;
+      for (const item of catalog) {
+        if (disposed) return 0;
+        await hydrate(item.id);
+      }
+      if (disposed) return 0;
+      const deleted = cardDeck.deleteBlankUnplaced(cutoff);
+      try {
+        localStorage.setItem(key, String(now));
+      } catch {
+        /* Runs again next time. */
+      }
+      if (deleted) await persistence.flush();
+      return deleted;
     }
     async function hydrateReferences(start = object.id) {
       // Walk only reachable bodies; metadata for the rest of the library is cheap.
@@ -1064,11 +1100,13 @@ export async function openEditor(
           });
         return { documents, cards, deck: cardDeck.data };
       },
+      cleanBlankCards,
       async enrollWorkspaceCards() {
         for (const item of catalog) {
           if (disposed) return 0;
           await hydrate(item.id);
         }
+        await cleanBlankCards();
         // Once per workspace: blank cards left over before the deck stopped
         // listing them go to Trash (restorable), if no canvas uses them.
         let cleaned = 0;
