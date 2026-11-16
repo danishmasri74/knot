@@ -30,6 +30,8 @@ Copy is available beneath every message, including proposal text. Edit on a user
 
 
 
+**Quizzes (16 November 2026).** Asking for a quiz, MCQs, multiple-choice or practice questions offers the `create_quiz` tool when Settings → AI → Make quizzes (on by default; also per chat in the sparkles popover) and Edit the current note allow it and an editable note is open. Its strict parameters are `questions` only: each has a question, 2–4 options, the zero-based index of the correct one and a short explanation (`quiz_schema` and `QUIZ_RULES` in `ai.rs`). The rules ask for questions based on the supplied context, 5 by default and at most 20, with one correct answer, plausible distractors and a varied answer position. The app checks them against the /mcq composer's limits (`validQuizQuestions` in `src/services/ai-quiz.ts`); an invalid quiz enables no edit. The preview lists each question with its options, the correct one checked, and the explanation. Apply writes each question to the Card Deck as the composer does, linked to the notebook, and appends a question reference to the end of the captured note in one undo step; nothing is written unless every question is valid, and the deck questions are removed if the note can't take the references. Undo removes the references and moves the questions to Trash. Applied questions are ordinary MCQs: answer tracking, editing, search, Card Deck reuse and Markdown export work as for hand-written ones. Questions don't carry citations or web provenance. Run `node tests/ai-quiz.browser.mjs` against the development server to verify.
+
 ## Connection and models
 
 

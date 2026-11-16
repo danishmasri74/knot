@@ -10,6 +10,13 @@ import {
   webProvenance,
 } from "../../../services/web-ai-evidence";
 import { appendWebProvenance } from "./web-source";
+import { mcqDecks } from "./mcq-block";
+import { mcqReferenceFlavour } from "./card-deck";
+import {
+  quizDefinition,
+  validQuizQuestions,
+  type AiQuestion,
+} from "../../../services/ai-quiz";
 import { youtubeVideoId } from "../../../services/youtube-transcript";
 import { aiConnectorPorts, layoutAiCards } from "./ai-layout";
 import type { AiPdfSource } from "../../../services/pdf-input";
@@ -40,7 +47,10 @@ export type AiProposal = {
     sourceRefs?: string[];
   }[];
   mindmap?: { text: string; parent: number; sourceRefs?: string[] }[];
+  /** create_quiz: multiple-choice questions for the current note. */
+  questions?: AiQuestion[];
 };
+export type { AiQuestion } from "../../../services/ai-quiz";
 type Range = {
   id: string;
   start: number;
@@ -459,6 +469,15 @@ export function validateProposal(
     )
   )
     throw new Error("Invalid canvas connections.");
+  if (
+    p.questions !== undefined &&
+    (!validQuizQuestions(p.questions) ||
+      p.blocks.length ||
+      p.replacements.length ||
+      p.mindmap?.length ||
+      connections.length)
+  )
+    throw new Error("Invalid quiz questions.");
   validateSourceRefs(p, webContext);
   return cleanAiProposal(p);
 }
@@ -480,6 +499,72 @@ function aiConnectorStroke(index: number) {
       )
       .join("");
   return { light: hex(20, 153), dark: hex(106, 247) };
+}
+
+/**
+ * Adds a quiz proposal's questions to the end of the captured note: each one
+ * is written as a Card Deck question (like the /mcq composer) and shown by a
+ * reference block. Undo removes the references and moves the questions to
+ * Trash.
+ */
+function applyQuiz(
+  doc: Doc,
+  workspace: string,
+  context: AiContext,
+  proposal: AiProposal,
+): () => void {
+  const deck = mcqDecks.get(doc.spaceDoc);
+  if (
+    doc !== context.instance ||
+    doc.id !== context.document ||
+    workspace !== context.workspace ||
+    version(doc) !== context.version ||
+    doc.readonly
+  )
+    throw new Error("This edit is stale. Capture fresh context and try again.");
+  const note = context.note ? doc.getBlock(context.note)?.model : undefined;
+  if (
+    note?.flavour !== "affine:note" ||
+    (note as NoteBlockModel).isLocked() ||
+    !proposal.questions?.length ||
+    !deck
+  )
+    throw new Error("Open a note before adding questions.");
+  // Check every question before anything is written.
+  const definitions = proposal.questions.map((q) =>
+    quizDefinition(q, doc.id),
+  );
+  const ids = definitions.map((definition) => deck.writeMcq(definition));
+  const added: string[] = [];
+  try {
+    doc.captureSync();
+    doc.transact(() => {
+      for (const cardId of ids)
+        added.push(
+          doc.addBlock(mcqReferenceFlavour as never, { cardId }, note.id),
+        );
+    });
+    doc.captureSync();
+  } catch {
+    // Handled below: BlockSuite can also log a failed transaction and return.
+  }
+  if (added.length !== ids.length || added.some((id) => !doc.getBlock(id))) {
+    ids.forEach((id) => deck.delete(id));
+    throw new Error("Could not add the questions to this note.");
+  }
+  const item = doc.history.undoStack.at(-1);
+  const appliedVersion = version(doc);
+  return () => {
+    if (
+      version(doc) !== appliedVersion ||
+      doc.history.undoStack.at(-1) !== item
+    )
+      throw new Error(
+        "There are newer edits. Use the editor’s Undo to undo them in order.",
+      );
+    doc.undo();
+    ids.forEach((id) => deck.delete(id));
+  };
 }
 
 /** Save one chat response as one editable card, including structured previews. */
@@ -520,9 +605,10 @@ export function applyAiProposal(
   workspace: string,
   context: AiContext,
   input: AiProposal,
-  mode: "rewrite" | "insert" | "canvas" | "note",
+  mode: "rewrite" | "insert" | "canvas" | "note" | "quiz",
 ): (() => void) & { noteId?: string } {
   const proposal = validateProposal(input, context.webContext);
+  if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
   const allRefs = [
     ...new Set([
       ...proposal.blocks.flatMap((b) => [

@@ -3766,6 +3766,55 @@ main:has(.settings-modal) > .editor-area {
   margin: 2px 0 8px;
   font-size: 15px;
 }
+.ask-quiz-preview {
+  margin: 0;
+  padding-left: 22px;
+  list-style: decimal outside;
+  white-space: normal;
+}
+.ask-quiz-preview > li + li {
+  margin-top: 12px;
+}
+.ask-quiz-preview p {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.ask-quiz-preview ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ask-quiz-preview ul li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ask-quiz-preview ul li > span:first-child {
+  flex: none;
+  width: 14px;
+  color: var(--ask-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ask-quiz-preview li[data-correct] {
+  font-weight: 600;
+}
+.ask-quiz-correct {
+  display: inline-flex;
+  align-self: center;
+  color: light-dark(#2f7a3a, #7fcf8a);
+}
+.ask-quiz-correct .shell-icon {
+  width: 14px;
+  height: 14px;
+}
+.ask-quiz-preview small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ask-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .ask-proposal-actions {
   display: flex;
   align-items: center;

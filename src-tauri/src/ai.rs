@@ -452,12 +452,14 @@ fn edit_schema(mode: &str, web: bool) -> Value {
 }
 /// Write tools an automatic request may offer, with the edit mode each one
 /// proposes. Forced edit modes keep their response-format path.
-pub(crate) const TOOLS: [(&str, &str); 4] = [
+pub(crate) const TOOLS: [(&str, &str); 5] = [
     ("rewrite_selection", "rewrite"),
     ("insert_blocks", "insert"),
     ("create_on_canvas", "canvas"),
     // One new note in the open notebook; off unless the user turns it on.
     ("create_note", "note"),
+    // Multiple-choice questions added to the current note.
+    ("create_quiz", "quiz"),
 ];
 pub(crate) fn tool_mode(name: &str) -> Option<&'static str> {
     TOOLS.iter().find(|(tool, _)| *tool == name).map(|(_, mode)| *mode)
@@ -471,6 +473,7 @@ fn tool_rules(name: &str) -> String {
         "rewrite_selection" => format!("rewrite_selection replaces the supplied runs, which are the user's selected text; use it to rewrite, shorten, expand, fix, restyle or translate the selection. {BASE_REWRITE}"),
         "insert_blocks" => format!("insert_blocks appends new content to the current note; use it to add, draft or insert content into the note. {BASE_INSERT}"),
         "create_note" => format!("create_note adds one new note to the open notebook. Use it only when the user asks for a new, separate or standalone note, for example draft a note about a topic or make a new note summarising this; to add to the current note use insert_blocks instead. The first block is an h1 holding a short title (under 60 characters); the content follows. {BASE_INSERT}"),
+        "create_quiz" => QUIZ_RULES.to_string(),
         _ => format!("create_on_canvas adds cards, arrows and/or a native mind map to the open canvas; use it when the user asks to put content on the canvas or to make cards, a mind map or a diagram. {CANVAS_RULES} {CANVAS_CLOSE}"),
     }
 }
@@ -478,6 +481,9 @@ fn tool_rules(name: &str) -> String {
 /// uses, so a rewrite cannot also return blocks. The app restores the
 /// missing field as an empty array before validating.
 fn tool_schema(mode: &str, web: bool) -> Value {
+    if mode == "quiz" {
+        return quiz_schema();
+    }
     let mut schema = edit_schema(mode, web);
     let unused = if mode == "rewrite" { "blocks" } else { "replacements" };
     if let Some(properties) = schema["properties"].as_object_mut() {
@@ -493,8 +499,23 @@ fn tool_description(name: &str) -> &'static str {
         "rewrite_selection" => "Propose replacement text for the user's selected text.",
         "insert_blocks" => "Propose new content to append to the current note.",
         "create_note" => "Propose one new note for the open notebook: an h1 title block, then its content.",
+        "create_quiz" => "Propose multiple-choice questions to add to the current note.",
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
+}
+const QUIZ_RULES: &str = "create_quiz adds interactive multiple-choice questions to the end of the current note; use it when the user asks for a quiz, MCQs, multiple-choice or practice questions, or to test them on the material. Base every question on the supplied context unless the user asks for general knowledge; never test facts the context does not state. Return the number of questions the user asks for (default 5, maximum 20). Each question is self-contained and unambiguous, with 2 to 4 options (prefer 4), exactly one correct option, and plausible distractors of similar length and style; avoid all of the above, none of the above and trick wording. correct is the zero-based index of the correct option; vary its position across questions. explanation says briefly why the answer is right, in one or two sentences. Plain text only, no Markdown or citation markers. Question under 1000 characters, each option under 500, explanation under 4000.";
+/// Strict parameters of create_quiz. The app checks the limits again and
+/// writes each question as a Card Deck question referenced from the note.
+fn quiz_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"required":["questions"],"properties":{
+        "questions":{"type":"array","items":{"type":"object","additionalProperties":false,
+            "required":["question","options","correct","explanation"],"properties":{
+                "question":{"type":"string"},
+                "options":{"type":"array","items":{"type":"string"}},
+                "correct":{"type":"integer"},
+                "explanation":{"type":"string"}
+            }}}
+    }})
 }
 /// Searches the user's workspace on the device. The app runs it and sends the
 /// results back with the next request; at most two per message.
@@ -1234,6 +1255,26 @@ mod tests {
         // Not offered, not described.
         let without = tool_request_body(MODELS[0], &messages, context, &["insert_blocks".into()], &[], &[], None, None);
         assert!(!without["instructions"].as_str().unwrap().contains("create_note"));
+    }
+    #[test]
+    fn create_quiz_offers_questions_only_even_with_web_evidence() {
+        let messages = vec![Message { role: "user".into(), content: "Quiz me on this note".into() }];
+        let context = r#"{"sourceMode":"current","text":"Note","structure":[],"citationSources":[],"runs":[]}"#;
+        let tools: Vec<String> = vec!["insert_blocks".into(), "create_quiz".into()];
+        let body = tool_request_body(MODELS[0], &messages, context, &tools, &[], &[], None, None);
+        assert_eq!(tool_mode("create_quiz"), Some("quiz"));
+        let quiz = &body["tools"][1];
+        assert_eq!(quiz["name"], "create_quiz");
+        assert_eq!(quiz["strict"], true);
+        assert_eq!(quiz["parameters"]["required"], json!(["questions"]));
+        let item = &quiz["parameters"]["properties"]["questions"]["items"];
+        assert_eq!(item["required"], json!(["question", "options", "correct", "explanation"]));
+        assert_eq!(tool_schema("quiz", true), tool_schema("quiz", false), "no sourceRefs");
+        let instructions = body["instructions"].as_str().unwrap();
+        assert!(instructions.contains("create_quiz adds interactive multiple-choice questions"));
+        assert!(instructions.contains("exactly one correct option"));
+        let without = tool_request_body(MODELS[0], &messages, context, &["insert_blocks".into()], &[], &[], None, None);
+        assert!(!without["instructions"].as_str().unwrap().contains("create_quiz"));
     }
     /// Serves one SSE body and returns the result, delivered events and operation.
     fn stream(body: String, tools: &[String]) -> (Result<(), String>, Vec<Value>, String) {

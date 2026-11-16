@@ -6,3 +6,4 @@
 - The Library is now a tab with its own columns: open Ask Knot beside it, and the Library remembers its tabs and sizes. Ask Knot always opens as a tab, so "Open as page" is gone.
 - PowerPoint decks (.pptx) open like PDFs: Knot makes a PDF copy with your own PowerPoint or LibreOffice, so you can read slides, highlight, search and Ask Knot about them. Open in PowerPoint opens the original.
 - Asking about a selected PDF or slide deck no longer mixes in other pictures from the canvas as if they were its pages.
+- Ask Knot can make multiple-choice quizzes: ask it to "quiz me on this note" and it suggests questions you can review, then adds them to the note as interactive questions (Settings → AI → Make quizzes).

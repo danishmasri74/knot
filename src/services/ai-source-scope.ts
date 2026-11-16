@@ -59,7 +59,7 @@ export function editIntent(prompt: string): boolean {
     /^\s*(please\s+|can you\s+|could you\s+)?(rewrite|rephrase|reword|shorten|lengthen|expand|condense|simplify|proofread|polish|improve|translate|fix|correct|edit|insert|add|append|draft|write|turn|convert|make|create|put|restructure|reorgani[sz]e)\b/i.test(
       prompt,
     ) ||
-    /\b(mind ?map|on (the|this) canvas|as cards|into cards|(to|into) (the|my|this) note)\b/i.test(
+    /\b(mind ?map|on (the|this) canvas|as cards|into cards|(to|into) (the|my|this) note|quiz(zes)?|mcqs?|multiple[- ]choice|practice questions)\b/i.test(
       prompt,
     )
   );
@@ -106,7 +106,9 @@ export function exchangeHistory<
         ? "a rewrite of the selected text"
         : reply.mode === "canvas"
           ? "content for the canvas"
-          : "an addition to the note";
+          : reply.mode === "quiz"
+            ? "multiple-choice questions for the note"
+            : "an addition to the note";
     const outcome =
       reply.status === "applied"
         ? "The user applied it."

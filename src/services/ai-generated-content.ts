@@ -46,5 +46,15 @@ export function cleanAiProposal(proposal: AiProposal): AiProposal {
         text: stripAiSourceMarkers(node.text),
       })),
     }),
+    ...(proposal.questions && {
+      questions: proposal.questions.map((q) => ({
+        ...q,
+        question: stripAiSourceMarkers(q.question).trim(),
+        options: q.options.map((option) =>
+          stripAiSourceMarkers(option).trim(),
+        ),
+        explanation: stripAiSourceMarkers(q.explanation).trim(),
+      })),
+    }),
   };
 }

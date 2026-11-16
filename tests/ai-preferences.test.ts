@@ -67,6 +67,7 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     searchWeb: true,
     viewImages: true,
     createNotes: false,
+    quizzes: true,
   });
   expect(normalizeAiAbilities({ editNote: false, junk: 1 })).toEqual({
     editNote: false,
@@ -75,6 +76,7 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     searchWeb: true,
     viewImages: true,
     createNotes: false,
+    quizzes: true,
   });
   const all = normalizeAiAbilities(null);
   const open = { selection: true, note: true, canvas: true, editable: true };
@@ -82,6 +84,7 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
     "rewrite_selection",
     "insert_blocks",
     "create_on_canvas",
+    "create_quiz",
   ]);
   expect(automaticAiTools(all, { ...open, editable: false })).toEqual([]);
   expect(automaticAiTools({ ...all, editNote: false }, open)).toEqual([
@@ -89,7 +92,14 @@ it("defaults abilities on and offers only possible, allowed tools", () => {
   ]);
   expect(
     automaticAiTools(all, { ...open, selection: false, canvas: false }),
-  ).toEqual(["insert_blocks"]);
+  ).toEqual(["insert_blocks", "create_quiz"]);
+  // Quizzes need an open, editable note and the ability.
+  expect(
+    automaticAiTools({ ...all, quizzes: false }, open),
+  ).not.toContain("create_quiz");
+  expect(automaticAiTools(all, { ...open, note: false })).not.toContain(
+    "create_quiz",
+  );
   // Search needs Settings and the chat to allow it, and works read-only.
   expect(
     automaticAiTools(all, { ...open, editable: false, search: true }),

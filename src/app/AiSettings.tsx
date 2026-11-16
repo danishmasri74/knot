@@ -302,6 +302,35 @@ export function AiSettings({
           <span />
         </button>
       </div>
+      <div className="settings-row">
+        <div>
+          <strong id="ai-quizzes-label">Make quizzes</strong>
+          <p>
+            Suggest multiple-choice questions from the open note when you ask
+            for a quiz. You review them before they are added. Also needs
+            Edit the current note.
+          </p>
+        </div>
+        <button
+          className="settings-toggle"
+          role="switch"
+          aria-labelledby="ai-quizzes-label"
+          aria-checked={abilities.quizzes}
+          disabled={!enabled}
+          onClick={() => {
+            const next = { ...abilities, quizzes: !abilities.quizzes };
+            try {
+              setAiAbilities(next);
+              setAbilities(next);
+              setSaveError("");
+            } catch {
+              setSaveError("Could not save AI abilities.");
+            }
+          }}
+        >
+          <span />
+        </button>
+      </div>
       <h3 className="settings-section-title">Model list</h3>
       <p id="ai-models-description" className="settings-description">
         Choose which models appear in Ask Knot on this device. Keep at least one

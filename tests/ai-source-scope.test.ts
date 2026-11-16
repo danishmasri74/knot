@@ -68,6 +68,22 @@ test("automatic messages read what is open; Knot searches by itself", () => {
   ).toBe("legacy");
   expect(editIntent("Turn this into a mind map")).toBe(true);
   expect(editIntent("What did I write about spaced repetition?")).toBe(false);
+  expect(editIntent("Quiz me on this chapter")).toBe(true);
+  expect(editIntent("Give me 5 MCQs about photosynthesis")).toBe(true);
+  expect(editIntent("Some multiple-choice questions please")).toBe(true);
+  expect(
+    exchangeHistory([
+      { role: "user", content: "Quiz me" },
+      { role: "assistant", content: "Q", proposal: {}, mode: "quiz" },
+    ]),
+  ).toEqual([
+    { role: "user", content: "Quiz me" },
+    {
+      role: "assistant",
+      content:
+        "(Proposed multiple-choice questions for the note. The user has not applied it yet.)",
+    },
+  ]);
 });
 test("follow-ups replay the user's messages, never answers or proposals", () => {
   const turns = [

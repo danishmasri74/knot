@@ -207,6 +207,8 @@ export type AiAbilities = {
   viewImages: boolean;
   /** Propose a whole new note in the open notebook. Off unless turned on. */
   createNotes: boolean;
+  /** Propose multiple-choice questions for the open note. */
+  quizzes: boolean;
 };
 export const AI_ABILITIES_CHANGED = "knot-ai-abilities-changed";
 const abilitiesKey = "knot.ai-abilities.v1";
@@ -222,6 +224,7 @@ export function normalizeAiAbilities(value: unknown): AiAbilities {
     searchWeb: saved.searchWeb !== false,
     viewImages: saved.viewImages !== false,
     createNotes: saved.createNotes === true,
+    quizzes: saved.quizzes !== false,
   };
 }
 export function getAiAbilities(): AiAbilities {
@@ -247,6 +250,7 @@ export const AI_TOOL_MODES = {
   insert_blocks: "insert",
   create_on_canvas: "canvas",
   create_note: "note",
+  create_quiz: "quiz",
 } as const;
 /** Searches the workspace on this device; results go back to the model. */
 export type AiTool =
@@ -287,6 +291,9 @@ export function automaticAiTools(
   if (abilities.editNote && target.note) tools.push("insert_blocks");
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
   if (abilities.createNotes && target.notebook) tools.push("create_note");
+  // Questions are added to the note, so editing it must be allowed too.
+  if (abilities.quizzes && abilities.editNote && target.note)
+    tools.push("create_quiz");
   return tools;
 }
 

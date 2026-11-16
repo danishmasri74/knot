@@ -106,6 +106,7 @@ import {
   type AiContext,
   type AiProposal,
 } from "../features/editor/blocksuite/ai";
+import { quizLines } from "../services/ai-quiz";
 import { savedSearchText } from "../features/editor/blocksuite/search";
 import {
   attachments,
@@ -142,7 +143,7 @@ type Turn = {
   failed?: boolean;
   proposal?: AiProposal;
   context?: AiContext;
-  mode?: "rewrite" | "insert" | "canvas" | "note";
+  mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz";
   /** The note an applied create_note made: its first block, for Open note. */
   createdNote?: { block: string; text: string };
   /** While streaming: the model is preparing a proposal (not persisted). */
@@ -258,6 +259,7 @@ type AskKnotProps = Omit<
   "initialChats" | "initialError"
 >;
 /** Loads the workspace's saved chats before the panel's state starts. */
+
 export function AskKnot(props: AskKnotProps) {
   const [loaded, setLoaded] = useState<{ chats: Chat[]; error: string }>();
   const { workspace } = props;
@@ -841,6 +843,7 @@ function AskKnotPanel({
                 : `${turn.proposal!.mindmap![node.parent].text} → ${node.text}`,
             ),
             ...turn.proposal.blocks.map(aiBlockText),
+            ...quizLines(turn.proposal.questions),
           ].join("\n")
       : turn.content;
     try {
@@ -899,6 +902,10 @@ function AskKnotPanel({
                     : `${turn.proposal!.mindmap![node.parent].text} → ${node.text}`,
               })),
               ...turn.proposal.blocks,
+              ...quizLines(turn.proposal.questions).map((line) => ({
+                type: "paragraph" as const,
+                text: line,
+              })),
             ]
           : [{ type: "paragraph" as const, text }];
       addAiMessageCard(session.doc, blocks);
@@ -1952,7 +1959,12 @@ function AskKnotPanel({
         action === "auto"
           ? automaticAiTools(
               options?.answerOnly
-                ? { ...abilities, editNote: false, canvasCards: false }
+                ? {
+                    ...abilities,
+                    editNote: false,
+                    canvasCards: false,
+                    quizzes: false,
+                  }
                 : abilities,
               {
                 selection:
@@ -2083,7 +2095,9 @@ function AskKnotPanel({
             ? "Suggested rewrite"
             : proposed === "note"
               ? "Suggested note"
-              : "Suggested addition";
+              : proposed === "quiz"
+                ? "Suggested quiz"
+                : "Suggested addition";
         draft.content = action === "auto" ? output.trim() || label : label;
       }
       draft.preparing = undefined;
@@ -2556,7 +2570,9 @@ function AskKnotPanel({
                             : "Create on canvas"
                           : turn.mode === "note"
                             ? "Create note in this notebook"
-                            : "Append to note"}
+                            : turn.mode === "quiz"
+                              ? `Add ${turn.proposal.questions?.length ?? 0} ${turn.proposal.questions?.length === 1 ? "question" : "questions"} to note`
+                              : "Append to note"}
                     </span>
                     <AiProposalPreview>
                       {turn.mode === "rewrite" && (
@@ -2587,6 +2603,38 @@ function AskKnotPanel({
                               Card {c.from + 1} → Card {c.to + 1}: {c.label}
                             </p>
                           ))}
+                        {turn.proposal.questions && (
+                          <ol className="ask-quiz-preview">
+                            {turn.proposal.questions.map((q, n) => (
+                              <li key={n}>
+                                <p>{q.question}</p>
+                                <ul>
+                                  {q.options.map((option, o) => (
+                                    <li
+                                      key={o}
+                                      data-correct={o === q.correct || undefined}
+                                    >
+                                      <span aria-hidden="true">
+                                        {"ABCD"[o]}
+                                      </span>
+                                      <span>{option}</span>
+                                      {o === q.correct && (
+                                        <span
+                                          className="ask-quiz-correct"
+                                          role="img"
+                                          aria-label="Correct answer"
+                                        >
+                                          <ShellIcon name="check" />
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                                {q.explanation && <small>{q.explanation}</small>}
+                              </li>
+                            ))}
+                          </ol>
+                        )}
                         {turn.mode === "rewrite" ? (
                           turn.proposal.replacements.join("")
                         ) : (
@@ -3156,6 +3204,7 @@ function AskKnotPanel({
                             ["editNote", "Edit the current note"],
                             ["canvasCards", "Create cards on canvas"],
                             ["createNotes", "Create new notes"],
+                            ["quizzes", "Make quizzes"],
                           ] as const
                         ).map(([key, label], index) => (
                           <button
