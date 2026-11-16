@@ -63,6 +63,12 @@ try {
         !edge.target.id
       )
         throw Error("connector missing");
+      // Open cards goes to the first new card.
+      if (
+        d.getBlock(undo.noteId)?.model.children[0]?.text?.toString() !==
+        "Start"
+      )
+        throw Error("first card not reported for Open cards");
       undo();
       if (
         d.getBlocksByFlavour("affine:note").length ||
@@ -102,6 +108,7 @@ try {
         )
       )
         throw Error("Internal source markers leaked into mind map");
+      if (undoMap.noteId) throw Error("a mind map has no card to open");
       undoMap();
       if (surface.elementModels.length)
         throw Error("Mind map undo left elements");

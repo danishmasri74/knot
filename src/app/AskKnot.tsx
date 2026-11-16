@@ -144,7 +144,8 @@ type Turn = {
   proposal?: AiProposal;
   context?: AiContext;
   mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz";
-  /** The note an applied create_note made: its first block, for Open note. */
+  /** What an applied proposal created (a note, quiz or the first canvas
+   * card): its first block, for the Open button. */
   createdNote?: { block: string; text: string };
   /** While streaming: the model is preparing a proposal (not persisted). */
   preparing?: boolean;
@@ -367,7 +368,13 @@ function AskKnotPanel({
   const [editedText, setEditedText] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
-  const [cardAdded, setCardAdded] = useState<number | null>(null);
+  /** The reply last saved with "Add reply as one card", and that card. */
+  const [cardAdded, setCardAdded] = useState<{
+    index: number;
+    document: string;
+    block: string;
+    text: string;
+  } | null>(null);
   const [saveError, setSaveError] = useState(initialError);
   const turnsRef = useRef(turns);
   const [context, setContext] = useState(initial);
@@ -908,8 +915,14 @@ function AskKnotPanel({
               })),
             ]
           : [{ type: "paragraph" as const, text }];
-      addAiMessageCard(session.doc, blocks);
-      setCardAdded(index);
+      const card = session.doc.getBlock(addAiMessageCard(session.doc, blocks))
+        ?.model.children[0];
+      setCardAdded({
+        index,
+        document: session.doc.id,
+        block: card?.id ?? "",
+        text: card?.text?.toString() ?? "",
+      });
       setError("");
     } catch (error) {
       setError(String(error));
@@ -2743,7 +2756,13 @@ function AskKnotPanel({
                                 ).catch((e) => setError(String(e)));
                               }}
                             >
-                              {turn.mode === "quiz" ? "Open quiz" : "Open note"}
+                              {turn.mode === "quiz"
+                                ? "Open quiz"
+                                : turn.mode === "canvas"
+                                  ? turn.proposal!.blocks.length > 1
+                                    ? "Open cards"
+                                    : "Open card"
+                                  : "Open note"}
                             </button>
                           )}
                         {turn.undo && (
@@ -2792,7 +2811,7 @@ function AskKnotPanel({
                       <button
                         aria-label="Add reply as one card"
                         data-tooltip={
-                          cardAdded === i
+                          cardAdded?.index === i
                             ? "Card added"
                             : "Add reply as one card"
                         }
@@ -2805,11 +2824,28 @@ function AskKnotPanel({
                         onClick={() => addTurnAsCard(turn, i)}
                       >
                         <ShellIcon
-                          name={cardAdded === i ? "check" : "cardPlus"}
+                          name={cardAdded?.index === i ? "check" : "cardPlus"}
                         />
-                        {cardAdded === i && (
+                        {cardAdded?.index === i && (
                           <span role="status">Card added</span>
                         )}
+                      </button>
+                    )}
+                    {cardAdded?.index === i && cardAdded.block && (
+                      <button
+                        aria-label="Open card"
+                        data-tooltip="Open card"
+                        onClick={() => {
+                          setError("");
+                          void onSource(
+                            cardAdded.document,
+                            cardAdded.block,
+                            cardAdded.text,
+                          ).catch((e) => setError(String(e)));
+                        }}
+                      >
+                        <ShellIcon name="locate" />
+                        <span>Open card</span>
                       </button>
                     )}
                     {turn.role === "assistant" &&

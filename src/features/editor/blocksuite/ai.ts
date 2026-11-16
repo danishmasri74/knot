@@ -873,6 +873,8 @@ export function applyAiProposal(
           );
         return id;
       });
+      // The first new card, for Open cards.
+      noteId = ids[0];
       if (proposal.mindmap?.some((n) => n.sourceRefs?.length)) {
         const id =
           ids[0] ??

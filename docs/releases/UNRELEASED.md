@@ -7,3 +7,4 @@
 - PowerPoint decks (.pptx) open like PDFs: Knot makes a PDF copy with your own PowerPoint or LibreOffice, so you can read slides, highlight, search and Ask Knot about them. Open in PowerPoint opens the original.
 - Asking about a selected PDF or slide deck no longer mixes in other pictures from the canvas as if they were its pages.
 - Ask Knot can make multiple-choice quizzes: ask it to "quiz me on this note" and it suggests questions you can review, then puts them on a new quiz card beside the note with an arrow from it, or into the note if you ask (Settings → AI → Make quizzes).
+- Cards Ask Knot puts on the canvas, and replies saved with "Add reply as one card", get an Open card button that jumps to them.
