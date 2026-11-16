@@ -299,8 +299,6 @@ function AskKnotPanel({
   onBusy,
   getSession,
   onClose,
-  placement = "panel",
-  onPlacementChange,
   onSource,
 }: {
   workspace: string;
@@ -311,8 +309,6 @@ function AskKnotPanel({
   onBusy: (value: boolean) => void;
   getSession: () => EditorSession | null;
   onClose: () => void;
-  placement?: "page" | "panel";
-  onPlacementChange?: () => void;
   initialChats: Chat[];
   initialError: string;
   onSource: (
@@ -2103,16 +2099,6 @@ function AskKnotPanel({
           <ShellIcon name="sparkles" /> Ask Knot
         </h2>
         <div className="ask-header-actions">
-          {onPlacementChange && (
-            <button
-              className="ask-placement-action"
-              onClick={onPlacementChange}
-            >
-              <ShellIcon name={placement === "page" ? "columns" : "expand"} />
-              {placement === "page" ? "Move to panel" : "Open as page"}
-            </button>
-          )}
-
           <button
             aria-label={historyOpen ? "Back to chat" : "Chat history"}
             data-tooltip={historyOpen ? "Back to chat" : "Chat history"}

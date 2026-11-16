@@ -41,6 +41,7 @@ import {
   forgetNotebookLayout,
   useNotebookLayout,
 } from "./useNotebookLayout";
+import { libraryLayoutTab, useLibraryLayout } from "./useLibraryLayout";
 import { NotePagePane } from "./NotePagePane";
 import {
   supportingKinds,
@@ -262,12 +263,10 @@ async function highlightImageLines(
       .finished.finally(() => mark.remove());
   }
 }
-/** Where Back and Forward go: a notebook, a tab in one, the Library, or
- * Ask Knot. */
+/** Where Back and Forward go: a notebook, a tab in one, or the Library. */
 type HistoryEntry =
   | KnowledgeObject
   | LibraryLocation
-  | { id: string; ai: true }
   | { id: string; tab: string; notebook: KnowledgeObject };
 export function App() {
   const [library, setLibrary] = useState<LibraryLocation | null>(
@@ -303,43 +302,37 @@ export function App() {
   const [sharing, setSharing] = useState<{ id: string; title: string } | null>(null);
   // A .knotbook waiting to be imported, by opaque token (paths stay native).
   const [importToken, setImportToken] = useState<string | null>(null);
-  const [aiPlacement, setAiPlacement] = useState<"page" | "panel" | "hidden">(
-    "hidden",
-  );
+  /** Whether Ask Knot is open as a tab (in a notebook or the Library). */
+  const [aiPlacement, setAiPlacement] = useState<"panel" | "hidden">("hidden");
   const [aiOpened, setAiOpened] = useState(false);
   const [aiContainer] = useState(() => {
     const node = document.createElement("div");
     node.className = "ask-live-session";
     return node;
   });
-  const aiPageHost = useRef<HTMLDivElement>(null);
-  function showAi(placement: "page" | "panel", record = true) {
+  /** Keeps the live chat mounted while no Ask Knot tab is on screen. */
+  const aiParking = useRef<HTMLDivElement>(null);
+  /** Opens Ask Knot as a tab: beside the open notebook, or in the Library's
+   * own layout when the Library is shown or no notebook is open. */
+  function showAi() {
     setAiOpened(true);
-    if (placement === "page" && session.current && !library) {
-      // With a notebook open, Ask Knot "as a page" is its tab, expanded.
-      setAiPlacement("panel");
-      setSurface(null);
-      const id = openPane("ask");
-      dispatchLayout({ type: "expand", id });
-      if (record) history.current.visit({ id: "ask-knot", ai: true });
-      requestAnimationFrame(() =>
-        document
-          .querySelector<HTMLTextAreaElement>(".ask-knot textarea")
-          ?.focus(),
-      );
-      return;
-    }
-    setAiPlacement(placement);
-    if (placement === "panel") {
-      setLibrary(null);
-      openPane("ask");
-    } else {
-      for (const tab of Object.values(layoutRef.current.tabs))
-        if (tab.kind === "ask") dispatchLayout({ type: "close", id: tab.id });
-    }
+    setAiPlacement("panel");
     setSurface(null);
-    if (placement === "page" && record)
-      history.current.visit({ id: "ask-knot", ai: true });
+    if (active && session.current && !library) openPane("ask");
+    else {
+      const workspace = workspaceIdentity.current;
+      if (!library) {
+        setLibrary(defaultLibrary);
+        setLibraryRevision((v) => v + 1);
+        history.current.visit(defaultLibrary);
+      }
+      if (workspace)
+        dispatchLibraryLayout({
+          type: "open",
+          tab: libraryLayoutTab(workspace, "ask"),
+          group: paneTarget.current ?? undefined,
+        });
+    }
     requestAnimationFrame(() =>
       document
         .querySelector<HTMLTextAreaElement>(".ask-knot textarea")
@@ -497,6 +490,20 @@ export function App() {
     measure();
     return () => observer.disconnect();
   }, []);
+  // The Library's columns fill the same space while it is shown.
+  const libraryArea = useRef<HTMLDivElement>(null);
+  const libraryShown = !!library;
+  useLayoutEffect(() => {
+    const node = libraryArea.current;
+    if (!node) return;
+    const measure = () => {
+      if (node.clientWidth > 0) setContentWidth(node.clientWidth);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    measure();
+    return () => observer.disconnect();
+  }, [libraryShown]);
   function openPane(kind: PaneKind, noteId?: string, beside?: string) {
     if (kind === "ask") {
       setAiOpened(true);
@@ -592,6 +599,14 @@ export function App() {
     dispatchLayout(action);
   }
   const closePane = (id: string) => dispatchPaneAction({ type: "close", id });
+  function dispatchLibraryPaneAction(action: LayoutAction) {
+    if (
+      action.type === "close" &&
+      libraryLayoutRef.current.tabs[action.id]?.kind === "ask"
+    )
+      setAiPlacement("hidden");
+    dispatchLibraryLayout(action);
+  }
   const [surface, setSurface] = useState<SurfaceKind | null>(null);
   const [browserRequest, setBrowserRequest] = useState<BrowserRequest | null>(
     null,
@@ -1093,17 +1108,22 @@ export function App() {
     active?.id,
     citationContinuation,
   );
+  const [libraryLayout, dispatchLibraryLayout] = useLibraryLayout(
+    workspaceCatalog.active,
+  );
+  const libraryLayoutRef = useRef(libraryLayout);
+  libraryLayoutRef.current = libraryLayout;
   const aiWorkspace = useRef(workspaceCatalog.active);
   const hasOpenedWorkspace = useRef(false);
   if (aiWorkspace.current !== workspaceCatalog.active) {
     aiWorkspace.current = workspaceCatalog.active;
-    let restored: "page" | "panel" | "hidden" = "hidden";
+    let restored: "panel" | "hidden" = "hidden";
     try {
       // On launch, the startup destination owns the main view.
       const saved = hasOpenedWorkspace.current
         ? localStorage.getItem(`knot.ai.placement.v1:${workspaceCatalog.active}`)
         : null;
-      if (saved === "page" || saved === "panel") restored = saved;
+      if (saved === "panel") restored = saved;
     } catch {
       /* Preferences are optional. */
     }
@@ -1123,32 +1143,26 @@ export function App() {
     }
   }, [workspaceCatalog.active, aiPlacement]);
   useLayoutEffect(() => {
-    if (aiPlacement === "page" && session.current && active && !library) {
-      showAi("page", false);
-      return;
-    }
-    const ask = Object.values(layout.tabs).find((tab) => tab.kind === "ask");
-    if (ask && aiPlacement !== "page") {
+    // The Library keeps its own tabs: Ask Knot is open there only if its
+    // layout has the tab.
+    const shown = library ? libraryLayout : layout;
+    const ask = Object.values(shown.tabs).find((tab) => tab.kind === "ask");
+    if (ask) {
       setAiOpened(true);
       setAiPlacement("panel");
-    }
-    if (!ask && aiPlacement === "panel") {
+    } else if (library) setAiPlacement("hidden");
+    else if (aiPlacement === "panel" && active) {
+      // Ask Knot follows you from notebook to notebook.
       openPane("ask");
       return;
     }
     const slot = ask
       ? document.getElementById(`panel-${encodeURIComponent(ask.id)}`)
       : null;
-    const target = aiPlacement === "panel" && slot ? slot : aiPageHost.current;
+    const target = slot ?? aiParking.current;
     if (target && aiContainer.parentElement !== target)
       target.appendChild(aiContainer);
-    const main = contentArea.current?.parentElement;
-    if (main)
-      for (const node of main.querySelectorAll<HTMLElement>(
-        ":scope > .workspace-content, :scope > .library-page",
-      ))
-        node.inert = aiPlacement === "page";
-  }, [layout, aiPlacement, aiContainer, library, aiOpened]);
+  }, [layout, libraryLayout, aiPlacement, aiContainer, library, aiOpened]);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const [noticeRevision, setNoticeRevision] = useState(0);
@@ -1434,7 +1448,6 @@ export function App() {
   }
   async function openLibrary(location: LibraryLocation, record = true) {
     await session.current?.flush();
-    setAiPlacement((value) => (value === "page" ? "hidden" : value));
     clearInactiveSurface(null);
     setSurface(null);
     setShowSearch(false);
@@ -1452,10 +1465,6 @@ export function App() {
         historyTab.current = item.tab;
         dispatchLayout({ type: "activate", id: item.tab });
       }
-      return;
-    }
-    if ("ai" in item) {
-      showAi("page", false);
       return;
     }
     if ("library" in item) await openLibrary(item, false);
@@ -1969,7 +1978,6 @@ export function App() {
       .then(setUnsharedTitles)
       .catch(() => {});
     if (record && session.current?.doc.id === item.id) {
-      setAiPlacement((value) => (value === "page" ? "hidden" : value));
       if (library) history.current.visit(item);
       setLibrary(null);
       clearInactiveSurface(null);
@@ -2026,7 +2034,6 @@ export function App() {
       const notes = session.current.notebookNotes();
       setFoldingNotes((previous) => ({ ...previous, [id]: notes }));
     }
-    setAiPlacement((value) => (value === "page" ? "hidden" : value));
     session.current?.destroy();
     session.current = next;
     stopUndoWatch.current();
@@ -2102,14 +2109,6 @@ export function App() {
     setBackupEntries(null);
     setPickingWorkspace(false);
     const workspace = await workspaces.catalog();
-    let savedAiPlacement: string | null = null;
-    try {
-      savedAiPlacement = localStorage.getItem(
-        `knot.ai.placement.v1:${workspace.active}`,
-      );
-    } catch {
-      /* Optional preference. */
-    }
     setWorkspaceCatalog(workspace);
     setCatalog(await collections.catalog());
     const nextTour = await tourStatus();
@@ -2119,9 +2118,8 @@ export function App() {
       setTour(await tourStatus());
     }
     await refresh("");
+    // The Library's saved layout brings back its own Ask Knot tab.
     await openLibrary(defaultLibrary);
-    if (savedAiPlacement === "page" || savedAiPlacement === "panel")
-      showAi(savedAiPlacement);
   }
   useEffect(() => {
     if (!isTauri()) {
@@ -2392,7 +2390,6 @@ export function App() {
   };
   const addNote = () =>
     run(async () => {
-      setAiPlacement((value) => (value === "page" ? "hidden" : value));
       const current = session.current;
       if (!current || !active) return;
       clearInactiveSurface(null);
@@ -2902,7 +2899,7 @@ export function App() {
                   openSurface("cardDeck");
                 }),
             ],
-            ["Ask Knot", "sparkles", () => showAi("panel")],
+            ["Ask Knot", "sparkles", () => showAi()],
             [
               "Links",
               "link",
@@ -3432,20 +3429,14 @@ export function App() {
               disabled={busy || navigating}
               aria-label="Ask Knot"
               aria-pressed={aiPlacement !== "hidden"}
-              // Beside an open document (a canvas you're panning, a note you're
-              // reading), Ask Knot opens as a panel so you keep your place; as a
-              // page only when there is nothing to keep, such as the Library.
-              onClick={() =>
-                showAi(session.current && !library ? "panel" : "page")
-              }
+              // A tab beside the open notebook, or beside the Library.
+              onClick={() => showAi()}
             >
               <ShellIcon name="sparkles" /> Ask Knot
             </button>
           )}
           <button
-            aria-current={
-              library && aiPlacement !== "page" ? "page" : undefined
-            }
+            aria-current={library ? "page" : undefined}
             disabled={busy}
             onClick={() =>
               void run(
@@ -3643,48 +3634,13 @@ export function App() {
         </nav>
       )}
       <main
-        className={`${surface ? "has-tool-surface" : ""} ai-placement-${aiPlacement}`}
+        className={surface ? "has-tool-surface" : undefined}
         style={
           {
             "--panel-width": `${activePanelWidth}px`,
           } as React.CSSProperties
         }
       >
-        {library && (
-          <header className="library-header">
-              <nav className="library-breadcrumb" aria-label="Library location">
-                <button
-                  onClick={() =>
-                    void run(
-                      () =>
-                        openLibrary({
-                          id: `library:${library.library}`,
-                          library: library.library,
-                        }),
-                      true,
-                    )
-                  }
-                >
-                  Library
-                </button>
-                {library.collection !== undefined && (
-                  <>
-                    <span>/</span>
-                    <span>
-                      {library.collection === ""
-                        ? "Uncollected"
-                        : (catalog.collections.find(
-                            (c) => c.id === library.collection,
-                          )?.name ?? "Collection unavailable")}
-                    </span>
-                  </>
-                )}
-              </nav>
-              {library.library === "cardDeck" && (
-                <div id="library-card-chrome" />
-              )}
-          </header>
-        )}
         {error && (
           <div role="alert" className="error-banner">
             {error}
@@ -4362,81 +4318,157 @@ export function App() {
           </Notice>
         )}
         {library && (
-          <LibraryPage
-            onImport={() =>
-              void knotbooks
-                .choose()
-                .then((token) => token && setImportToken(token))
-                .catch(report)
-            }
-            preferenceKey={`${workspaceCatalog.active}:${library.library === "cardDeck" ? "library:cardDeck" : library.id}`}
-            key={`${workspaceCatalog.active}:${library.library === "cardDeck" ? "library:cardDeck" : library.id}`}
-            location={library}
-            cardDeck={
-              <LibraryCardDeck
-                key={workspaceCatalog.active}
-                workspace={workspaceCatalog.active ?? ""}
-                revision={libraryRevision}
-                cardId={library.cardId}
-                onSelect={(cardId) =>
-                  run(
-                    () =>
-                      openLibrary({
-                        id: cardId
-                          ? `library:cardDeck:card:${cardId}`
-                          : "library:cardDeck",
-                        library: "cardDeck",
-                        cardId,
-                      }),
-                    true,
-                  )
-                }
-                deck={session.current?.cardDeck}
-                onCreateEditor={createLibraryCardEditor}
-                onComposeMcq={(cardId) => {
-                  void run(async () => {
-                    const owner = await ensureLibraryCardSession();
-                    const initial = cardId ? cardMcq(owner.cardDeck.data[cardId]) : undefined;
-                    if (cardId && !initial) throw Error("This question is unavailable.");
-                    setMcqComposer((open) => open ?? { cardId, initial, owner });
-                  }, true);
-                }}
-                onFlush={() => session.current?.flush() ?? Promise.resolve()}
-                onOpen={openLibraryCard}
-                onPlace={placeLibraryCard}
-                onTrash={trashLibraryCard}
-                onOpenUse={openCardUse}
-                onTrashMany={(ids) => run(() => trashLibraryCards(ids), true)}
-              />
-            }
-            catalog={catalog}
-            busy={busy}
-            run={run}
-            onRenameNotebook={renameNotebook}
-            onTrashNotebook={(item) => requestTrash(item)}
-            onChanged={async () => {
-              await reloadCollections();
-              setLibraryRevision((v) => v + 1);
-            }}
-            onOpen={(item) => void run(() => select(item), true)}
-            onNavigate={(location) =>
-              void run(() => openLibrary(location), true)
-            }
-            onCreate={createNotebookAndWrite}
-            onFavorite={toggleFavorite}
-            revision={libraryRevision}
-            sidebarDrag={sidebarDrag}
-            pinned={sidebarPreferences.pinned}
-            onTogglePin={sidebarPreferences.togglePin}
-          />
+          <div className="workspace-content library-workspace" ref={libraryArea}>
+            <WorkspacePanes
+              layout={libraryLayout}
+              dispatch={dispatchLibraryPaneAction}
+              available={contentWidth}
+              blocked={busy || navigating || !!surface}
+              newTab={
+                aiEnabled
+                  ? (group) => (
+                      <>
+                        <span className="document-action-heading">
+                          Open in this column
+                        </span>
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            paneTarget.current = group;
+                            try {
+                              showAi();
+                            } finally {
+                              paneTarget.current = null;
+                            }
+                          }}
+                        >
+                          <ShellIcon name="sparkles" />
+                          <span>{surfaceTitles.ask}</span>
+                        </button>
+                      </>
+                    )
+                  : undefined
+              }
+              onReturn={() =>
+                document
+                  .querySelector<HTMLElement>(".library-workspace .library-page")
+                  ?.focus()
+              }
+              label={(tab) =>
+                tab.kind === "library" ? surfaceTitles.library : surfaceTitles.ask
+              }
+              render={(tab) =>
+                tab.kind === "library" ? (
+                  <>
+                    <header className="library-header">
+                        <nav className="library-breadcrumb" aria-label="Library location">
+                          <button
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  openLibrary({
+                                    id: `library:${library.library}`,
+                                    library: library.library,
+                                  }),
+                                true,
+                              )
+                            }
+                          >
+                            Library
+                          </button>
+                          {library.collection !== undefined && (
+                            <>
+                              <span>/</span>
+                              <span>
+                                {library.collection === ""
+                                  ? "Uncollected"
+                                  : (catalog.collections.find(
+                                      (c) => c.id === library.collection,
+                                    )?.name ?? "Collection unavailable")}
+                              </span>
+                            </>
+                          )}
+                        </nav>
+                        {library.library === "cardDeck" && (
+                          <div id="library-card-chrome" />
+                        )}
+                    </header>
+                    <LibraryPage
+                      onImport={() =>
+                        void knotbooks
+                          .choose()
+                          .then((token) => token && setImportToken(token))
+                          .catch(report)
+                      }
+                      preferenceKey={`${workspaceCatalog.active}:${library.library === "cardDeck" ? "library:cardDeck" : library.id}`}
+                      key={`${workspaceCatalog.active}:${library.library === "cardDeck" ? "library:cardDeck" : library.id}`}
+                      location={library}
+                      cardDeck={
+                        <LibraryCardDeck
+                          key={workspaceCatalog.active}
+                          workspace={workspaceCatalog.active ?? ""}
+                          revision={libraryRevision}
+                          cardId={library.cardId}
+                          onSelect={(cardId) =>
+                            run(
+                              () =>
+                                openLibrary({
+                                  id: cardId
+                                    ? `library:cardDeck:card:${cardId}`
+                                    : "library:cardDeck",
+                                  library: "cardDeck",
+                                  cardId,
+                                }),
+                              true,
+                            )
+                          }
+                          deck={session.current?.cardDeck}
+                          onCreateEditor={createLibraryCardEditor}
+                          onComposeMcq={(cardId) => {
+                            void run(async () => {
+                              const owner = await ensureLibraryCardSession();
+                              const initial = cardId ? cardMcq(owner.cardDeck.data[cardId]) : undefined;
+                              if (cardId && !initial) throw Error("This question is unavailable.");
+                              setMcqComposer((open) => open ?? { cardId, initial, owner });
+                            }, true);
+                          }}
+                          onFlush={() => session.current?.flush() ?? Promise.resolve()}
+                          onOpen={openLibraryCard}
+                          onPlace={placeLibraryCard}
+                          onTrash={trashLibraryCard}
+                          onOpenUse={openCardUse}
+                          onTrashMany={(ids) => run(() => trashLibraryCards(ids), true)}
+                        />
+                      }
+                      catalog={catalog}
+                      busy={busy}
+                      run={run}
+                      onRenameNotebook={renameNotebook}
+                      onTrashNotebook={(item) => requestTrash(item)}
+                      onChanged={async () => {
+                        await reloadCollections();
+                        setLibraryRevision((v) => v + 1);
+                      }}
+                      onOpen={(item) => void run(() => select(item), true)}
+                      onNavigate={(location) =>
+                        void run(() => openLibrary(location), true)
+                      }
+                      onCreate={createNotebookAndWrite}
+                      onFavorite={toggleFavorite}
+                      revision={libraryRevision}
+                      sidebarDrag={sidebarDrag}
+                      pinned={sidebarPreferences.pinned}
+                      onTogglePin={sidebarPreferences.togglePin}
+                    />
+                  </>
+                ) : null
+              }
+            />
+          </div>
         )}
         {aiEnabled && aiOpened && workspaceCatalog.active && (
           <>
-            <div
-              className="ask-workspace-host"
-              ref={aiPageHost}
-              hidden={aiPlacement !== "page"}
-            />
+            <div className="ask-parking" ref={aiParking} hidden />
             {createPortal(
               <AskKnot
                 key={`${workspaceCatalog.active}:ask`}
@@ -4695,27 +4727,13 @@ export function App() {
                 }}
                 getSession={() => session.current}
                 onClose={() => {
-                  for (const tab of Object.values(layoutRef.current.tabs))
-                    if (tab.kind === "ask")
-                      dispatchLayout({ type: "close", id: tab.id });
+                  // Closes the Ask Knot tab where it's shown.
+                  const [shown, close] = library
+                    ? [libraryLayoutRef.current, dispatchLibraryLayout]
+                    : [layoutRef.current, dispatchLayout];
+                  for (const tab of Object.values(shown.tabs))
+                    if (tab.kind === "ask") close({ type: "close", id: tab.id });
                   setAiPlacement("hidden");
-                }}
-                placement={
-                  aiPlacement === "page" ||
-                  Object.values(layout.tabs).some(
-                    (t) => t.kind === "ask" && expandedTab(t.id),
-                  )
-                    ? "page"
-                    : "panel"
-                }
-                onPlacementChange={() => {
-                  const ask = Object.values(layout.tabs).find(
-                    (t) => t.kind === "ask",
-                  );
-                  if (aiPlacement === "page") showAi("panel");
-                  else if (ask && expandedTab(ask.id))
-                    dispatchLayout({ type: "restore" });
-                  else showAi("page");
                 }}
               />,
               aiContainer,
@@ -4808,8 +4826,7 @@ export function App() {
           {!library &&
             !active &&
             !busy &&
-            !documentLoading &&
-            aiPlacement !== "page" && (
+            !documentLoading && (
               <section
                 className="welcome"
                 aria-labelledby="empty-workspace-heading"
@@ -4841,8 +4858,7 @@ export function App() {
             !library &&
             !busy &&
             !documentLoading &&
-            !layout.groups.length &&
-            aiPlacement !== "page" && (
+            !layout.groups.length && (
               <section
                 className="welcome"
                 aria-labelledby="empty-notebook-heading"

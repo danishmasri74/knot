@@ -21,6 +21,7 @@ import {
   minimumWidth,
   MAX_COLUMNS,
   RAIL_WIDTH,
+  isMainKind,
   tabPolicy,
   type WorkspaceLayout,
   type LayoutAction,
@@ -38,6 +39,7 @@ const icons = {
   cardDeck: "cardDeck",
   reference: "link",
   video: "video",
+  library: "library",
 } as const;
 export function WorkspacePanes({
   layout,
@@ -253,7 +255,9 @@ export function WorkspacePanes({
     const right = canvasShown ? available - canvasLeft - canvasWidth : 0;
     parent.style.setProperty("--support-width", `${right}px`);
     parent.closest("main")?.style.setProperty("--support-width", `${right}px`);
-  }, [canvasShown, canvasLeft, canvasWidth, available, hidden]);
+    // Republish when this layout comes back on screen (the Library has its
+    // own layout and publishes while it's shown).
+  }, [canvasShown, canvasLeft, canvasWidth, available, hidden, blocked]);
   // Columns glide when the layout changes (expand, restore, close, move), but
   // follow the window and sidebar exactly while those resize.
   const previousWidth = useRef(available);
@@ -417,11 +421,11 @@ export function WorkspacePanes({
     const tab = layout.tabs[id];
     const group = layout.groups.find((g) => g.tabIds.includes(id));
     if (!tab || !group) return [];
-    const canvas = tab.kind === "canvas";
+    const canvas = isMainKind(tab.kind);
     const other = layout.groups.find((g) => g !== group);
     const focusedHere = expanded && layout.expandedGroupId === group.id;
     const closable = group.tabIds.filter(
-      (t) => t !== id && layout.tabs[t]?.kind !== "canvas",
+      (t) => t !== id && !isMainKind(layout.tabs[t]?.kind),
     );
     return [
       ...(layout.groups.length > 1 && !(projection.collapsed && !expanded)
@@ -804,14 +808,17 @@ export function WorkspacePanes({
                     />
                     <span>{label(layout.tabs[id])}</span>
                   </button>
-                  <button
-                    className="pane-tab-close"
-                    tabIndex={id === group.activeTabId ? 0 : -1}
-                    aria-label={`Close ${label(layout.tabs[id])} tab`}
-                    onClick={() => close(id)}
-                  >
-                    <ShellIcon name="close" />
-                  </button>
+                  {/* The Library's layout always keeps its Library tab. */}
+                  {layout.tabs[id].kind !== "library" && (
+                    <button
+                      className="pane-tab-close"
+                      tabIndex={id === group.activeTabId ? 0 : -1}
+                      aria-label={`Close ${label(layout.tabs[id])} tab`}
+                      onClick={() => close(id)}
+                    >
+                      <ShellIcon name="close" />
+                    </button>
+                  )}
                 </div>
               ))}
               {tabDrop?.strip === group.id && (

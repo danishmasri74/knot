@@ -6,7 +6,9 @@ export type PaneKind =
   | "cardDeck"
   | "ask"
   | "reference"
-  | "video";
+  | "video"
+  /** The Library's own layout: its main tab, like a notebook's canvas. */
+  | "library";
 export const supportingKinds = new Set<string>([
   "canvas",
   "note",
@@ -38,7 +40,12 @@ export const tabPolicy: Record<
   ask: { idle: "alive", minWidth: 320 },
   cardDeck: { idle: "alive", minWidth: 320 },
   reference: { idle: "alive", minWidth: 320 },
+  library: { idle: "alive", minWidth: 420 },
 };
+/** A layout's main tab: the notebook's Canvas or the Library. It fills the
+ * space the other columns leave and tools never cover it. */
+export const isMainKind = (kind: PaneKind | undefined) =>
+  kind === "canvas" || kind === "library";
 export type PaneTab = {
   id: string;
   kind: PaneKind;
@@ -154,7 +161,7 @@ function unusedGroupId(state: WorkspaceLayout) {
     if (!state.groups.some((g) => g.id === `pane-${n}`)) return `pane-${n}`;
 }
 const containsCanvas = (state: WorkspaceLayout, group: PaneGroup) =>
-  group.tabIds.some((id) => state.tabs[id]?.kind === "canvas");
+  group.tabIds.some((id) => isMainKind(state.tabs[id]?.kind));
 export const minimumWidth = (state: WorkspaceLayout, group: PaneGroup) =>
   Math.max(
     320,
@@ -213,7 +220,7 @@ export function layoutReducer(
       if (!group && chosen) {
         group = chosen;
         next.tabs[action.tab.id] = action.tab;
-        if (action.tab.kind === "canvas") group.tabIds.unshift(action.tab.id);
+        if (isMainKind(action.tab.kind)) group.tabIds.unshift(action.tab.id);
         else group.tabIds.push(action.tab.id);
       }
       // ...except the canvas's column: a tool or note never covers the
@@ -221,7 +228,7 @@ export function layoutReducer(
       if (
         !group &&
         expanded &&
-        action.tab.kind !== "canvas" &&
+        !isMainKind(action.tab.kind) &&
         containsCanvas(next, expanded)
       )
         next.expandedGroupId = null;
@@ -231,7 +238,7 @@ export function layoutReducer(
         group.tabIds.push(action.tab.id);
       }
       if (!group) {
-        const canvas = action.tab.kind === "canvas";
+        const canvas = isMainKind(action.tab.kind);
         // Opening a tool never covers the canvas while there's another
         // column or room for one.
         const free = (g: PaneGroup) => canvas || !containsCanvas(next, g);
@@ -261,7 +268,7 @@ export function layoutReducer(
         }
         group ??= newGroup(action.width, 0);
         next.tabs[action.tab.id] = action.tab;
-        if (action.tab.kind === "canvas") group.tabIds.unshift(action.tab.id);
+        if (isMainKind(action.tab.kind)) group.tabIds.unshift(action.tab.id);
         else group.tabIds.push(action.tab.id);
       }
       group.activeTabId = action.tab.id;

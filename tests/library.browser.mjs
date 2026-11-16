@@ -42,7 +42,7 @@ try {
     };
   });
   await page.getByRole("button", { name: "Dismiss", exact: true }).click();
-  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await page.locator(".sidebar").getByRole("button", { name: "Library", exact: true }).click();
   await page.getByRole("heading", { name: "Library", exact: true }).waitFor();
   await page.getByRole("status", { name: "Loading notebooks" }).waitFor();
   await page.waitForFunction(() => !!window.finishLibrary);

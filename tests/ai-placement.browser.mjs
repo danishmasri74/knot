@@ -35,49 +35,74 @@ await page.addInitScript(() => {
     },
   };
 });
-await page.goto("http://127.0.0.1:1420");
+const askTab = () => page.getByRole("tab", { name: /Ask Knot/ });
+const libraryTab = () => page.getByRole("tab", { name: "Library" });
+await page.goto("http://127.0.0.1:1420", { timeout: 120000 });
+// The Library is a tab in its own layout; it has no close button.
+await libraryTab().waitFor();
+assert.equal(
+  await page.getByRole("button", { name: "Close Library tab" }).count(),
+  0,
+);
+// Ask Knot opens as a tab beside the Library, never as a page.
 await page.locator(".sidebar-ask").click();
-await page.locator(".ask-knot textarea").fill("Draft survives page and panel");
+await askTab().waitFor();
+assert.equal(await page.locator(".pane-ask .ask-knot").count(), 1);
+assert.equal(await libraryTab().count(), 1);
+assert.equal(
+  await page.getByRole("button", { name: /Open as page|Move to panel/ }).count(),
+  0,
+);
+await page.locator(".ask-knot textarea").fill("Draft survives the tab");
 await page.evaluate(
   () => (window.originalAI = document.querySelector(".ask-knot")),
 );
-await page.getByRole("button", { name: "Move to panel", exact: true }).click();
-await page.getByRole("button", { name: "Open as page", exact: true }).click();
+// Closing and reopening keeps the one live chat and its draft.
+await page
+  .getByRole("button", { name: "Close Ask Knot tab", exact: true })
+  .click();
+assert.equal(await askTab().count(), 0);
+await page.locator(".sidebar-ask").click();
+await askTab().waitFor();
 assert(
   await page.evaluate(
     () => window.originalAI === document.querySelector(".ask-knot"),
   ),
 );
-if (await page.locator(".pane-ask .ask-knot").count())
-  await page.getByRole("button", { name: "Open as page", exact: true }).click();
-await page.getByRole("button", { name: "Close Ask Knot", exact: true }).click();
-await page.locator(".sidebar-ask").click();
 assert.equal(
   await page.locator(".ask-knot textarea").inputValue(),
-  "Draft survives page and panel",
+  "Draft survives the tab",
 );
-assert.equal(await page.locator(".ask-knot").count(), 1);
-await page.screenshot({ path: "test-results/ai-page.png" });
+// The Library remembers its own layout, sizes included.
+const saved = await page.evaluate(() =>
+  JSON.parse(localStorage.getItem('knot.library-layout.v1.["work"]')),
+);
+assert.equal(saved.groups.length, 2);
+await page.evaluate(() => {
+  const key = 'knot.library-layout.v1.["work"]';
+  const layout = JSON.parse(localStorage.getItem(key));
+  layout.groups[1].preferredWidth = 520;
+  localStorage.setItem(key, JSON.stringify(layout));
+});
 await page.reload();
-await page.locator(".ask-knot textarea").waitFor();
+await askTab().waitFor();
+assert.equal(await libraryTab().count(), 1);
+assert.equal(
+  Math.round(
+    await page.locator(".pane-ask").evaluate((e) => e.getBoundingClientRect().width),
+  ),
+  520,
+);
 assert.equal(
   await page.locator(".ask-knot textarea").inputValue(),
-  "Draft survives page and panel",
+  "Draft survives the tab",
 );
-await page
-  .locator(".sidebar")
-  .getByRole("button", { name: "Library", exact: true })
-  .click();
-assert.equal(await page.locator(".ask-workspace-host").isVisible(), false);
-await page.getByRole("button", { name: "Go back", exact: true }).click();
-await page.locator(".ask-knot textarea").waitFor();
+// A live request keeps running while the tab is closed.
 await page.getByRole("button", { name: "Send to Knot", exact: true }).click();
 await page.getByRole("button", { name: "Stop", exact: true }).waitFor();
-await page.getByRole("button", { name: "Move to panel", exact: true }).click();
-await page.getByRole("button", { name: "Open as page", exact: true }).click();
-if (await page.locator(".pane-ask .ask-knot").count())
-  await page.getByRole("button", { name: "Open as page", exact: true }).click();
-await page.getByRole("button", { name: "Close Ask Knot", exact: true }).click();
+await page
+  .getByRole("button", { name: "Close Ask Knot tab", exact: true })
+  .click();
 await page.locator(".sidebar-ask").click();
 assert.equal(
   await page.getByRole("button", { name: "Stop", exact: true }).count(),
@@ -101,30 +126,15 @@ for (const theme of ["light", "dark"]) {
     (theme) => (document.documentElement.dataset.theme = theme),
     theme,
   );
-  await page.screenshot({ path: `test-results/ai-page-${theme}.png` });
+  await page.screenshot({ path: `test-results/library-ask-${theme}.png` });
 }
-await page.getByRole("button", { name: "Move to panel", exact: true }).click();
-// The panes fade in from visibility: hidden, so wait for the tab before counting.
-await page.getByRole("tab", { name: /Ask Knot/ }).waitFor();
-assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 1);
-assert.equal(await page.locator(".pane-ask .ask-knot").count(), 1);
-await page.getByRole("button", { name: "Open as page", exact: true }).click();
-assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 0);
-assert.equal(await page.locator(".ask-knot").count(), 1);
-await page.getByRole("button", { name: "Move to panel", exact: true }).click();
+// Too narrow for both columns: one stays, the other becomes a rail.
 await page.setViewportSize({ width: 800, height: 700 });
-await page.getByRole("tab", { name: /Ask Knot/ }).waitFor();
-assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 1);
-await page.screenshot({ path: "test-results/ai-tab-dark.png" });
-await page
-  .getByRole("button", { name: "Close Ask Knot tab", exact: true })
-  .click();
-assert.equal(await page.getByRole("tab", { name: /Ask Knot/ }).count(), 0);
-assert.equal(await page.locator(".ask-knot").isVisible(), false);
-await page.locator(".sidebar-ask").click();
-assert.equal(await page.locator(".ask-knot").count(), 1);
+await askTab().waitFor();
+assert.equal(await askTab().count(), 1);
+await page.screenshot({ path: "test-results/library-ask-narrow.png" });
 console.log(
-  "AI placement: singleton, draft, restart, history, live request, explicit Stop, light/dark, shared tab, close/reopen, narrow projection passed",
+  "Library tab: unclosable Library, Ask tab beside it, draft, saved layout and width, live request, light/dark, narrow projection passed",
 );
 assert.deepEqual(errors, []);
 await browser.close();

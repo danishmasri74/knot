@@ -3087,36 +3087,9 @@ main:has(.settings-modal) > .editor-area {
   min-height: 0;
   font-size: 13px;
 }
-.ask-workspace-host {
-  position: absolute;
-  top: 56px;
-  bottom: 0;
-  right: 0;
-  width: min(var(--ai-dock-width, 480px), 45%);
-  display: flex;
-  min-height: 0;
-  z-index: 12;
-  background: var(--shell-surface);
-  border-left: 1px solid var(--shell-border);
-}
-.ask-workspace-host[hidden] { display: none; }
-.ai-placement-page > .ask-workspace-host { width: 100%; border-left: 0; }
-.ai-placement-page > .ask-workspace-host .ask-messages,
-.ai-placement-page > .ask-workspace-host .ask-composer-box {
-  width: min(100%, 800px);
-  margin-inline: auto;
-  box-sizing: border-box;
-}
-.ask-knot .ask-placement-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  white-space: nowrap;
-  width: auto;
-}
+/* The live chat waits here while no Ask Knot tab is on screen. */
+.ask-parking[hidden] { display: none; }
 @media (max-width: 760px) {
-  .ai-placement-panel > .ask-workspace-host { width: 100%; }
   .ask-knot .ask-header { padding-inline: 12px; gap: 5px; flex-wrap: wrap; height: auto; min-height: 55px; }
   .ask-knot .ask-header-actions { flex-wrap: wrap; }
 }
@@ -7340,7 +7313,15 @@ knot-web-source { display: block; margin-block: 8px; }
   border-radius: var(--shell-radius);
 }
 
-/* The Library keeps its location row where the header was. */
+/* The Library is a tab in its own layout, beside Ask Knot. */
+.pane-content.pane-library,
+.pane-content.pane-library[hidden] {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+/* Its location row sits at the top of the Library tab. */
 .library-header {
   display: flex;
   align-items: center;
