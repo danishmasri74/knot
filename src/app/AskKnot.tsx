@@ -107,6 +107,7 @@ import {
   type AiProposal,
 } from "../features/editor/blocksuite/ai";
 import { quizLines } from "../services/ai-quiz";
+import { uncoveredPassages } from "../services/ai-atomize";
 import { savedSearchText } from "../features/editor/blocksuite/search";
 import {
   attachments,
@@ -147,6 +148,10 @@ type Turn = {
   /** What an applied proposal created (a note, quiz or the first canvas
    * card): its first block, for the Open button. */
   createdNote?: { block: string; text: string };
+  /** Break this into ideas: the canvas card these cards replace. */
+  replaces?: string;
+  /** Source passages the replacement cards don't cover (kept on Apply). */
+  uncovered?: number;
   /** While streaming: the model is preparing a proposal (not persisted). */
   preparing?: boolean;
   /** After a web-search answer: capturing cited pages for passages (not persisted). */
@@ -1074,7 +1079,15 @@ function AskKnotPanel({
       return;
     }
     openChat();
-    void send(undefined, input, current);
+    // The chat shows a short request; the full instruction is what's sent.
+    void send(
+      undefined,
+      "Break this card into ideas",
+      current,
+      undefined,
+      undefined,
+      { message: input },
+    );
   }, [suggestion, modelStatus, connected, model, models.length]);
   async function sendWorkspace(
     input: string,
@@ -2110,6 +2123,26 @@ function AskKnotPanel({
               ? retry.context
               : { ...current, webContext: requestContext };
         draft.mode = proposed;
+        // A card suggestion replaces its card; a retry keeps doing so.
+        draft.replaces =
+          proposed === "canvas"
+            ? (cardContext?.note ??
+              retry?.replaces ??
+              (retryIndex === undefined
+                ? undefined
+                : turnsRef.current[retryIndex + 1]?.replaces) ??
+              undefined)
+            : undefined;
+        draft.uncovered = draft.replaces
+          ? uncoveredPassages(
+              (draft.context?.structure ?? []).map((b) => b.text),
+              [
+                ...draft.proposal.blocks.map(aiBlockText),
+                ...(draft.proposal.connections ?? []).map((c) => c.label),
+                ...(draft.proposal.mindmap ?? []).map((n) => n.text),
+              ],
+            ).length
+          : undefined;
         const label =
           proposed === "rewrite"
             ? "Suggested rewrite"
@@ -2584,10 +2617,12 @@ function AskKnotPanel({
                       {turn.mode === "rewrite"
                         ? "Replace selection"
                         : turn.mode === "canvas"
-                          ? turn.proposal.mindmap?.length &&
-                            !turn.proposal.blocks.length
-                            ? "Create mind map"
-                            : "Create on canvas"
+                          ? turn.replaces
+                            ? `Replace the card with ${turn.proposal.blocks.length + (turn.uncovered ? 1 : 0)} idea cards`
+                            : turn.proposal.mindmap?.length &&
+                                !turn.proposal.blocks.length
+                              ? "Create mind map"
+                              : "Create on canvas"
                           : turn.mode === "note"
                             ? "Create note in this notebook"
                             : turn.mode === "quiz"
@@ -2601,6 +2636,14 @@ function AskKnotPanel({
                         </del>
                       )}
                       <div className="ask-preview">
+                        {turn.replaces && (
+                          <p className="ask-replace-note">
+                            {turn.uncovered
+                              ? `${turn.uncovered} ${turn.uncovered === 1 ? "passage isn’t" : "passages aren’t"} covered by the cards; ${turn.uncovered === 1 ? "it’s" : "they’re"} kept word for word on an “Other details” card.`
+                              : "Everything in the original is covered."}{" "}
+                            The original goes to Trash; Undo brings it back.
+                          </p>
+                        )}
                         {turn.proposal.mindmap?.map((node, i, nodes) => (
                           <p key={i}>
                             {node.parent < 0 ? (
@@ -2684,6 +2727,9 @@ function AskKnotPanel({
                                 turn.context!,
                                 turn.proposal!,
                                 turn.mode!,
+                                turn.replaces
+                                  ? { replaces: turn.replaces }
+                                  : undefined,
                               );
                               turn.undo = undo;
                               // A new note stays where it was put; Open note

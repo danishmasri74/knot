@@ -155,14 +155,14 @@ try {
     createRoot(mount).render(React.createElement(Harness));
   });
   const buttons = page.getByRole("button", {
-    name: "Shall we make this clearer?",
+    name: "Break this into ideas?",
   });
   await buttons.nth(1).waitFor();
   await buttons.first().click();
   await page.waitForFunction(() => window.calls.length === 1);
   const [call] = await page.evaluate(() => window.calls);
   assert.equal(call.mode, "canvas");
-  assert.match(call.messages.at(-1).content, /mind map/);
+  assert.match(call.messages.at(-1).content, /atomic idea cards/);
   const text = JSON.parse(call.context)
     .citationSources.map((b) => b.text)
     .join(" ");

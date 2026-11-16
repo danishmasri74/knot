@@ -3766,6 +3766,13 @@ main:has(.settings-modal) > .editor-area {
   margin: 2px 0 8px;
   font-size: 15px;
 }
+.ask-preview p.ask-replace-note {
+  margin-bottom: 10px;
+  color: var(--ask-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
 .ask-quiz-preview {
   margin: 0;
   padding-left: 22px;

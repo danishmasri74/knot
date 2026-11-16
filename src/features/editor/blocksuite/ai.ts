@@ -11,6 +11,13 @@ import {
 } from "../../../services/web-ai-evidence";
 import { appendWebProvenance } from "./web-source";
 import { mcqDecks } from "./mcq-block";
+import { Text } from "@blocksuite/store";
+import {
+  clearPlacement,
+  relationStroke,
+  uncoveredPassages,
+  type Box,
+} from "../../../services/ai-atomize";
 import { mcqReferenceFlavour } from "./card-deck";
 import {
   quizCardPlacement,
@@ -688,6 +695,10 @@ export function applyAiProposal(
   context: AiContext,
   input: AiProposal,
   mode: "rewrite" | "insert" | "canvas" | "note" | "quiz",
+  options?: {
+    /** Break this into ideas: the canvas card the new cards replace. */
+    replaces?: string;
+  },
 ): (() => void) & { noteId?: string } {
   const proposal = validateProposal(input, context.webContext);
   if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
@@ -764,6 +775,76 @@ export function applyAiProposal(
   )
     throw new Error("Open a canvas to create up to 20 cards.");
   const connections = proposal.connections ?? [];
+  // Break this into ideas: the cards take the original's place, in a frame
+  // with its title, and the original goes to Trash. Passages the cards don't
+  // cover are kept word for word on an "Other details" card.
+  let replaced:
+    | { note: NoteBlockModel; title: string; region: Box; shift: [number, number] }
+    | undefined;
+  if (mode === "canvas" && options?.replaces) {
+    const found = doc.getBlock(options.replaces)?.model;
+    const note =
+      found?.flavour === "affine:note" ? (found as NoteBlockModel) : undefined;
+    const box = note ? parseBox(note.xywh) : undefined;
+    if (!note || !box || note.isLocked())
+      throw new Error(
+        "The original card is unavailable. Select it again and retry.",
+      );
+    if (!proposal.blocks.length)
+      throw new Error("This suggestion has no cards to replace the card with.");
+    const source = structuredAiBlocks(note).map((b) => b.text);
+    const uncovered = uncoveredPassages(source, [
+      ...proposal.blocks.map(aiBlockText),
+      ...connections.map((c) => c.label),
+      ...(proposal.mindmap ?? []).map((n) => n.text),
+    ]);
+    if (uncovered.length)
+      proposal.blocks.push({
+        type: "paragraph",
+        text: "Other details",
+        columns: [],
+        rows: [],
+        children: [
+          ...uncovered.slice(0, 29),
+          ...(uncovered.length > 29 ? [uncovered.slice(29).join(" ")] : []),
+        ].map((text) => ({ type: "bulleted" as const, text, columns: [], rows: [] })),
+      });
+    // Lay the cards out, then move the whole group where the original was,
+    // or down past anything in the way.
+    const laid = layoutAiCards(
+      proposal.blocks.map(aiBlockText),
+      connections,
+      0,
+      proposal.blocks.map(aiBlockSize),
+    );
+    const minX = Math.min(...laid.map((b) => b[0]));
+    const minY = Math.min(...laid.map((b) => b[1]));
+    const width = Math.max(...laid.map((b) => b[0] + b[2])) - minX + 2 * FRAME_PAD;
+    const height =
+      Math.max(...laid.map((b) => b[1] + b[3])) - minY + FRAME_PAD + FRAME_TOP;
+    const occupied = [
+      ...doc
+        .getBlocksByFlavour("affine:note")
+        .map((b) => b.model as NoteBlockModel)
+        .filter((m) => m.id !== note.id),
+      // Arrows and groups don't block; the arrows to the original move.
+      ...(surface?.elementModels ?? []).filter(
+        (e) => e.type !== "connector" && e.type !== "group",
+      ),
+    ].flatMap((e) => {
+      const b = "xywh" in e ? parseBox(e.xywh) : undefined;
+      return b ? [b] : [];
+    });
+    const region = clearPlacement(box[0], box[1], occupied, [width, height]);
+    replaced = {
+      note,
+      title:
+        source.find((t) => t.trim())?.split("\n")[0].trim().slice(0, 120) ||
+        "Ideas",
+      region,
+      shift: [region[0] + FRAME_PAD - minX, region[1] + FRAME_TOP - minY],
+    };
+  }
   const connectorMode = {
     curve: ConnectorMode.Curve,
     elbowed: ConnectorMode.Orthogonal,
@@ -822,8 +903,12 @@ export function applyAiProposal(
       const bounds = layoutAiCards(
         proposal.blocks.map(aiBlockText),
         connections,
-        right,
+        replaced ? 0 : right,
         proposal.blocks.map(aiBlockSize),
+      ).map(([x, y, w, h]): [number, number, number, number] =>
+        replaced
+          ? [x + replaced.shift[0], y + replaced.shift[1], w, h]
+          : [x, y, w, h],
       );
       if (proposal.mindmap?.length) {
         type Node = { text: string; children: Node[]; xywh?: string };
@@ -834,7 +919,12 @@ export function applyAiProposal(
         const mapLeft = bounds.length
           ? Math.max(...bounds.map(([x, , width]) => x + width)) + 160
           : right;
-        nodes[0].xywh = JSON.stringify([mapLeft, 0, 180, 50]);
+        nodes[0].xywh = JSON.stringify([
+          mapLeft,
+          replaced ? replaced.region[1] : 0,
+          180,
+          50,
+        ]);
         proposal.mindmap.forEach(({ parent }, i) => {
           if (i) nodes[parent].children.push(nodes[i]);
         });
@@ -899,11 +989,38 @@ export function applyAiProposal(
         surface!.addElement({
           type: "connector",
           mode: connectorMode,
-          stroke: aiConnectorStroke(index),
+          // Typed arrows from Break this into ideas share a color per type.
+          stroke: (replaced && relationStroke(c.label)) || aiConnectorStroke(index),
           source: { id: ids[c.from], position: ports.source },
           target: { id: ids[c.to], position: ports.target },
           text: new Y.Text(c.label),
         });
+      }
+      if (replaced) {
+        const original = replaced.note.id;
+        const frame = doc.addBlock(
+          "affine:frame" as never,
+          {
+            title: new Text(replaced.title),
+            xywh: `[${replaced.region.join(",")}]`,
+            childElementIds: Object.fromEntries(ids.map((id) => [id, true])),
+          },
+          surface!.id,
+        );
+        // Arrows that pointed at the original now point at its frame.
+        for (const element of surface!.elementModels) {
+          if (element.type !== "connector") continue;
+          const edge = element as unknown as {
+            id: string;
+            source?: { id?: string };
+            target?: { id?: string };
+          };
+          if (edge.source?.id === original)
+            surface!.updateElement(edge.id, { source: { id: frame } });
+          if (edge.target?.id === original)
+            surface!.updateElement(edge.id, { target: { id: frame } });
+        }
+        doc.deleteBlock(replaced.note);
       }
     } else if (mode === "rewrite") {
       for (let i = context.ranges.length - 1; i >= 0; i--) {
@@ -932,6 +1049,14 @@ export function applyAiProposal(
           );
       }
   });
+  // The original's card goes to Trash with it unless it is shown elsewhere;
+  // Undo bringing the note back reclaims it.
+  const deck = replaced ? mcqDecks.get(doc.spaceDoc) : undefined;
+  const replacedCard = replaced
+    ? doc.spaceDoc.getMap<string>("knot:card-links").get(replaced.note.id)
+    : undefined;
+  const trashed =
+    !!replacedCard && !!deck?.trashUnplaced(replacedCard);
   let item = doc.history.undoStack.at(-1);
   let appliedVersion = version(doc);
   const finishCapture = () => {
@@ -951,6 +1076,20 @@ export function applyAiProposal(
         "There are newer edits. Use the editor’s Undo to undo them in order.",
       );
     doc.undo();
+    if (trashed) deck!.restore(replacedCard!);
   };
   return Object.assign(undo, { noteId });
+}
+
+const FRAME_PAD = 40;
+const FRAME_TOP = 60;
+function parseBox(xywh: unknown): Box | undefined {
+  try {
+    const b: unknown = JSON.parse(String(xywh));
+    return Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)
+      ? (b as Box)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -2,10 +2,11 @@ import type { ContextBlock } from "./ai";
 import { composeAiContext } from "../../../services/ai-context-composer";
 
 export const cardActions = {
+  // The key stays "improve" so dismissals saved by older Knot still apply.
   improve: {
-    label: "Shall we make this clearer?",
+    label: "Break this into ideas?",
     prompt:
-      "Reorganize this content to make it clearer. First assess its structure and choose the presentation automatically: use a native mind map for a branching topic outline, categories, types, components or levels; use a mind map alone when concise branch labels preserve the important information; combine a mind map overview with detail cards when the branches need explanations, examples, exceptions or tables. Use cards alone for sequences, comparisons, causal relationships or prose without a useful branching hierarchy. The source being a card is not a reason to return only cards. Preserve important facts and qualifications. In a mixed result, repeat short topic names as needed to associate details with branches, but avoid repeating whole explanations. Use headings, bold, italic, lists, tables, checklists or kanban where appropriate in detail cards. Connect related cards with labeled directional arrows that explain relationships, sequence or dependencies supported by the source. Do not invent hierarchy, relationships or task statuses. Use the format that actually clarifies this content without waiting for an explicit mind map request.",
+      "Break this card into atomic idea cards that replace it, so it is easier to digest and the connections between ideas are visible. Use cards and connections only; leave mindmap empty. Each card holds exactly one idea and makes sense on its own: a short title that states the point as a claim (for example \"Early testing is cheaper\", not \"Early testing\"), then at most about 60 words of formatted detail, with lists or a table only when they help. Keep every fact, number, example, exception and qualification from the source in some card, because the original card is removed; never add facts the source does not state. Prefer 5 to 12 cards, at most 20. Connect related cards with directional arrows labelled with exactly one of: leads to, causes, requires, part of, example of, contrasts with. The arrow points from the card the label describes, for example A requires B, A is an example of B, A is part of B. Only connect ideas the source relates; do not invent relationships.",
   },
 } as const;
 

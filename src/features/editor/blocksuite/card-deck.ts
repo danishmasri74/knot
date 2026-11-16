@@ -828,6 +828,20 @@ export class CardDeck {
     }
     return count;
   }
+  /**
+   * A card whose note was just removed goes to Trash with it, unless it is
+   * still shown somewhere else. Like a short leftover card, its generation is
+   * kept, so Undo bringing the note back also brings the card back.
+   */
+  trashUnplaced(id: string) {
+    const card = this.data[id];
+    if (!card || card.deleted || this.placements().has(id)) return false;
+    this.contentVersion++;
+    card.deleted = true;
+    card.autoTrashed = true;
+    this.notify();
+    return true;
+  }
   restore(id: string) {
     if (!this.data[id]?.deleted || this.data[id].purged) return;
     this.contentVersion++;

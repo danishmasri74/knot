@@ -8,3 +8,4 @@
 - Asking about a selected PDF or slide deck no longer mixes in other pictures from the canvas as if they were its pages.
 - Ask Knot can make multiple-choice quizzes: ask it to "quiz me on this note" and it suggests questions you can review, then puts them on a new quiz card beside the note with an arrow from it, or into the note if you ask (Settings → AI → Make quizzes).
 - Cards Ask Knot puts on the canvas, and replies saved with "Add reply as one card", get an Open card button that jumps to them.
+- The canvas suggestion is now "Break this into ideas?": it replaces a long card with short one-idea cards in a frame where the card was, with colored arrows showing how the ideas relate. Anything the cards leave out is kept on an "Other details" card, and the original goes to Trash (Undo brings it back).
