@@ -31,6 +31,7 @@ import {
   getWorkspaceSearchEnabled,
 } from "../services/ai-preferences";
 import type { OcrLine } from "../services/ocr-passages";
+import { isSlidesName, slides } from "../services/slides";
 import { openPdfBytes } from "../services/pdf-input";
 import type { AiPdfSource } from "../services/pdf-input";
 
@@ -109,6 +110,9 @@ export function PdfReader({
     initial?.key ?? remembered?.key ?? sources[0]?.key ?? "",
   );
   const [pageNumber, setPageNumber] = useState(initial?.page ?? 1);
+  const source = sources.find((entry) => entry.key === key);
+  const original = source?.slides;
+  const deck = !!original || isSlidesName(source?.name);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -341,7 +345,6 @@ export function PdfReader({
     setDraft(null);
     setRects([]);
   }, [key, pageNumber]);
-  const source = sources.find((entry) => entry.key === key);
   const [askScope, setAskScope] = useState("document");
   const [readingForAi, setReadingForAi] = useState(false);
   const aiRead = useRef(0);
@@ -357,12 +360,16 @@ export function PdfReader({
     setReadingForAi(true);
     try {
       const number = askScope === "page" ? pageNumber : undefined;
-      let text = `Attached PDF with ${pdf.numPages} pages. Use the page text and visual layout.`;
+      const unit = deck ? "Slide" : "Page";
+      let text = deck
+        ? `Attached slide deck converted to PDF, with ${pdf.numPages} slides. Use the slide text and visual layout. Each PDF page is one slide.`
+        : `Attached PDF with ${pdf.numPages} pages. Use the page text and visual layout.`;
       if (number) {
         const page = await pdf.getPage(number);
         const content = await page.getTextContent();
         text =
-          "Page " +
+          unit +
+          " " +
           number +
           "\n" +
           content.items
@@ -373,7 +380,11 @@ export function PdfReader({
             .slice(0, 24000);
       }
       if (ticket !== aiRead.current) return;
-      onAsk(source.name + (number ? " · Page " + number : " · PDF"), text, {
+      onAsk(
+        source.name +
+          (number ? ` · ${unit} ${number}` : deck ? " · Slides" : " · PDF"),
+        text,
+        {
         key,
         page: number,
       });
@@ -624,8 +635,12 @@ export function PdfReader({
                 disabled={readingForAi}
                 onChange={(e) => setAskScope(e.target.value)}
               >
-                <option value="document">Entire PDF</option>
-                <option value="page">Current page</option>
+                <option value="document">
+                  {deck ? "Entire deck" : "Entire PDF"}
+                </option>
+                <option value="page">
+                  {deck ? "Current slide" : "Current page"}
+                </option>
               </select>
               <button
                 disabled={!pdf || loading || busy || pending || readingForAi}
@@ -640,7 +655,7 @@ export function PdfReader({
         <div className="pdf-controls">
           <div className="pdf-pagination" role="group" aria-label="PDF pages">
             <span>
-              Page {pageNumber} of {pdf?.numPages ?? "–"}
+              {deck ? "Slide" : "Page"} {pageNumber} of {pdf?.numPages ?? "–"}
             </span>
           </div>
           <div className="pdf-view-tools" role="group" aria-label="PDF zoom">
@@ -669,8 +684,31 @@ export function PdfReader({
               ↔
             </button>
           </div>
+          {original && (
+            <button
+              className="pdf-open-original"
+              title="Open the original deck in your app for .pptx files"
+              onClick={() => {
+                setError("");
+                void slides
+                  .openOriginal(original.original, source?.name ?? "")
+                  .catch((e: unknown) =>
+                    setError(`Couldn't open the original deck: ${String(e)}`),
+                  );
+              }}
+            >
+              <ShellIcon name="external" size={14} />
+              Open in PowerPoint
+            </button>
+          )}
         </div>
       </div>
+      {original?.converter === "libreoffice" && (
+        <p className="pdf-ocr-note">
+          Converted with LibreOffice. Some layouts may look different from
+          PowerPoint.
+        </p>
+      )}
       {error && <p role="alert">{error}</p>}
       {notice && (
         <p className="pdf-toast" role="status">

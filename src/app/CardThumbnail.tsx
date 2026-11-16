@@ -7,6 +7,7 @@ import {
 } from "../features/editor/blocksuite/card-deck";
 import type { MediaKind } from "../features/editor/blocksuite/media-cards";
 import { ShellIcon } from "./ShellIcon";
+import { isSlidesName } from "../services/slides";
 
 const kindIcons = {
   video: "video",
@@ -16,11 +17,19 @@ const kindIcons = {
   image: "image",
 } as const satisfies Record<MediaKind, string>;
 
+/** Slide decks, converted or not, show the slides icon. */
+function mediaIcon(media: NonNullable<ReturnType<typeof cardMedia>>) {
+  return (media.kind === "pdf" || media.kind === "file") &&
+    isSlidesName(media.get("prop:name"))
+    ? ("slides" as const)
+    : kindIcons[media.kind];
+}
+
 /** The shared object icon for a card: what it is, never how it's placed. */
 export function cardIcon(card: DeckCard) {
   if (isMcqCard(card)) return "multipleChoice" as const;
   const media = cardMedia(card);
-  return media ? kindIcons[media.kind] : ("note" as const);
+  return media ? mediaIcon(media) : ("note" as const);
 }
 
 // Image cards read their file from the workspace once, then keep a small
@@ -137,7 +146,7 @@ export function CardThumbnail({ card }: { card: DeckCard }) {
           onError={() => setFailedSource(src)}
         />
       ) : (
-        <ShellIcon name={kindIcons[media.kind]} />
+        <ShellIcon name={mediaIcon(media)} />
       )}
     </span>
   );

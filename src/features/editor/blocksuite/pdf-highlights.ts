@@ -2,6 +2,8 @@ export interface PdfSource {
   key: string;
   name: string;
   documentId: string;
+  /** A PDF copy of a slide deck: the original .pptx and what converted it. */
+  slides?: { original: string; converter: "powerpoint" | "libreoffice" };
 }
 export type PdfRect = [number, number, number, number];
 export interface PdfLocation extends PdfSource {

@@ -101,13 +101,18 @@ export function mediaText(card: DeckCard) {
     text("prop:caption") ||
     url ||
     mediaLabels[media.kind];
+  const label =
+    (media.kind === "pdf" || media.kind === "file") &&
+    /\.pptx$/i.test(text("prop:name"))
+      ? "Slides"
+      : mediaLabels[media.kind];
   let site = "";
   try {
     site = url ? new URL(url).host.replace(/^www\./, "") : "";
   } catch {
     site = url;
   }
-  const detail = [mediaLabels[media.kind], site].filter(Boolean).join(" · ");
+  const detail = [label, site].filter(Boolean).join(" · ");
   // Everything searchable: title, address, description and caption.
   const search = [title, url, text("prop:description"), text("prop:caption"), text("prop:name")]
     .filter((part, index, all) => part && all.indexOf(part) === index)

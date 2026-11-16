@@ -1,6 +1,7 @@
 import { readCitationSources } from "./ai-citations";
 import type { AiPdfSource } from "./pdf-input";
 import type { VideoLocation } from "./youtube-transcript";
+import { pageLabel } from "./slides";
 
 /**
  * What a user deliberately sent with a message, shown as chips above it in
@@ -103,7 +104,9 @@ export function sentAttachments(parts: {
       label: short(label || "Page", 80),
       ...(kind === "selection" && { detail: "Selection" }),
       ...(kind === "pdf" &&
-        context.pdf?.page && { detail: `p. ${context.pdf.page}` }),
+        context.pdf?.page && {
+          detail: pageLabel(context.label.split(" · ")[0], context.pdf.page),
+        }),
       ...(context.document && { document: context.document }),
       ...(context.pdf ? { pdf: context.pdf } : anchor(context.first)),
     });

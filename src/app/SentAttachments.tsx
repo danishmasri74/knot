@@ -30,7 +30,9 @@ function icon(item: SentAttachment) {
     case "excerpt":
       return "highlight" as const;
     case "pdf":
-      return "pdf" as const;
+      return /\.pptx(\s|$)/i.test(item.label)
+        ? ("slides" as const)
+        : ("pdf" as const);
     case "video":
       return "video" as const;
     case "web":

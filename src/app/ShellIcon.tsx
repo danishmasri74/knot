@@ -54,6 +54,7 @@ export const shellIconPaths = {
   image: "M4 5h16v14H4z M4 16l5-5 4 4 2-2 5 5 M15.5 9h.01",
   multipleChoice:
     "M8 5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M8 12a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M8 19a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M5.5 12h.01 M12 5h9 M12 12h9 M12 19h9",
+  slides: "M2 4h20 M4 4v11h16V4 M12 15v3 M9 21l3-3 3 3 M8 8h8 M8 11h5",
   pdf: "M6 3h9l3 3v15H6z M14 3v5h4 M10 16c3-2 4-7 2-6-2 1 1 7 4 5 1-1-4-1-6 1-2 2 0 2 0 0z",
   cardDeck:
     "M7 3h10 M5 6h14 M5 9h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z M7 13h10 M7 17h6",

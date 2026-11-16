@@ -78,6 +78,7 @@ import type {
 } from "../services/youtube-transcript";
 import { ViewTransition } from "./ViewTransition";
 import { CanvasSuggestions } from "./CanvasSuggestions";
+import { pageLabel } from "../services/slides";
 import {
   qualifiedActions,
   type CardAction,
@@ -830,7 +831,7 @@ export function App() {
         match.page
           ? {
               source,
-              noteTitle: `${match.name || "PDF"} · p. ${match.page}`,
+              noteTitle: `${match.name || "PDF"} · ${pageLabel(match.name, match.page)}`,
               excerpt: `Text in scan: ${match.excerpt}`,
               pdf: {
                 key: match.key,

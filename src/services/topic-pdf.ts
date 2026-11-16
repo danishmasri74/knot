@@ -2,6 +2,7 @@ import { openPdfBytes } from "./pdf-input";
 import { attachments } from "./workspace";
 import { splitPassage, type TopicPdf } from "./topic-extract";
 import type { TopicPassage, TopicSource } from "./topic-types";
+import { pageLabel } from "./slides";
 /** Pages without a text layer listed per PDF for background OCR. */
 export const MAX_SCANNED_PAGES = 200;
 // Session cache is bounded; persistent text is held only in the disposable native index.
@@ -116,7 +117,7 @@ export async function extractTopicPdf(
         .map((text) => ({
           document: source.id,
           id: ref.blockId,
-          title: `${ref.name} · p. ${p.page}`,
+          title: `${ref.name} · ${pageLabel(ref.name, p.page)}`,
           text,
           revision: source.revision,
           vector: [],

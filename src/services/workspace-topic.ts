@@ -27,6 +27,7 @@ import { extractTopicContent, extractDeckPassages } from "./topic-extract";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
 import { extractTopicPdf } from "./topic-pdf";
 import type { Snapshot } from "./workspace";
+import { pageLabel } from "./slides";
 let active: TopicIndexer | undefined;
 export class TopicIndexer {
   private worker: Worker;
@@ -285,7 +286,7 @@ export class TopicIndexer {
                     ...ocrPassages(lines).map(({ text, rects }) => ({
                       document: source.id,
                       id: ref.blockId,
-                      title: `${ref.name} · p. ${page} · text in image`,
+                      title: `${ref.name} · ${pageLabel(ref.name, page)} · text in image`,
                       text,
                       revision: source.revision,
                       vector: [],

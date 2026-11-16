@@ -709,6 +709,15 @@ main {
   border-radius: 6px;
   padding: 4px 10px;
 }
+.pdf-open-original {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
 .pdf-pagination button {
   font-size: 20px;
   padding: 2px 10px;
@@ -1796,6 +1805,77 @@ affine-edgeless-attachment.knot-attachment-embed video {
   height: calc(100% - 36px);
   object-fit: contain;
   min-height: 0;
+}
+/* A .pptx card while Knot converts it, or why it couldn't. */
+affine-edgeless-attachment:has(> .knot-slides-status),
+affine-attachment:has(> .knot-slides-status) {
+  position: relative;
+}
+.knot-slides-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--shell-muted);
+  font: 12px/1.4 var(--affine-font-family);
+}
+affine-edgeless-attachment > .knot-slides-status {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
+  text-align: center;
+  background: var(--shell-surface);
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+}
+affine-attachment > .knot-slides-status {
+  flex-wrap: wrap;
+  margin: 4px 0 0;
+  padding: 0 4px;
+}
+.knot-slides-status p {
+  margin: 0;
+}
+.knot-slides-actions {
+  display: flex;
+  gap: 6px;
+}
+.knot-slides-status button {
+  font: inherit;
+  padding: 3px 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--shell-radius);
+  background: var(--shell-surface);
+  color: var(--shell-text);
+  cursor: pointer;
+}
+.knot-slides-status button:hover {
+  background: var(--shell-selected);
+}
+.knot-slides-status[data-state="converting"] p::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: knot-slides-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .knot-slides-status[data-state="converting"] p::before {
+    animation: none;
+  }
+}
+@keyframes knot-slides-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .knot-canvas-pdf a {
   height: 36px;
