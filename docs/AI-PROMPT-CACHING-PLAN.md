@@ -1,5 +1,21 @@
 # Ask Knot prompt caching plan (draft, 11 November 2026)
 
+**Decision, 16 November 2026: steps 2–4 are on hold; step 5 is implemented.** Local
+diagnostics from after compaction (11–15 November, real usage) showed caching cost more
+than it saved: US$0.060 in write surcharges against US$0.038 in read savings, out of
+US$0.81 spent. Most note questions were never followed up within the 30-minute cache
+lifetime (about 2 in 11, below the roughly 26–28% break-even). When a quick follow-up did
+come on an unchanged note, implicit caching already hit (18,031 of 18,061 input tokens
+read). No chat had a note edit between turns, which is the only case snapshots and deltas
+(steps 3–4) improve. Settings → AI → Usage & diagnostics now shows the cache's net effect,
+the write extra and savings per operation, and follow-up counts. Next decision, once real
+usage has accumulated: keep writing on first questions, or write only from the second
+turn. Either is a small change in `one_shot`/`request_body`, not the delta machinery.
+Note also that automatic-mode instructions plus tool schemas are now about 2,000 tokens,
+above the 1,024-token minimum, so that shared prefix can be read across chats within
+30 minutes (seen once: 2,024 cached tokens on a new chat). The step 2 finding that L0 is
+too short no longer holds for automatic requests.
+
 Status: step 1 implemented on 11 November 2026 (`one_shot` and
 `EXPLICIT_CACHE_MODELS` in `src-tauri/src/ai.rs`, covered by
 `one_shot_requests_skip_cache_writes_on_explicit_models_only`). Live check in the
@@ -178,7 +194,9 @@ breakdown. Add, without content:
    rebases).
 4. Context deltas and rebase thresholds.
 5. Diagnostics cache columns and Settings view (can ship with step 1 to get a
-   baseline).
+   baseline). **Done 16 November 2026:** each attempt's write extra and read saving
+   (`cache_effect` in `src-tauri/src/diagnostics.rs`, at current rates) and a
+   "Prompt caching" summary with a per-operation breakdown in Settings.
 
 Each step is independently shippable and measurable. Stop after step 3 if deltas do
 not pay for their complexity in the measured data.

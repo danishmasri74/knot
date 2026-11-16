@@ -105,6 +105,19 @@ endpoint. The same estimate is shown per answer in Ask Knot (docs/AI.md), comput
 from the stream even when diagnostics are off; diagnostics still store nothing
 unless enabled.
 
+## Prompt caching (16 November 2026)
+
+The overview's **Prompt caching** tile shows what caching saved or cost for the selected
+attempts: read savings (cached input at its lower rate, against ordinary input) minus the
+write extra (cache writes above ordinary input: 25% for 30-minute writes, 150% for
+12-hour writes). **Prompt caching by operation** lists the share of input read from the
+cache, write extra and savings per operation, plus how many first questions paid to
+write and how many follow-up turns there were. Figures come from `cache_effect` in
+`src-tauri/src/diagnostics.rs` and are computed when diagnostics are read, at current
+rates, so older records are included; attempts without complete usage are left out.
+Automatic-mode operations (`auto:answer`, `auto:canvas` and so on) and suggestions now
+have labels and appear in the Operation filter.
+
 ## Verification and quality
 
 Rust tests compare serialized outgoing bodies against the frozen pre-measurement

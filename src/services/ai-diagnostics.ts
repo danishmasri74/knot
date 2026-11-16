@@ -36,6 +36,8 @@ export type AiAttempt = {
     total: number | null;
   };
   cost_usd: number | null;
+  /** What caching changed, at current rates; null when cost is unknown. */
+  cache?: { extra_usd: number; saved_usd: number } | null;
   pricing_version: string;
   service_tier: string | null;
 };
@@ -70,5 +72,46 @@ export function summarizeAttempts(attempts: AiAttempt[]) {
     p95: latencies.length
       ? latencies[Math.ceil(latencies.length * 0.95) - 1]
       : null,
+  };
+}
+
+/** Turns that carry earlier messages; workspace turns send only the latest. */
+const isFollowUp = (a: AiAttempt) => Number(a.composition.messages ?? 0) > 1;
+
+/**
+ * Prompt caching's effect on priced attempts: the write surcharge paid, the
+ * saving from cached reads, and how often a first question that paid to write
+ * was followed up (a write pays off only when a later turn reads it).
+ */
+export function summarizeCache(attempts: AiAttempt[]) {
+  const known = attempts.filter((a) => a.cache);
+  const total = (rows: AiAttempt[]) => {
+    const extra = rows.reduce((sum, a) => sum + a.cache!.extra_usd, 0);
+    const saved = rows.reduce((sum, a) => sum + a.cache!.saved_usd, 0);
+    const input = rows.reduce((sum, a) => sum + (a.usage.input ?? 0), 0);
+    const cached = rows.reduce((sum, a) => sum + (a.usage.cached ?? 0), 0);
+    return {
+      attempts: rows.length,
+      extra,
+      saved,
+      net: saved - extra,
+      readShare: input ? cached / input : null,
+    };
+  };
+  const groups = new Map<string, AiAttempt[]>();
+  for (const a of known)
+    groups.set(a.operation, [...(groups.get(a.operation) ?? []), a]);
+  return {
+    ...total(known),
+    priced: known.length,
+    firstWrites: known.filter((a) => !isFollowUp(a) && a.cache!.extra_usd > 0)
+      .length,
+    followUps: known.filter(isFollowUp).length,
+    followUpReads: known.filter(
+      (a) => isFollowUp(a) && (a.usage.cached ?? 0) > 0,
+    ).length,
+    byOperation: [...groups]
+      .map(([operation, rows]) => ({ operation, ...total(rows) }))
+      .sort((a, b) => b.extra + b.saved - (a.extra + a.saved)),
   };
 }

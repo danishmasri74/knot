@@ -172,7 +172,7 @@ impl Measurement {
                 } else {
                     "unknown".into()
                 },
-                operation: if ["ask", "auto", "rewrite", "insert", "canvas"].contains(&operation) {
+                operation: if ["ask", "auto", "rewrite", "insert", "canvas", "suggestions"].contains(&operation) {
                     operation.into()
                 } else {
                     "unknown".into()
@@ -351,6 +351,30 @@ pub const PRICING_VERSION: &str = "openai-standard-2026-11-13-v3";
 // Standard short-context USD per million tokens. Reasoning is included in output;
 // cached tokens are a subset of input. Unknown cache breakdown/tier remains unknown.
 pub fn estimate(model: &str, u: &Usage, tier: Option<&str>) -> Option<f64> {
+    let (i, c, o, (input, cached, output), (_, w30, w12)) = priced(model, u, tier)?;
+    let write = w30 + w12;
+    Some(
+        ((i - c - write) as f64 * input
+            + c as f64 * cached
+            + w30 as f64 * input * 1.25
+            + w12 as f64 * input * 2.5
+            + o as f64 * output)
+            / 1_000_000.0,
+    )
+}
+/// What caching changed for one attempt, in USD at the same rates as `estimate`:
+/// the write surcharge above plain input, and the saving of cached over plain
+/// input. Unknown whenever the attempt's cost is unknown.
+pub fn cache_effect(model: &str, u: &Usage, tier: Option<&str>) -> Option<(f64, f64)> {
+    let (_, c, _, (input, cached, _), (_, w30, w12)) = priced(model, u, tier)?;
+    Some((
+        (w30 as f64 * 0.25 + w12 as f64 * 1.5) * input / 1_000_000.0,
+        c as f64 * (input - cached) / 1_000_000.0,
+    ))
+}
+type Rates = (f64, f64, f64);
+/// Validated input, cached, output, per-million rates and cache-write breakdown.
+fn priced(model: &str, u: &Usage, tier: Option<&str>) -> Option<(u64, u64, u64, Rates, (u64, u64, u64))> {
     if !matches!(tier, Some("default" | "standard")) {
         return None;
     }
@@ -359,7 +383,7 @@ pub fn estimate(model: &str, u: &Usage, tier: Option<&str>) -> Option<f64> {
         return None;
     }
     let long = i > 272_000;
-    let (input, cached, output) = match (model, long) {
+    let rates = match (model, long) {
         ("gpt-6-luna", false) => (0.10, 0.01, 0.50),
         ("gpt-6-luna", true) => (0.20, 0.02, 0.75),
         ("gpt-6.1-terra", false) => (1.0, 0.05, 5.0),
@@ -396,14 +420,7 @@ pub fn estimate(model: &str, u: &Usage, tier: Option<&str>) -> Option<f64> {
     if w30.checked_add(w12)? != write || c.checked_add(write)? > i {
         return None;
     }
-    Some(
-        ((i - c - write) as f64 * input
-            + c as f64 * cached
-            + w30 as f64 * input * 1.25
-            + w12 as f64 * input * 2.5
-            + o as f64 * output)
-            / 1_000_000.0,
-    )
+    Some((i, c, o, rates, (write, w30, w12)))
 }
 
 enum Work {
@@ -559,6 +576,14 @@ fn write_attempt(db: &Connection, attempt: &Attempt) -> rusqlite::Result<()> {
     )?;
     prune(db)
 }
+/// Adds `cache: {extra_usd, saved_usd}` (null when unknown) at current rates.
+fn with_cache_effect(mut attempt: Value) -> Value {
+    let effect = serde_json::from_value::<Usage>(attempt["usage"].clone()).ok().and_then(|usage| {
+        cache_effect(attempt["model"].as_str()?, &usage, attempt["service_tier"].as_str())
+    });
+    attempt["cache"] = effect.map_or(Value::Null, |(extra, saved)| serde_json::json!({"extra_usd": extra, "saved_usd": saved}));
+    attempt
+}
 fn snapshot(db: &Connection) -> rusqlite::Result<Value> {
     prune(db)?;
     let attempts = db
@@ -567,7 +592,7 @@ fn snapshot(db: &Connection) -> rusqlite::Result<Value> {
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let outcomes = db.prepare("SELECT attempt,kind,at FROM outcomes ORDER BY at")?.query_map([], |r| Ok(serde_json::json!({"attempt":r.get::<_,String>(0)?,"kind":r.get::<_,String>(1)?,"at":r.get::<_,u64>(2)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(
-        serde_json::json!({"schema_version":1,"enabled":db.query_row("SELECT enabled FROM settings",[],|r|r.get::<_,bool>(0))?,"attempts":attempts.iter().filter_map(|s|serde_json::from_str::<Value>(s).ok()).collect::<Vec<_>>(),"outcomes":outcomes}),
+        serde_json::json!({"schema_version":1,"enabled":db.query_row("SELECT enabled FROM settings",[],|r|r.get::<_,bool>(0))?,"attempts":attempts.iter().filter_map(|s|serde_json::from_str::<Value>(s).ok()).map(with_cache_effect).collect::<Vec<_>>(),"outcomes":outcomes}),
     )
 }
 #[tauri::command]
@@ -675,6 +700,29 @@ mod tests {
             Some("default")
         )
         .is_none());
+    }
+    #[test]
+    fn cache_effect_splits_write_surcharge_from_read_saving() {
+        let u = Usage {
+            input: Some(12_000),
+            cached: Some(4_000),
+            cache_write: Some(7_000),
+            cache_write_30m: Some(3_000),
+            cache_write_12h: Some(4_000),
+            output: Some(100),
+            ..Usage::default()
+        };
+        // Terra: writes (3000*.25 + 4000*1.5) * $1; reads 4000 * ($1 - $0.05).
+        let (extra, saved) = cache_effect("gpt-6.1-terra", &u, Some("default")).unwrap();
+        assert!((extra - 0.00675).abs() < 1e-12 && (saved - 0.0038).abs() < 1e-12);
+        // Uncached cost minus extra plus saving equals the cached estimate.
+        let plain = (12_000.0 * 1.0 + 100.0 * 5.0) / 1_000_000.0;
+        assert!((estimate("gpt-6.1-terra", &u, Some("default")).unwrap() - (plain + extra - saved)).abs() < 1e-12);
+        assert!(cache_effect("gpt-6.1-terra", &u, None).is_none());
+        let attempt = with_cache_effect(serde_json::json!({"model": "gpt-6-luna", "service_tier": "default",
+            "usage": {"input": 1000, "cached": 0, "cache_write": 1000, "output": 1}}));
+        assert!((attempt["cache"]["extra_usd"].as_f64().unwrap() - 0.000025).abs() < 1e-12);
+        assert_eq!(with_cache_effect(serde_json::json!({"model": "gpt-6-luna", "usage": {}}))["cache"], Value::Null);
     }
     #[test]
     fn reported_zero_cache_writes_do_not_require_lifetime_breakdown() {

@@ -5307,6 +5307,26 @@ details[open] > .diagnostics-disclosure > .shell-icon {
 .diagnostics-technical {
   margin-top: 8px;
 }
+.diagnostics-cache-table {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.diagnostics-cache-table > div {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--shell-border);
+}
+.diagnostics-cache-table > div:first-child {
+  color: var(--shell-muted);
+}
+.diagnostics-cache-table span:not(:first-child) {
+  text-align: right;
+}
 .diagnostics-technical > p,
 .diagnostics-attempt-body {
   padding-inline: 8px;

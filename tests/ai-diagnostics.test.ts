@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   summarizeAttempts,
+  summarizeCache,
   type AiAttempt,
 } from "../src/services/ai-diagnostics";
 
@@ -32,6 +33,38 @@ describe("diagnostic summaries", () => {
       p50: null,
       p95: null,
     });
+  });
+  it("separates cache write extra from read savings and counts follow-ups", () => {
+    const row = (
+      operation: string,
+      messages: number,
+      cached: number,
+      cache: AiAttempt["cache"],
+    ) =>
+      ({
+        operation,
+        composition: { messages },
+        usage: { input: 1000, cached },
+        cache,
+      }) as unknown as AiAttempt;
+    const rows = [
+      row("auto:answer", 1, 0, { extra_usd: 0.004, saved_usd: 0 }),
+      row("auto:answer", 3, 900, { extra_usd: 0.0001, saved_usd: 0.002 }),
+      row("auto:canvas", 1, 0, { extra_usd: 0, saved_usd: 0 }),
+      row("auto:answer", 1, 0, null),
+    ];
+    const cache = summarizeCache(rows);
+    expect(cache.priced).toBe(3);
+    expect(cache.extra).toBeCloseTo(0.0041);
+    expect(cache.net).toBeCloseTo(-0.0021);
+    expect(cache.readShare).toBeCloseTo(0.3);
+    expect([cache.firstWrites, cache.followUps, cache.followUpReads]).toEqual([
+      1, 1, 1,
+    ]);
+    expect(cache.byOperation.map((r) => r.operation)).toEqual([
+      "auto:answer",
+      "auto:canvas",
+    ]);
   });
   it("has 60 distinct, reviewable synthetic cases across all required categories", () => {
     const suite = JSON.parse(

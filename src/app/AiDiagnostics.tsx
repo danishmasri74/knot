@@ -3,15 +3,29 @@ import { invoke } from "@tauri-apps/api/core";
 import { ShellIcon } from "./ShellIcon";
 import {
   summarizeAttempts,
+  summarizeCache,
   type AiDiagnosticsSnapshot,
 } from "../services/ai-diagnostics";
 
 const operationLabels = {
-  ask: "Ask Knot",
+  "auto:answer": "Answer",
+  "auto:rewrite": "Rewrite proposal",
+  "auto:insert": "Insert proposal",
+  "auto:canvas": "Canvas proposal",
+  "auto:note": "New note proposal",
+  "auto:search": "Workspace search",
+  "auto:images": "Image viewing",
+  auto: "Ask Knot (unfinished)",
+  ask: "Ask Knot (forced answer)",
   rewrite: "Rewrite",
   insert: "Insert",
   canvas: "Canvas",
+  suggestions: "Suggestions",
+  unknown: "Other",
 };
+
+/** Small cache amounts need more places than whole-request costs. */
+const usd = (n: number) => `$${Math.abs(n).toFixed(4)}`;
 
 const statusLabels = {
   running: "In progress",
@@ -53,6 +67,7 @@ export function AiDiagnostics() {
       a.started >= Date.now() / 1000 - days * 86400,
   );
   const summary = summarizeAttempts(attempts);
+  const cache = summarizeCache(attempts);
   const selectedIds = new Set(attempts.map((a) => a.id));
   const outcomes =
     data?.outcomes.filter((o) => selectedIds.has(o.attempt)) ?? [];
@@ -229,7 +244,70 @@ export function AiDiagnostics() {
                     {summary.priced} of {summary.attempts} attempts priced
                   </small>
                 </div>
+                <div>
+                  <span>Prompt caching</span>
+                  <strong>
+                    {cache.priced
+                      ? `${cache.net < 0 ? "Cost" : "Saved"} ${usd(cache.net)}`
+                      : "Unavailable"}
+                  </strong>
+                  <small>
+                    {cache.priced
+                      ? `${usd(cache.saved)} saved · ${usd(cache.extra)} extra for writes`
+                      : "No priced attempts"}
+                  </small>
+                </div>
               </div>
+              {cache.priced > 0 && (
+                <details className="diagnostics-technical">
+                  <summary className="diagnostics-disclosure">
+                    <strong>Prompt caching by operation</strong>
+                    <ShellIcon name="chevron" />
+                  </summary>
+                  <p>
+                    {`Writing a cache entry costs 25% more than ordinary input; reading it later costs 90–95% less. A write pays off only when a later turn reads it within 30 minutes. ${
+                      cache.readShare === null
+                        ? ""
+                        : `${Math.round(cache.readShare * 100)}% of input came from the cache. `
+                    }${cache.firstWrites} first ${cache.firstWrites === 1 ? "question" : "questions"} paid to write; ${cache.followUps} follow-up ${cache.followUps === 1 ? "turn" : "turns"} (${cache.followUpReads} read from the cache). Writing on first questions pays off at roughly 26–28 cached follow-ups per 100 first questions.`}
+                  </p>
+                  <div
+                    className="diagnostics-cache-table"
+                    role="table"
+                    aria-label="Prompt caching by operation"
+                  >
+                    <div role="row">
+                      <span role="columnheader">Operation</span>
+                      <span role="columnheader">Attempts</span>
+                      <span role="columnheader">From cache</span>
+                      <span role="columnheader">Write extra</span>
+                      <span role="columnheader">Saved</span>
+                    </div>
+                    {cache.byOperation.map((row) => (
+                      <div role="row" key={row.operation}>
+                        <span role="cell">
+                          {operationLabels[
+                            row.operation as keyof typeof operationLabels
+                          ] ?? row.operation}
+                        </span>
+                        <span role="cell">{row.attempts}</span>
+                        <span role="cell">
+                          {row.readShare === null
+                            ? "—"
+                            : `${Math.round(row.readShare * 100)}%`}
+                        </span>
+                        <span role="cell">{usd(row.extra)}</span>
+                        <span role="cell">{usd(row.saved)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="settings-description">
+                    Estimated at current standard rates from each attempt’s
+                    reported usage; attempts without complete usage are left
+                    out.
+                  </p>
+                </details>
+              )}
               <details className="diagnostics-technical">
                 <summary className="diagnostics-disclosure">
                   <strong>Measurement details &amp; privacy</strong>
@@ -247,13 +325,12 @@ export function AiDiagnostics() {
                 <p className="settings-description">
                   Cost covers only attempts with complete usage and a supported
                   standard service tier. Missing usage is unknown. Cached input
-                  is included in input, and reasoning is included in output.
-                  New estimates use pricing version
-                  openai-standard-2026-11-11-v2; each attempt shows the version
-                  it was estimated with.
-                  Use your provider’s invoice for actual charges. Each retry
-                  counts as a separate billable attempt. Actions on an answer or
-                  proposal add no cost.
+                  is included in input, and reasoning is included in output. New
+                  estimates use pricing version openai-standard-2026-11-11-v2;
+                  each attempt shows the version it was estimated with. Use your
+                  provider’s invoice for actual charges. Each retry counts as a
+                  separate billable attempt. Actions on an answer or proposal
+                  add no cost.
                 </p>
                 <p>
                   Known input {summary.input.toLocaleString()} / output{" "}
@@ -349,9 +426,9 @@ export function AiDiagnostics() {
                     <p>
                       UTF-8 serialized bytes, not token estimates. Components
                       describe the saved context and may repeat source text;
-                      note context is compacted before sending, so payload
-                      bytes show what was sent. Image/PDF bytes are encoded
-                      transport sizes.
+                      note context is compacted before sending, so payload bytes
+                      show what was sent. Image/PDF bytes are encoded transport
+                      sizes.
                     </p>
                     <dl>
                       {Object.entries(a.composition).map(([key, value]) => (
