@@ -1953,6 +1953,9 @@ export function App() {
     }
   }
   async function selectCitation(item: KnowledgeObject) {
+    // Already open: just show it, without the loading screen (as openNote).
+    if (session.current?.doc.id === item.id && !editorLoadFailed)
+      return openDocument(item);
     if (session.current?.doc.id === item.id) return select(item);
     const continuation = {
       workspace: workspaceIdentity.current!,

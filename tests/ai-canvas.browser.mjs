@@ -63,12 +63,12 @@ try {
         !edge.target.id
       )
         throw Error("connector missing");
-      // Open cards goes to the first new card.
+      // Show on canvas goes to the first new card.
       if (
         d.getBlock(undo.noteId)?.model.children[0]?.text?.toString() !==
         "Start"
       )
-        throw Error("first card not reported for Open cards");
+        throw Error("first card not reported for Show on canvas");
       undo();
       if (
         d.getBlocksByFlavour("affine:note").length ||

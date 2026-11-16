@@ -155,7 +155,7 @@ try {
   assert.ok(after.frameAtOriginal, "group takes the original's place");
   assert.ok(after.incomingToFrame, "arrow to the original now hits the frame");
   assert.deepEqual(after.typedColor, result.requires, "typed arrow color");
-  assert.equal(after.openCard, "Testing finds defects", "Open cards target");
+  assert.equal(after.openCard, "Testing finds defects", "Show on canvas target");
   assert.ok(after.cardTrashed, "original card in Trash");
   assert.deepEqual(undone, {
     original: true,

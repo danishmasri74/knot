@@ -98,6 +98,8 @@ try {
       label: String(added?.text ?? ""),
       color: added?.stroke,
       labelBox: Array.isArray(added?.labelXYWH),
+      // A theme-aware colour, not BlockSuite's fixed black (dark canvases).
+      labelDark: added?.labelStyle?.color?.dark,
     };
     // BlockSuite re-centres arrow labels shortly after; Undo must still work.
     await new Promise((r) => setTimeout(r, 600));
@@ -118,6 +120,7 @@ try {
     label: "requires",
     color: result.requires,
     labelBox: true,
+    labelDark: "#e3e3e3",
   });
   assert.equal(result.undone, 1, "Undo removes only the new arrow");
 

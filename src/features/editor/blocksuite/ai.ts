@@ -1296,12 +1296,13 @@ export function applyAiProposal(
       }
     } else if (mode === "canvas") {
       // Laid out by the structure the arrows describe (flow, tree, hub or grid).
-      const bounds = layoutCards(
+      const laidOut = layoutCards(
         proposal.blocks.map(aiBlockText),
         connections,
         placed ? 0 : right,
         proposal.blocks.map(aiBlockSize),
-      ).bounds.map(([x, y, w, h]): [number, number, number, number] =>
+      );
+      const bounds = laidOut.bounds.map(([x, y, w, h]): [number, number, number, number] =>
         placed
           ? [x + placed.shift[0], y + placed.shift[1], w, h]
           : [x, y, w, h],
@@ -1359,7 +1360,7 @@ export function applyAiProposal(
           );
         return id;
       });
-      // The first new card, for Open cards.
+      // The first new card, for Show on canvas.
       noteId = ids[0];
       if (proposal.mindmap?.some((n) => n.sourceRefs?.length)) {
         const id =
@@ -1381,7 +1382,13 @@ export function applyAiProposal(
           );
       }
       for (const [index, c] of connections.entries()) {
-        const ports = aiConnectorPorts(bounds[c.from], bounds[c.to]);
+        // In a tree, a child below its parent joins top to bottom, so no
+        // arrow runs behind a sibling card.
+        const ports =
+          laidOut.kind === "tree" &&
+          bounds[c.from][1] >= bounds[c.to][1] + bounds[c.to][3]
+            ? { source: [0.5, 0], target: [0.5, 1] }
+            : aiConnectorPorts(bounds[c.from], bounds[c.to]);
         surface!.addElement({
           type: "connector",
           mode: connectorMode,
@@ -1390,7 +1397,12 @@ export function applyAiProposal(
           source: { id: ids[c.from], position: ports.source },
           target: { id: ids[c.to], position: ports.target },
           text: new Y.Text(c.label),
-          ...connectorLabel(c.label),
+          ...connectorLabel(
+            c.label,
+            laidOut.kind === "tree"
+              ? treeLabelDistance(bounds[c.from], bounds[c.to])
+              : undefined,
+          ),
         });
       }
       // Arrows between new cards and the existing objects they link to.
@@ -1494,12 +1506,47 @@ export function applyAiProposal(
  * label editor measures as you type. Programmatic labels get an estimated
  * box; BlockSuite re-centres it on the arrow whenever the path changes.
  */
-function connectorLabel(label: string): Record<string, unknown> {
+function connectorLabel(
+  label: string,
+  /** Where the label sits along the arrow, from its start (0-1). */
+  distance?: number,
+): Record<string, unknown> {
   const text = label.trim();
   if (!text) return {};
   const width = Math.min(320, Math.max(36, Array.from(text).length * 9 + 20));
   const lines = Math.ceil((Array.from(text).length * 9 + 20) / 320);
-  return { labelXYWH: [0, 0, width, 26 * lines] as Box, labelDisplay: true };
+  return {
+    labelXYWH: [0, 0, width, 26 * lines] as Box,
+    labelDisplay: true,
+    // BlockSuite's default label colour is a fixed black, invisible on a
+    // dark canvas; labels typed in the editor use a theme colour instead.
+    labelStyle: {
+      color: { light: "#2b2b2b", dark: "#e3e3e3" },
+      fontFamily: "blocksuite:surface:Inter",
+      fontSize: 16,
+      fontStyle: "normal",
+      fontWeight: "400",
+      textAlign: "center",
+    },
+    ...(distance !== undefined && {
+      labelOffset: { distance, anchor: "center" },
+    }),
+  };
+}
+
+/**
+ * In a tree, every child's elbow arrow shares the horizontal line to its
+ * parent, so a label in the middle cuts that shared line. Put it on the
+ * child's own vertical stretch instead: halfway up the first segment, which
+ * runs to the midpoint between the levels.
+ */
+function treeLabelDistance(child: Box, parent: Box) {
+  const childTop = child[1];
+  const parentBottom = parent[1] + parent[3];
+  const rise = Math.abs(childTop - parentBottom);
+  const across = Math.abs(child[0] + child[2] / 2 - (parent[0] + parent[2] / 2));
+  if (!rise) return 0.5;
+  return Math.min(0.5, Math.max(0.05, rise / 4 / (rise + across)));
 }
 
 const FRAME_PAD = 40;

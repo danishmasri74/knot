@@ -2989,14 +2989,13 @@ function AskKnotPanel({
                                 ).catch((e) => setError(String(e)));
                               }}
                             >
+                              {/* It jumps to what was made and highlights it;
+                                  only a new note actually opens. */}
                               {turn.mode === "quiz"
-                                ? "Open quiz"
-                                : turn.mode === "arrange"
-                                  ? "Show cards"
-                                  : turn.mode === "canvas"
-                                  ? turn.proposal!.blocks.length > 1
-                                    ? "Open cards"
-                                    : "Open card"
+                                ? "Show quiz"
+                                : turn.mode === "arrange" ||
+                                    turn.mode === "canvas"
+                                  ? "Show on canvas"
                                   : "Open note"}
                             </button>
                           )}
@@ -3068,8 +3067,8 @@ function AskKnotPanel({
                     )}
                     {cardAdded?.index === i && cardAdded.block && (
                       <button
-                        aria-label="Open card"
-                        data-tooltip="Open card"
+                        aria-label="Show card on canvas"
+                        data-tooltip="Show card on canvas"
                         onClick={() => {
                           setError("");
                           void onSource(
@@ -3080,7 +3079,7 @@ function AskKnotPanel({
                         }}
                       >
                         <ShellIcon name="locate" />
-                        <span>Open card</span>
+                        <span>Show on canvas</span>
                       </button>
                     )}
                     {turn.role === "assistant" &&
