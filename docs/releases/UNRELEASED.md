@@ -1,17 +1,1 @@
 # Unreleased
-- Open source and Open link in Ask Knot answers follow Settings → Web links, opening in Knot's browser when that's chosen.
-- Ask Knot reads the page behind a selected website card, so "Summarize this" works on links, not just YouTube, images and PDFs. The card and its page show as one source.
-- Settings → AI → Usage & diagnostics shows what prompt caching saved or cost, per operation.
-- Ask Knot no longer sometimes says it can't cite your notes, or refuses to answer a follow-up, when the notes are right there.
-- The Library is now a tab with its own columns: open Ask Knot beside it, and the Library remembers its tabs and sizes. Ask Knot always opens as a tab, so "Open as page" is gone.
-- PowerPoint decks (.pptx) open like PDFs: Knot makes a PDF copy with your own PowerPoint or LibreOffice, so you can read slides, highlight, search and Ask Knot about them. Open in PowerPoint opens the original.
-- Asking about a selected PDF or slide deck no longer mixes in other pictures from the canvas as if they were its pages.
-- Ask Knot can make multiple-choice quizzes: ask it to "quiz me on this note" and it suggests questions you can review, then puts them on a new quiz card beside the note with an arrow from it, or into the note if you ask (Settings → AI → Make quizzes).
-- Cards Ask Knot puts on the canvas, and replies saved with "Add reply as one card", get an Open card button that jumps to them.
-- The canvas suggestion is now "Break this into ideas?": it replaces a long card with short one-idea cards in a frame where the card was, with colored arrows showing how the ideas relate. Anything the cards leave out is kept on an "Other details" card, and the original goes to Trash (Undo brings it back).
-- Ask Knot now understands how your canvas is arranged: which cards are in which frame, what your arrows connect, mind map branches and roughly where things are. Ask "what depends on this?" or "walk me through this frame".
-- New cards from Ask Knot can connect to cards already on your canvas, and are placed next to them; "Break this into ideas" can link ideas to related cards elsewhere. Ask for a quiz on a frame and the quiz card goes beside that frame.
-- Cards Ask Knot makes are laid out by how they connect: steps run left to right, "part of" and "example of" form a tree, and a central idea sits in the middle. Ask it to "tidy up this frame" to rearrange cards that are already there.
-- Labels on Ask Knot's arrows now show on the canvas.
-- Ask Knot can suggest missing connections between your canvas cards, each with a reason; tick the ones you want and apply. Ask it to check your map and it points out arrows that don't match the cards, repeated cards and cards that aren't connected.
-- Ask Knot can look at your canvas when a question is about how it looks, such as drawings, colours or handwriting. The image is made on your computer from what you see and isn't saved with the chat.
