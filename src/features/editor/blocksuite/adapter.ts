@@ -1,4 +1,5 @@
 import { observeMcqMenu } from "./mcq-menu";
+import { repairArrowLabelColors } from "./ai";
 import { BookmarkPreviewSpec } from "./bookmark";
 import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
@@ -298,6 +299,8 @@ export async function openEditor(
         loaded.add(id);
         watch(id);
         migrateCitedExcerpts(target);
+        // Before history is reset, so the repair is saved but not undoable.
+        repairArrowLabelColors(target);
         mcqDecks.set(target.spaceDoc, cardDeck);
         cardDeck.attach(target.spaceDoc);
         target.resetHistory();

@@ -1521,7 +1521,7 @@ function connectorLabel(
     // BlockSuite's default label colour is a fixed black, invisible on a
     // dark canvas; labels typed in the editor use a theme colour instead.
     labelStyle: {
-      color: { light: "#2b2b2b", dark: "#e3e3e3" },
+      color: ARROW_LABEL_COLOR,
       fontFamily: "blocksuite:surface:Inter",
       fontSize: 16,
       fontStyle: "normal",
@@ -1532,6 +1532,44 @@ function connectorLabel(
       labelOffset: { distance, anchor: "center" },
     }),
   };
+}
+
+/** Arrow label text: dark on a light canvas, light on a dark one. */
+const ARROW_LABEL_COLOR = { light: "#2b2b2b", dark: "#e3e3e3" };
+
+/**
+ * Arrows Knot made before 0.6.3 kept BlockSuite's default label colour, a
+ * fixed black that is invisible on a dark canvas (only the gap cut into the
+ * line shows). Labels typed in the editor use theme colours, so a labelled
+ * connector whose label colour is exactly "#000000" came from code; give it
+ * the theme-aware colour. Runs when a notebook loads; returns the count.
+ */
+export function repairArrowLabelColors(doc: Doc): number {
+  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+    | SurfaceBlockModel
+    | undefined;
+  if (!surface) return 0;
+  let repaired = 0;
+  for (const element of surface.elementModels) {
+    if (element.type !== "connector") continue;
+    const connector = element as unknown as {
+      id: string;
+      text?: unknown;
+      labelXYWH?: unknown;
+      labelStyle?: Record<string, unknown>;
+    };
+    if (
+      connector.labelStyle?.color !== "#000000" ||
+      !connector.labelXYWH ||
+      !String(connector.text ?? "").trim()
+    )
+      continue;
+    surface.updateElement(connector.id, {
+      labelStyle: { ...connector.labelStyle, color: ARROW_LABEL_COLOR },
+    });
+    repaired++;
+  }
+  return repaired;
 }
 
 /**
