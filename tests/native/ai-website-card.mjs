@@ -89,6 +89,19 @@ try {
     };
     window.fetch = async (url, options) => {
       const command = String(url).split("/").at(-1);
+      // Record browser commands instead of opening real pages.
+      if (command.startsWith("browser_")) {
+        (window.browserCalls ??= []).push({
+          command,
+          args: JSON.parse(options.body || "{}"),
+        });
+        return new Response("null", {
+          headers: {
+            "Content-Type": "application/json",
+            "Tauri-Response": "ok",
+          },
+        });
+      }
       // Chats save to the real (isolated) test workspace.
       if (
         command.startsWith("ai_chat") ||
@@ -156,6 +169,56 @@ try {
     /It coaches public speaking/,
   );
   console.log("PASS a selected website card's page is captured and sent");
+  // The card and its fetched page are one source: one chip, not two.
+  assert.equal(
+    await page.locator(".ask-sent-attachments li").count(),
+    1,
+    "The sent message lists the card's page once",
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Exclude note context", exact: true })
+      .count(),
+    0,
+    "The composer does not repeat the card beside its website source",
+  );
+  console.log("PASS one chip for a website card and its page");
+  // Open source follows Settings → Web links (default: Knot's browser).
+  await page.evaluate(() => (window.browserCalls = []));
+  await page.locator(".ask-sources summary").last().click();
+  await page.getByRole("button", { name: "Open source", exact: true }).click();
+  await page.waitForFunction(() =>
+    window.browserCalls.some((c) => c.command !== "browser_status"),
+  );
+  const calls = await page.evaluate(() => window.browserCalls);
+  assert.ok(
+    calls.some(
+      (c) =>
+        ["browser_create", "browser_navigate"].includes(c.command) &&
+        c.args.url?.startsWith("https://example.com/coach"),
+    ),
+    "Open source opens Knot's browser: " + JSON.stringify(calls),
+  );
+  assert.ok(!calls.some((c) => c.command === "browser_open_external"));
+  // Settings → Web links → default browser (read from storage per open).
+  await page.evaluate(() => {
+    localStorage.setItem("knot.web-links", "external");
+    window.browserCalls = [];
+  });
+  // Knot's Browser opened as a tab beside Ask Knot; go back to the chat.
+  await page.getByRole("tab", { name: /Ask Knot/ }).click();
+  await page.getByRole("button", { name: "Open source", exact: true }).click();
+  await page.waitForFunction(() => window.browserCalls.length > 0);
+  const external = await page.evaluate(() => window.browserCalls);
+  assert.ok(
+    external.some(
+      (c) =>
+        c.command === "browser_open_external" &&
+        c.args.url?.startsWith("https://example.com/coach"),
+    ),
+    "Open source opens the default browser: " + JSON.stringify(external),
+  );
+  console.log("PASS Open source follows the Web links setting (both choices)");
   await page.screenshot({ path: path.join(root, "website-card.png") });
 } catch (error) {
   if (page) await page.screenshot({ path: path.join(root, "failure.png") });

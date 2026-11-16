@@ -61,7 +61,6 @@ import {
   type SentAttachment,
 } from "../services/sent-attachments";
 import { Popover } from "./Collections";
-import { browserApi } from "../services/browser";
 import {
   cardActions,
   cardRequestContext,
@@ -181,6 +180,14 @@ type Chat = {
   /** This chat's abilities when they differ from the Settings defaults. */
   abilities?: AiAbilities;
 };
+/**
+ * Opens a website through Knot's link router (installWebLinkRouter), which
+ * applies Settings → Web links: Knot's browser or the default browser.
+ */
+function openWebLink(url: string): Promise<void> {
+  window.open(url, "_blank", "noopener");
+  return Promise.resolve();
+}
 function hydrateChat(record: ChatRecord): Chat {
   const chat = record as unknown as Chat;
   return {
@@ -855,7 +862,7 @@ function AskKnotPanel({
           item.video,
         )
       : item.url
-        ? browserApi.external(item.url)
+        ? openWebLink(item.url)
         : item.document
           ? onSource(
               item.document,
@@ -1856,7 +1863,11 @@ function AskKnotPanel({
             useSources &&
             !cardContext &&
             !inheritedContext &&
-            !current.selectedImageKey
+            !current.selectedImageKey &&
+            // A website card whose page was fetched shows once, as that page.
+            !webSourcesRef.current.some(
+              (a) => a.capture && a.url === current.websiteUrl,
+            )
               ? {
                   label: current.selectionLabel ?? current.label,
                   title: current.pdf ? undefined : s.doc.meta?.title,
@@ -2869,45 +2880,47 @@ function AskKnotPanel({
                       Selected sources · inherited
                     </span>
                   )}
-                {includeSources && !context?.selectedImageKey && (
-                  <button
-                    type="button"
-                    className="ask-chip"
-                    disabled={busy}
-                    aria-pressed={includeSources}
-                    aria-label={
-                      !includeSources
-                        ? "Include note context"
-                        : "Exclude note context"
-                    }
-                    title={
-                      !includeSources
-                        ? "Click to include note context"
-                        : "Click to exclude note context"
-                    }
-                    onClick={() =>
-                      setSourceScope(includeSources ? "none" : "current")
-                    }
-                  >
-                    <ShellIcon
-                      name={
-                        context?.pdf
-                          ? "pdf"
-                          : context?.selectionKind === "website"
-                            ? "link"
-                            : context?.selectionKind === "file"
-                              ? "attach"
-                              : context?.label === "Canvas text"
-                                ? "board"
-                                : "note"
+                {includeSources &&
+                  !context?.selectedImageKey &&
+                  !webSources.some((s) => s.url === context?.websiteUrl) && (
+                    <button
+                      type="button"
+                      className="ask-chip"
+                      disabled={busy}
+                      aria-pressed={includeSources}
+                      aria-label={
+                        !includeSources
+                          ? "Include note context"
+                          : "Exclude note context"
                       }
-                    />
-                    <span className="ask-chip-label">
-                      {context?.selectionLabel ?? context?.label ?? "Page"}
-                    </span>
-                    <ShellIcon name="close" />
-                  </button>
-                )}
+                      title={
+                        !includeSources
+                          ? "Click to include note context"
+                          : "Click to exclude note context"
+                      }
+                      onClick={() =>
+                        setSourceScope(includeSources ? "none" : "current")
+                      }
+                    >
+                      <ShellIcon
+                        name={
+                          context?.pdf
+                            ? "pdf"
+                            : context?.selectionKind === "website"
+                              ? "link"
+                              : context?.selectionKind === "file"
+                                ? "attach"
+                                : context?.label === "Canvas text"
+                                  ? "board"
+                                  : "note"
+                        }
+                      />
+                      <span className="ask-chip-label">
+                        {context?.selectionLabel ?? context?.label ?? "Page"}
+                      </span>
+                      <ShellIcon name="close" />
+                    </button>
+                  )}
                 {uploadScope && !image && (
                   <span className="ask-chip">
                     <ShellIcon name="attach" />
@@ -3593,7 +3606,7 @@ const CitationSources = memo(function CitationSources({
                 setError("");
                 void (
                   source.kind === "link"
-                    ? browserApi.external(
+                    ? openWebLink(
                         excerpt
                           ? passageUrl(
                               excerpt.url,
@@ -3603,7 +3616,7 @@ const CitationSources = memo(function CitationSources({
                           : source.url,
                       )
                     : source.kind === "web"
-                      ? browserApi.external(
+                      ? openWebLink(
                           passageUrl(
                             (source.url && normalizeWebUrl(source.url)) ||
                               (retainedWebAttempts(context).find(
