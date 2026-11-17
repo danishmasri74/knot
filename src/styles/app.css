@@ -4961,7 +4961,7 @@ knot-cited-excerpt {
    widens. Cards keep their own height. */
 .card-deck-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   align-items: start;
   gap: 12px;
 }
@@ -5379,7 +5379,11 @@ knot-cited-excerpt {
 }
 /* One menu for placement, type and sort. */
 .deck-filter-menu {
-  width: 250px;
+  width: 260px;
+}
+/* Only the label stretches; the shared rule stretches every span. */
+.knot-dropdown .deck-filter-menu button > :is(.deck-filter-dot, .deck-filter-count) {
+  flex: none;
 }
 .deck-filter-menu .library-filter-options {
   max-height: none;
