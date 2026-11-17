@@ -630,3 +630,10 @@
   flex: none;
   max-width: 60%;
 }
+
+/* The panel scrolls; its sections keep their height instead of shrinking
+   (and clipping) to fit it. */
+.study-panel > *,
+.study-lesson > * {
+  flex-shrink: 0;
+}
