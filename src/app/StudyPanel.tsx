@@ -949,14 +949,16 @@ function StudySetup({
       }}
     >
       <h2>New study course</h2>
-      <input
-        className="study-name"
-        aria-label="Course name"
-        value={name}
-        maxLength={80}
-        placeholder={fallback}
-        onChange={(e) => setName(e.target.value)}
-      />
+      <div className="study-name-field">
+        <input
+          className="study-name"
+          aria-label="Course name"
+          value={name}
+          maxLength={80}
+          placeholder={fallback}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
       <fieldset className="study-files">
         <legend>Files</legend>
         {pdfs.length ? (
