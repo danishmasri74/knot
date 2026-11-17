@@ -623,10 +623,17 @@ fn pdf_file_name(name: &str) -> String {
     let base = base.strip_suffix(".pdf").unwrap_or(base);
     format!("{}.pdf", if base.is_empty() { "document" } else { base })
 }
+/// How answers cite several files, so the app can open the right one.
+const PDF_FILES_RULES: &str = "Several PDF files are attached, each under its file name. Every page or slide citation must name its file: write (file name, slide 3) or (file name, p. 3), using the file name exactly as given but without the final .pdf. Never cite a page or slide without its file name.";
 /// Adds the files to the user's latest message, after its text.
 fn attach_pdf_files(body: &mut Value, files: &[PdfFile]) {
     if files.is_empty() {
         return;
+    }
+    if files.len() > 1 {
+        let instructions = body["instructions"].as_str().unwrap_or_default();
+        body["instructions"] = json!(format!("{instructions}
+{PDF_FILES_RULES}"));
     }
     let Some(input) = body["input"].as_array_mut() else { return };
     let Some(message) = input.iter_mut().rev().find(|m| m["role"] == "user") else { return };
@@ -1623,6 +1630,7 @@ mod tests {
         // Earlier messages are untouched.
         assert_eq!(input[input.len() - 3]["content"], "Earlier");
         assert_eq!(pdf_file_name("  "), "document.pdf");
+        assert!(body["instructions"].as_str().unwrap().ends_with(PDF_FILES_RULES));
     }
     #[test]
     fn followups_use_a_small_strict_payload() {

@@ -4,6 +4,11 @@ import { AskSuggestion } from "./AskSuggestion";
 import { AiStarters } from "./AiStarters";
 import { AnswerFollowUps } from "./AnswerFollowUps";
 import {
+  PDF_CITATION,
+  resolvePdfCitation,
+  type CitedPdf,
+} from "../services/pdf-citations";
+import {
   followUpActions,
   followUpMessage,
   type FollowUp,
@@ -95,6 +100,7 @@ import {
   saveAiModelChoice,
 } from "../services/ai-preferences";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ShellIcon } from "./ShellIcon";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
@@ -1642,14 +1648,17 @@ function AskKnotPanel({
     if (followUp.action === "cards" || followUp.action === "mindmap")
       void send(undefined, followUp.label, undefined, undefined, "canvas", {
         message,
+        answerSource: true,
       });
     else if (followUp.action === "insert")
       void send(undefined, followUp.label, undefined, undefined, "insert", {
         message,
+        answerSource: true,
       });
     else
       void send(undefined, followUp.label, undefined, undefined, undefined, {
         message,
+        answerSource: true,
         onlyTool: followUp.action === "quiz" ? "create_quiz" : "create_note",
       });
   }
@@ -1669,6 +1678,9 @@ function AskKnotPanel({
       answerOnly?: boolean;
       /** A next step: offer only this write tool, so it proposes that edit. */
       onlyTool?: AiTool;
+      /** A next step: the answer in the message is the only source, so the
+       * note, canvas and PDFs it came from are not sent again. */
+      answerSource?: boolean;
     },
   ) {
     const retry =
@@ -1702,7 +1714,9 @@ function AskKnotPanel({
     }
     const resolved = starterContext
       ? "current"
-      : retry && !retry.request?.sourceMode && sourceScope === "auto"
+      : options?.answerSource
+        ? "explicit"
+        : retry && !retry.request?.sourceMode && sourceScope === "auto"
         ? "legacy"
         : resolveScope(input, action);
     if (answers && !s && (resolved === "none" || resolved === "legacy")) {
@@ -1750,7 +1764,7 @@ function AskKnotPanel({
         if (queued.length) await captureWebSources(queued);
         if (request.current !== id || !mounted.current) return;
       }
-      const current =
+      const captured =
         starterContext ??
         cardContext ??
         (context?.pdf ||
@@ -1758,8 +1772,13 @@ function AskKnotPanel({
         context?.ranges.length
           ? context
           : captureAiContext(s.editor, workspace, s.revealedNoteId));
-      if (!current || current.instance !== s.doc)
+      if (!captured || captured.instance !== s.doc)
         throw new Error("Reopen Ask Knot to capture this document.");
+      // A next step builds on the answer alone; its result still goes into
+      // this canvas or note, so a selected PDF no longer makes it read-only.
+      const current: AiContext = options?.answerSource
+        ? { ...captured, pdf: false, pdfSource: undefined, pdfFiles: undefined }
+        : captured;
       if (!retry && action === "rewrite" && !current.ranges.length)
         throw new Error("Select text in the editor to rewrite it.");
       if (!retry && action === "insert" && !current.note)
@@ -1775,15 +1794,17 @@ function AskKnotPanel({
             current.label === "Selection" || current.label === "Focused note",
             !!(added.length || passages.length || current.pdf),
           ));
-      setContext(current);
-      const extra = (cardContext ? [] : passages)
+      setContext(captured);
+      const extra = (cardContext || options?.answerSource ? [] : passages)
         .filter((p) => !added.some((n) => n.id === p.source.id))
         .map((p) => ({
           document: p.source.id,
           title: p.source.title,
           structure: [p.block],
         }));
-      for (const note of retry || cardContext ? [] : added) {
+      for (const note of retry || cardContext || options?.answerSource
+        ? []
+        : added) {
         const loaded = s.collection.getDoc(note.id);
         let text = "";
         if (loaded?.loaded && loaded.root)
@@ -1814,6 +1835,7 @@ function AskKnotPanel({
       if (action === "auto" && !history.length) history = exchangeHistory(base);
       let inheritedContext: string | undefined;
       const inherit =
+        !options?.answerSource &&
         !sourceChoicesChanged.current &&
         answers &&
         sourceScope === "auto" &&
@@ -2719,6 +2741,15 @@ function AskKnotPanel({
                           <ChatText
                             text={turn.content}
                             context={shownContext(turn.request)}
+                            pdfs={citedPdfs(turn.request)}
+                            onPdf={(pdf, page) =>
+                              openAttachment({
+                                kind: "pdf",
+                                label: pdf.name,
+                                document: pdf.document,
+                                pdf: { key: pdf.key, page },
+                              })
+                            }
                           />
                           <CitationSources
                             text={turn.content}
@@ -3205,10 +3236,12 @@ function AskKnotPanel({
                       available={followUpActions(abilities, {
                         canvas: !!context?.canvas,
                         note: !!context?.note,
+                        // Results land in this canvas or note, even when
+                        // the answer came from a selected PDF.
                         editable:
                           !!getSession() &&
                           !getSession()?.doc.readonly &&
-                          !context?.pdf,
+                          context?.instance === getSession()?.doc,
                       })}
                       saved={turn.followUps}
                       model={
@@ -3750,9 +3783,14 @@ function ResponseDuration({ seconds }: { seconds: number }) {
 const ChatText = memo(function ChatText({
   text,
   context,
+  pdfs = [],
+  onPdf,
 }: {
   text: string;
   context?: string;
+  /** PDFs sent with the message: "(slide 3)" citations open them. */
+  pdfs?: CitedPdf[];
+  onPdf?: (pdf: CitedPdf, page: number) => void;
 }) {
   const table = readCitationSources(context);
   const validMarkers = new Set(
@@ -3770,9 +3808,34 @@ const ChatText = memo(function ChatText({
       moments.set(source.citation ?? `[S${index + 1}]`, source.video.start);
   });
   const ids = citationIds(text);
-  const inline = (value: string) =>
-    value.split(/(\*\*[^*]+\*\*|`[^`]+`|\[S\d+\])/g).map((part, i) =>
-      moments.has(part) ? (
+  // Bold, code, [S1] markers and PDF page or slide citations.
+  const splitter = new RegExp(
+    String.raw`(\*\*[^*]+\*\*|` +
+      "`[^`]+`" +
+      String.raw`|\[S\d+\]|` +
+      PDF_CITATION +
+      ")",
+    "g",
+  );
+  const inline = (value: string): ReactNode[] =>
+    value.split(splitter).map((part, i) => {
+      const cited = part.startsWith("(")
+        ? resolvePdfCitation(part, pdfs)
+        : undefined;
+      return cited && onPdf ? (
+        <button
+          type="button"
+          className="ask-pdf-ref"
+          key={i}
+          data-tooltip={`Open ${cited.pdf.name} at ${cited.label.split(", ").at(-1)}`}
+          onClick={() => onPdf(cited.pdf, cited.page)}
+        >
+          <ShellIcon name="pdf" />
+          {cited.label}
+        </button>
+      ) : part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+        <strong key={i}>{inline(part.slice(2, -2))}</strong>
+      ) : moments.has(part) ? (
         <sup
           className="ask-ref ask-ref-video"
           key={i}
@@ -3788,14 +3851,12 @@ const ChatText = memo(function ChatText({
         >
           {ids.indexOf(Number(part.slice(2, -1))) + 1}
         </sup>
-      ) : part.startsWith("**") && part.endsWith("**") ? (
-        <strong key={i}>{part.slice(2, -2)}</strong>
       ) : part.startsWith("`") && part.endsWith("`") ? (
         <code key={i}>{part.slice(1, -1)}</code>
       ) : (
         part
-      ),
-    );
+      );
+    });
   const lines = text.split("\n");
   const parts = [];
   for (let i = 0; i < lines.length;) {
@@ -4121,6 +4182,18 @@ function WorkspaceCoverage({ context }: { context?: string }) {
   }
 }
 /** A message's context with the excerpts its searches found, for citations. */
+/** The PDFs a message sent, with full names, for its answer's citations. */
+function citedPdfs(request?: Turn["request"]): CitedPdf[] {
+  const chips = (request?.attachments ?? []).filter(
+    (item) => item.kind === "pdf" && item.pdf,
+  );
+  const document = chips[0]?.document;
+  if (request?.pdfFiles?.length)
+    return request.pdfFiles.map((file) => ({ ...file, document }));
+  if (request?.pdfSource && chips[0])
+    return [{ key: request.pdfSource.key, name: chips[0].label, document }];
+  return [];
+}
 function shownContext(request?: Turn["request"]): string | undefined {
   if (
     !request?.searches?.length &&

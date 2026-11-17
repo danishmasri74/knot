@@ -7936,3 +7936,30 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   height: 14px;
   color: var(--ask-muted);
 }
+
+/* "(slide 3)" in an answer about PDFs: opens that page. */
+.ask-pdf-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 1px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--ask-hover);
+  color: inherit;
+  font: inherit;
+  font-size: 0.86em;
+  line-height: 1.6;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+.ask-pdf-ref:hover,
+.ask-pdf-ref:focus-visible {
+  background: light-dark(#e6e5e1, #3a3a38);
+}
+.ask-pdf-ref .shell-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--ask-muted);
+}

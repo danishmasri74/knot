@@ -8,3 +8,5 @@
 - Cards Ask Knot adds to a canvas leave room for their arrow labels, so labels no longer sit on top of the cards, and comparisons ("A vs. B") are no longer laid out as a step-by-step flow.
 - Cards added to a canvas by Ask Knot or Add note no longer land on top of PDFs, images or drawings and hide them.
 - Select up to three PDFs or slide decks on a canvas and Ask Knot reads all of them, not just the first. The chip shows how many files are included.
+- In answers about PDFs and slide decks, citations like "slide 3" are links that open the file at that page. With several files, each citation names its file.
+- Next-step buttons also appear under answers about PDFs and slide decks, and they build on the answer without sending the files again.
