@@ -823,6 +823,8 @@ const CANVAS_MAP_RULES: &str = "canvasMap describes how the open canvas is arran
 const BASE_REWRITE: &str = "For rewrite, return exactly one replacement string per supplied text run, in the same order. Retain reference/link runs exactly. Keep formatting boundaries meaningful.";
 /// Added 11 November 2026: benchmark rewrites sometimes also returned a duplicate block.
 const BASE_REWRITE_BLOCKS: &str = "For rewrite, leave blocks empty.";
+/// Chat answers are drawn as GitHub Markdown (AnswerMarkdown.tsx).
+const BASE_ANSWER_FORMAT: &str = "Format chat answers in GitHub Markdown when it helps: a table for comparisons, - [ ] items for checklists, > to quote a source, nested lists for hierarchy. Keep short answers plain. Never use HTML.";
 const BASE_INSERT: &str = "For insert, return native blocks of the requested types.";
 const BASE_EDIT: &str = "Never include HTML. In edit mode output only the specified JSON proposal; the user reviews it before applying.";
 /// Visual rules apply only with an image/PDF input or PDF-sourced context;
@@ -847,6 +849,7 @@ fn base_instructions(mode: &str, context: &str, visual_input: bool) -> String {
     parts.push(BASE_EVIDENCE);
     if surrounding { parts.push(BASE_SURROUNDING_EDIT); }
     if canvas_map { parts.extend([CANVAS_MAP_RULES, CANVAS_MAP_LIMITS]); } else { parts.push(BASE_LIMITS); }
+    if mode == "ask" { parts.push(BASE_ANSWER_FORMAT); }
     if mode == "rewrite" { parts.extend([BASE_REWRITE, BASE_REWRITE_BLOCKS]); }
     if mode == "insert" { parts.push(BASE_INSERT); }
     if mode != "ask" { parts.push(BASE_EDIT); }
@@ -1684,7 +1687,11 @@ mod tests {
         assert_eq!(insert.replace(&format!("{BASE_LIMITS} "), &format!("{BASE_LIMITS} {BASE_REWRITE} ")), full);
         // A plain note question carries only the always-on rules.
         let ask = base_instructions("ask", r#"{"citationSources":[{"citation":"[S1]","text":"t"}]}"#, false);
-        assert_eq!(ask, [BASE_CORE, BASE_CITATIONS, BASE_NOTES, BASE_EVIDENCE, BASE_LIMITS].join(" "));
+        assert_eq!(ask, [BASE_CORE, BASE_CITATIONS, BASE_NOTES, BASE_EVIDENCE, BASE_LIMITS, BASE_ANSWER_FORMAT].join(" "));
+        // Markdown guidance is for chat answers only, never edit proposals.
+        for mode in ["rewrite", "insert", "canvas"] {
+            assert!(!base_instructions(mode, "{}", false).contains(BASE_ANSWER_FORMAT), "{mode}");
+        }
         assert!(ask.contains("No browsing, tools, diagram edits or cross-document edits."));
         // Visual rules follow image/PDF inputs and PDF-sourced context.
         for (context, input) in [("{}", true), (r#"{"sourceType":"pdf"}"#, false), (r#"{"attachedImage":{}}"#, false),

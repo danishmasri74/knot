@@ -7963,3 +7963,225 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   height: 12px;
   color: var(--ask-muted);
 }
+
+/* Full Markdown in Ask Knot answers (AnswerMarkdown.tsx). */
+.ask-prose h4[data-depth="1"] {
+  font-size: 15px;
+}
+.ask-prose h5 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+.ask-prose em {
+  font-style: italic;
+}
+.ask-prose a {
+  color: var(--control-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ask-prose li > ul,
+.ask-prose li > ol {
+  margin: 4px 0;
+}
+.ask-prose ul ul {
+  list-style: circle;
+}
+.ask-prose ul ul ul {
+  list-style: square;
+}
+.ask-prose ul.ask-tasks {
+  list-style: none;
+  padding-left: 2px;
+}
+.ask-prose li.ask-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ask-prose li.ask-task > input {
+  margin: 4px 0 0;
+  flex: none;
+  accent-color: var(--control-accent);
+}
+.ask-prose .ask-task-done {
+  color: var(--ask-muted);
+  text-decoration: line-through;
+}
+.ask-prose blockquote {
+  margin: 8px 0 12px;
+  padding: 1px 0 1px 12px;
+  border-left: 3px solid light-dark(#e3e2df, #3f3f3c);
+  color: light-dark(#5f5e5b, #b0afab);
+}
+.ask-prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+.ask-prose hr {
+  border: 0;
+  border-top: 1px solid var(--shell-border);
+  margin: 14px 0;
+}
+.ask-table {
+  overflow-x: auto;
+  margin: 8px 0 14px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  white-space: normal;
+}
+.ask-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.93em;
+}
+.ask-table th,
+.ask-table td {
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--shell-border);
+}
+.ask-table th + th,
+.ask-table td + td {
+  border-left: 1px solid var(--shell-border);
+}
+.ask-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ask-table th {
+  font-weight: 600;
+  background: var(--shell-nav);
+}
+.ask-code {
+  margin: 8px 0 14px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-nav);
+  overflow: hidden;
+}
+.ask-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 2px 10px;
+  font-size: 12px;
+  color: var(--ask-muted);
+  border-bottom: 1px solid var(--shell-border);
+}
+.ask-code-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ask-code-bar button:hover {
+  background: var(--ask-hover);
+}
+.ask-code-bar .shell-icon {
+  width: 13px;
+  height: 13px;
+}
+.ask-code pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.ask-image-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ask-muted);
+}
+.ask-image-alt .shell-icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* Progress steps while Ask Knot works (AskSteps.tsx). */
+.ask-steps {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0 0 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  white-space: normal;
+}
+.ask-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ask-muted);
+}
+.ask-steps li[data-state="active"] {
+  color: inherit;
+  font-weight: 500;
+}
+.ask-steps .shell-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.ask-steps li[data-state="done"] .shell-icon {
+  color: var(--control-accent);
+}
+.ask-step-spinner {
+  width: 12px;
+  height: 12px;
+  margin: 1px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid light-dark(#e3e2df, #3f3f3c);
+  border-top-color: var(--control-accent);
+  animation: ask-step-spin 0.9s linear infinite;
+}
+@keyframes ask-step-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-step-spinner {
+    animation: none;
+  }
+}
+.ask-step-summary {
+  margin: -2px 0 8px;
+  white-space: normal;
+}
+.ask-step-summary > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ask-muted);
+  cursor: pointer;
+  text-align: left;
+}
+.ask-step-summary > button:hover {
+  color: inherit;
+}
+.ask-step-summary > button .shell-icon {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  transition: transform 0.15s;
+}
+.ask-step-summary > button[aria-expanded="true"] .shell-icon {
+  transform: rotate(90deg);
+}
+.ask-step-summary .ask-steps {
+  margin: 6px 0 2px;
+  font-size: 12px;
+}

@@ -3,6 +3,11 @@ import { Mascot } from "./Mascot";
 import { AskSuggestion } from "./AskSuggestion";
 import { AiStarters } from "./AiStarters";
 import { AnswerFollowUps } from "./AnswerFollowUps";
+import { AskStepList, AskStepSummary } from "./AskSteps";
+import { beginStep, endSteps, type AskStep } from "../services/ask-steps";
+import { AnswerMarkdown, type AnswerMarkdownProps } from "./AnswerMarkdown";
+import { answerBlocks, parseAnswer } from "../services/answer-markdown";
+import type { AiBlock } from "../features/editor/blocksuite/ai-content";
 import {
   PDF_CITATION,
   resolvePdfCitation,
@@ -187,6 +192,8 @@ type Turn = {
   findingExcerpts?: boolean;
   /** While streaming: what Knot is doing, e.g. "Searching the web" (not persisted). */
   activity?: string;
+  /** What Knot did for this reply, step by step (see ask-steps.ts). */
+  steps?: AskStep[];
   status?: "applied" | "dismissed";
   undo?: () => void;
   cost?: AiCost;
@@ -658,6 +665,34 @@ function AskKnotPanel({
   const [editingKey, setEditingKey] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Before a reply exists: the message being sent and the steps so far
+   * (reading files, websites), so progress shows from the first moment. */
+  const [pending, setPending] = useState<{
+    content: string;
+    steps: AskStep[];
+  } | null>(null);
+  const pendingSteps = useRef<AskStep[]>([]);
+  function startPending(content: string) {
+    pendingSteps.current = [];
+    setPending({ content, steps: [] });
+  }
+  function prepStep(id: string, label: string, done: string) {
+    pendingSteps.current = beginStep(pendingSteps.current, id, label, done);
+    const steps = pendingSteps.current;
+    setPending((current) => current && { ...current, steps });
+  }
+  /** Hands the steps so far to the reply, which starts by thinking. */
+  function takePending(): AskStep[] {
+    const steps = beginStep(
+      pendingSteps.current,
+      "thinking",
+      "Thinking",
+      "Thought",
+    );
+    pendingSteps.current = [];
+    setPending(null);
+    return steps;
+  }
   const [connecting, setConnecting] = useState(false);
 
   const [passages, setPassages] = useState<Passage[]>([]);
@@ -929,7 +964,19 @@ function AskKnotPanel({
           ].join("\n")
       : turn.content;
     try {
-      await navigator.clipboard.writeText(text);
+      // Rich apps (Word, email) get tables and lists; plain text stays Markdown.
+      const prose = turn.proposal
+        ? null
+        : document.querySelector(`[data-turn="${index}"] .ask-prose`);
+      const html = prose ? copyableHtml(prose) : "";
+      if (html && typeof ClipboardItem !== "undefined")
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([text], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ]);
+      else await navigator.clipboard.writeText(text);
       setCopied(index);
     } catch {
       setError("Could not copy this message. Please try again.");
@@ -989,7 +1036,10 @@ function AskKnotPanel({
                 text: line,
               })),
             ]
-          : [{ type: "paragraph" as const, text }];
+          : turn.role === "assistant" && turn.mode !== "rewrite"
+            ? // Headings, lists, to-dos and tables arrive as real blocks.
+              nativeOr(answerBlocks(parseAnswer(text)), text)
+            : [{ type: "paragraph" as const, text }];
       const card = session.doc.getBlock(addAiMessageCard(session.doc, blocks))
         ?.model.children[0];
       setCardAdded({
@@ -1177,6 +1227,9 @@ function AskKnotPanel({
     setBusy(true);
     setError("");
     setRetrievalStatus("Searching workspace…");
+    startPending(input);
+    if (!generalMode)
+      prepStep("search", "Searching your notes", "Searched your notes");
     requestStartedAt.current = performance.now();
     let draft: Turn | undefined;
     try {
@@ -1244,6 +1297,7 @@ function AskKnotPanel({
         role: "assistant",
         content: "",
         failed: true,
+        steps: takePending(),
         request: user.request,
       };
       if (retryIndex !== undefined && edited === undefined && !auto?.inPlace) {
@@ -1344,12 +1398,14 @@ function AskKnotPanel({
         recordAiOutcome(id, "answer_displayed");
       }
       draft.failed = false;
+      draft.steps = endSteps(draft.steps);
       draft.elapsedSeconds = responseElapsedSeconds(requestStartedAt.current);
       update([...turnsRef.current]);
     } catch (e) {
       if (request.current === id && mounted.current) {
         setError(String(e));
         if (draft) {
+          draft.steps = endSteps(draft.steps, true);
           draft.content ||= "Response interrupted. Try again.";
           update([...turnsRef.current]);
         }
@@ -1359,7 +1415,10 @@ function AskKnotPanel({
         clearStreamTimer();
         request.current = null;
         automaticRequest.current = false;
-        if (mounted.current) setBusy(false);
+        if (mounted.current) {
+          setBusy(false);
+          setPending(null);
+        }
       }
     }
   }
@@ -1439,6 +1498,7 @@ function AskKnotPanel({
         if (status === "web") {
           r.request.webSearches = (r.request.webSearches ?? 0) + 1;
           r.draft.activity = "Searching the web";
+          r.draft.steps = beginStep(r.draft.steps, "web", "Searching the web", "Searched the web");
           update([...turnsRef.current]);
           return;
         }
@@ -1457,12 +1517,22 @@ function AskKnotPanel({
             else if (call === "view_canvas")
               r.draft.activity = "Looking at the canvas";
             else r.draft.preparing = true;
+            r.draft.steps =
+              call === "search_workspace"
+                ? beginStep(r.draft.steps, "search", "Searching your notes", "Searched your notes")
+                : call === "view_images"
+                  ? beginStep(r.draft.steps, "images", "Looking at images", "Looked at images")
+                  : call === "view_canvas"
+                    ? beginStep(r.draft.steps, "canvas", "Looking at the canvas", "Looked at the canvas")
+                    : beginStep(r.draft.steps, "preview", "Preparing preview", "Prepared the preview");
             update([...turnsRef.current]);
           }
           toolArguments += delta;
           return;
         }
         r.draft.activity = undefined;
+        if (r.draft.steps?.at(-1)?.id !== "writing")
+          r.draft.steps = beginStep(r.draft.steps, "writing", "Writing", "Wrote");
         output += delta;
         if (r.mode === "ask" || r.mode === "auto") {
           r.draft.content = output;
@@ -1743,6 +1813,8 @@ function AskKnotPanel({
     request.current = id;
     requestStartedAt.current = performance.now();
     setBusy(true);
+    // A retry's message is already on screen.
+    startPending(retry ? "" : input);
     let draft: Turn | undefined;
     try {
       if (!retry) {
@@ -1764,7 +1836,11 @@ function AskKnotPanel({
         const queued = webSourcesRef.current.filter(
           (source) => source.state === "queued",
         );
-        if (queued.length) await captureWebSources(queued);
+        if (queued.length) {
+          const sites = queued.length === 1 ? "website" : `${queued.length} websites`;
+          prepStep("web-read", `Reading ${queued.length === 1 ? "the website" : sites}`, `Read ${queued.length === 1 ? "the website" : sites}`);
+          await captureWebSources(queued);
+        }
         if (request.current !== id || !mounted.current) return;
       }
       const captured =
@@ -1805,6 +1881,12 @@ function AskKnotPanel({
           title: p.source.title,
           structure: [p.block],
         }));
+      if (!retry && !cardContext && !options?.answerSource && added.length)
+        prepStep(
+          "notes",
+          `Reading ${added.length === 1 ? "the added note" : `${added.length} added notes`}`,
+          `Read ${added.length === 1 ? "the added note" : `${added.length} added notes`}`,
+        );
       for (const note of retry || cardContext || options?.answerSource
         ? []
         : added) {
@@ -1909,6 +1991,8 @@ function AskKnotPanel({
         : retry
           ? retry.request?.image
           : image;
+      if (selectedImage)
+        prepStep("image", "Preparing the image", "Prepared the image");
       const preparedImage = selectedImage
         ? await prepareAiImage(selectedImage.key)
         : undefined;
@@ -2036,12 +2120,21 @@ function AskKnotPanel({
       const pdfReader = pdfSource
         ? await import("../services/pdf-input")
         : undefined;
+      if (pdfSource && !severalPdfs)
+        prepStep("files", "Reading the file", "Read the file");
       const pdfInput =
         pdfSource && !severalPdfs
           ? await pdfReader!.preparePdfInput(pdfSource)
           : undefined;
+      const files = severalPdfs?.length ?? 0;
       const preparedPdfs = severalPdfs
-        ? await pdfReader!.preparePdfFiles(severalPdfs)
+        ? await pdfReader!.preparePdfFiles(severalPdfs, (done) =>
+            prepStep(
+              "files",
+              `Reading files · ${Math.min(done + 1, files)} of ${files}`,
+              `Read ${files} files`,
+            ),
+          )
         : undefined;
       if (request.current !== id || !mounted.current) return;
       // A retried or edited message keeps the chips it was first sent with.
@@ -2199,6 +2292,7 @@ function AskKnotPanel({
         attemptId: id,
         autoModel: model === "auto" ? chosenModel : undefined,
         role: "assistant",
+        steps: takePending(),
         content: "",
         failed: true,
         request: user.request,
@@ -2323,6 +2417,7 @@ function AskKnotPanel({
         draft.content = action === "auto" ? output.trim() || label : label;
       }
       draft.preparing = undefined;
+      draft.steps = endSteps(draft.steps);
       draft.elapsedSeconds = responseElapsedSeconds(requestStartedAt.current);
       draft.failed = false;
       update([...turnsRef.current]);
@@ -2333,6 +2428,7 @@ function AskKnotPanel({
         draft.failed = true;
         draft.preparing = undefined;
         draft.activity = undefined;
+        draft.steps = endSteps(draft.steps, true);
         if (!draft.content) draft.content = "Response interrupted. Try again.";
         update([...turnsRef.current]);
       }
@@ -2344,6 +2440,7 @@ function AskKnotPanel({
         if (mounted.current) {
           setBusy(false);
           setRetrievalStatus("");
+          setPending(null);
         }
       }
     }
@@ -2654,7 +2751,11 @@ function AskKnotPanel({
               </div>
             )}
             {turns.map((turn, i) => (
-              <article key={i} className={`ask-turn ask-${turn.role}`}>
+              <article
+                key={i}
+                className={`ask-turn ask-${turn.role}`}
+                data-turn={i}
+              >
                 {turn.role === "assistant" && (
                   <div className="ask-author">
                     <ShellIcon name="sparkles" />
@@ -2732,6 +2833,7 @@ function AskKnotPanel({
                   <div className="ask-message-text">
                     {turn.role === "assistant" && (
                       <>
+                        {turn.content && <AskStepSummary steps={turn.steps} />}
                         <WebCoverage context={turn.request?.context} />
                         <WorkspaceCoverage
                           context={shownContext(turn.request)}
@@ -2765,17 +2867,17 @@ function AskKnotPanel({
                         turn.content
                       )
                     ) : (
-                      <span className="ask-thinking">
-                        {turn.activity
-                          ? turn.activity
-                          : turn.preparing ||
-                              (turn.request &&
-                                turn.request.mode !== "ask" &&
-                                turn.request.mode !== "auto")
-                            ? "Preparing preview"
-                            : "Thinking"}
-                        <span>…</span>
-                      </span>
+                      <AskStepList
+                        steps={
+                          turn.steps ??
+                          (turn.preparing ||
+                          (turn.request &&
+                            turn.request.mode !== "ask" &&
+                            turn.request.mode !== "auto")
+                            ? beginStep([], "preview", "Preparing preview", "Prepared the preview")
+                            : undefined)
+                        }
+                      />
                     )}
                     {turn.preparing && turn.content && (
                       <span className="ask-thinking">
@@ -3292,6 +3394,26 @@ function AskKnotPanel({
                   )}
               </article>
             ))}
+            {busy && pending && (
+              // Sent, not yet answered: files and websites are being read.
+              <>
+                {pending.content && (
+                  <article className="ask-turn ask-user">
+                    <div className="ask-message-text">{pending.content}</div>
+                  </article>
+                )}
+                <article className="ask-turn ask-assistant">
+                  <div className="ask-author">
+                    <ShellIcon name="sparkles" />
+                    <span>Knot</span>
+                    <ResponseTimer startedAt={requestStartedAt.current} />
+                  </div>
+                  <div className="ask-message-text">
+                    <AskStepList steps={pending.steps} />
+                  </div>
+                </article>
+              </>
+            )}
             {(spent.priced > 0 || spent.unpriced > 0) && (
               <p
                 className="ask-chat-cost"
@@ -3815,12 +3937,15 @@ const ChatText = memo(function ChatText({
   context,
   pdfs = [],
   onPdf,
+  renderCode,
 }: {
   text: string;
   context?: string;
   /** PDFs sent with the message: "(slide 3)" citations open them. */
   pdfs?: CitedPdf[];
   onPdf?: (pdf: CitedPdf, page: number) => void;
+  /** Draws Knot's own fenced blocks (an inline quiz). */
+  renderCode?: AnswerMarkdownProps["renderCode"];
 }) {
   const table = readCitationSources(context);
   const validMarkers = new Set(
@@ -3838,33 +3963,19 @@ const ChatText = memo(function ChatText({
       moments.set(source.citation ?? `[S${index + 1}]`, source.video.start);
   });
   const ids = citationIds(text);
-  // Bold, code, [S1] markers and PDF page or slide citations.
+  // [S1] markers and PDF page or slide citations inside plain text runs;
+  // bold, lists, tables and the rest come from the Markdown tree.
   const splitter = new RegExp(
-    String.raw`(\*\*[^*]+\*\*|` +
-      "`[^`]+`" +
-      String.raw`|\[S\d+\]|` +
-      PDF_CITATION +
-      ")",
+    String.raw`(\[S\d+\]|` + PDF_CITATION + ")",
     "g",
   );
-  const inline = (value: string): ReactNode[] =>
+  const renderText = (value: string): ReactNode[] =>
     value.split(splitter).map((part, i) => {
       const cited = part.startsWith("(")
         ? resolvePdfCitation(part, pdfs)
         : undefined;
       return cited && onPdf ? (
-        <button
-          type="button"
-          className="ask-pdf-ref"
-          key={i}
-          data-tooltip={`Open ${cited.pdf.name} at ${cited.label.split(", ").at(-1)}`}
-          onClick={() => onPdf(cited.pdf, cited.page)}
-        >
-          <ShellIcon name="pdf" />
-          {cited.label}
-        </button>
-      ) : part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
-        <strong key={i}>{inline(part.slice(2, -2))}</strong>
+        <PdfRef key={i} cited={cited} onOpen={onPdf} />
       ) : moments.has(part) ? (
         <sup
           className="ask-ref ask-ref-video"
@@ -3881,59 +3992,40 @@ const ChatText = memo(function ChatText({
         >
           {ids.indexOf(Number(part.slice(2, -1))) + 1}
         </sup>
-      ) : part.startsWith("`") && part.endsWith("`") ? (
-        <code key={i}>{part.slice(1, -1)}</code>
       ) : (
         part
       );
     });
-  const lines = text.split("\n");
-  const parts = [];
-  for (let i = 0; i < lines.length;) {
-    const line = lines[i];
-    if (!line.trim()) {
-      i++;
-      continue;
-    }
-    const key = i;
-    if (line.startsWith("```")) {
-      const code = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith("```"))
-        code.push(lines[i++]);
-      if (i < lines.length) i++;
-      parts.push(
-        <pre key={key}>
-          <code>{code.join("\n")}</code>
-        </pre>,
-      );
-    } else if (/^#{1,3} /.test(line)) {
-      parts.push(<h4 key={key}>{inline(line.replace(/^#{1,3} /, ""))}</h4>);
-      i++;
-    } else if (/^([-*] |\d+\. )/.test(line)) {
-      const numbered = /^\d+\. /.test(line);
-      const pattern = numbered ? /^\d+\. / : /^[-*] /;
-      const items = [];
-      while (i < lines.length && pattern.test(lines[i])) {
-        items.push(<li key={i}>{inline(lines[i++].replace(pattern, ""))}</li>);
-      }
-      parts.push(
-        numbered ? <ol key={key}>{items}</ol> : <ul key={key}>{items}</ul>,
-      );
-    } else {
-      const paragraph = [line];
-      i++;
-      while (
-        i < lines.length &&
-        lines[i].trim() &&
-        !/^(#{1,3} |[-*] |\d+\. |```)/.test(lines[i])
-      )
-        paragraph.push(lines[i++]);
-      parts.push(<p key={key}>{inline(paragraph.join("\n"))}</p>);
-    }
-  }
-  return <div className="ask-prose">{parts}</div>;
+  return (
+    <AnswerMarkdown
+      text={text}
+      renderText={renderText}
+      onLink={(href) => void openWebLink(href)}
+      renderCode={renderCode}
+    />
+  );
 });
+
+/** A "(slide 3)" citation: opens that page of the file. */
+function PdfRef({
+  cited,
+  onOpen,
+}: {
+  cited: NonNullable<ReturnType<typeof resolvePdfCitation>>;
+  onOpen: (pdf: CitedPdf, page: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="ask-pdf-ref"
+      data-tooltip={`Open ${cited.pdf.name} at ${cited.label.split(", ").at(-1)}`}
+      onClick={() => onOpen(cited.pdf, cited.page)}
+    >
+      <ShellIcon name="pdf" />
+      {cited.label}
+    </button>
+  );
+}
 
 const CitationSources = memo(function CitationSources({
   text,
@@ -4212,6 +4304,19 @@ function WorkspaceCoverage({ context }: { context?: string }) {
   }
 }
 /** A message's context with the excerpts its searches found, for citations. */
+/** An answer's native blocks, or its text as one paragraph if it has none. */
+function nativeOr(blocks: AiBlock[], text: string): AiBlock[] {
+  return blocks.length ? blocks : [{ type: "paragraph", text }];
+}
+/** An answer's drawn HTML for the clipboard, without its buttons. */
+function copyableHtml(prose: Element): string {
+  const copy = prose.cloneNode(true) as Element;
+  copy.querySelectorAll(".ask-code-bar, input").forEach((node) => node.remove());
+  copy.querySelectorAll("button").forEach((button) =>
+    button.replaceWith(button.textContent ?? ""),
+  );
+  return copy.innerHTML;
+}
 /** The PDFs a message sent, with full names, for its answer's citations. */
 function citedPdfs(request?: Turn["request"]): CitedPdf[] {
   const chips = (request?.attachments ?? []).filter(

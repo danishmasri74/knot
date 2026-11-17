@@ -14,6 +14,8 @@ export const MAX_PDF_FILES_BYTES = 30_000_000;
 /** Reads several selected PDFs whole, checking the combined limits. */
 export async function preparePdfFiles(
   files: AiPdfFile[],
+  /** Called before each file is read, with how many are done. */
+  onProgress?: (done: number) => void,
 ): Promise<{ name: string; data: string }[]> {
   if (files.length > MAX_PDF_FILES)
     throw new Error(
@@ -22,6 +24,7 @@ export async function preparePdfFiles(
   const prepared: { name: string; data: string }[] = [];
   let total = 0;
   for (const file of files) {
+    onProgress?.(prepared.length);
     const data = await preparePdfInput({ key: file.key });
     total += data.length;
     if (total > MAX_PDF_FILES_BYTES)
