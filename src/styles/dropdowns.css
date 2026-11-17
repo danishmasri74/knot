@@ -110,6 +110,8 @@
     margin-block: 6px;
     padding: var(--dropdown-padding);
     min-width: anchor-size(width);
+    /* As wide as the longest option, so short labels never wrap. */
+    width: max-content;
     max-width: calc(100vw - 16px);
     max-height: min(320px, calc(100dvh - 16px));
     overflow: auto;
@@ -136,7 +138,8 @@
     font-weight: 400;
     line-height: 20px;
     white-space: normal;
-    overflow-wrap: anywhere;
+    /* Wrap between words; a word breaks only if it can't fit at all. */
+    overflow-wrap: break-word;
   }
 
   select:not([multiple]):not([size]) option + option {

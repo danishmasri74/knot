@@ -925,7 +925,6 @@ function StudySetup({
   const [name, setName] = useState("");
   const [goal, setGoal] = useState<StudyGoal>("mcq");
   const [pace, setPace] = useState<StudyPace>("fast");
-  const [harder, setHarder] = useState(true);
   const [finalExam, setFinalExam] = useState(true);
   const fallback =
     chosen.length === 1 ? shortPdfName(chosen[0].name) : notebookTitle || "Study course";
@@ -940,7 +939,8 @@ function StudySetup({
             name: title,
             goal,
             pace,
-            options: { harder, finalExam },
+            // Questions always build up through the course.
+            options: { harder: true, finalExam },
             // Plan in the decks' own order (11, 12, 13), not the list's.
             sources: [...chosen].sort((a, b) =>
               a.name.localeCompare(b.name, undefined, { numeric: true }),
@@ -948,29 +948,17 @@ function StudySetup({
           });
       }}
     >
-      <div>
-        <div className="study-kicker">Study</div>
-        <h2>New study course</h2>
-      </div>
-
-      <label className="study-field">
-        <span>Name</span>
-        <input
-          value={name}
-          maxLength={80}
-          placeholder={fallback}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </label>
-
+      <h2>New study course</h2>
+      <input
+        className="study-name"
+        aria-label="Course name"
+        value={name}
+        maxLength={80}
+        placeholder={fallback}
+        onChange={(e) => setName(e.target.value)}
+      />
       <fieldset className="study-files">
-        <legend>
-          Files
-          <span className="study-muted">
-            {" "}
-            · {chosen.length} of up to {MAX_COURSE_SOURCES}
-          </span>
-        </legend>
+        <legend>Files</legend>
         {pdfs.length ? (
           pdfs.map((pdf) => {
             const on = keys.includes(pdf.key);
@@ -980,6 +968,11 @@ function StudySetup({
                   type="checkbox"
                   checked={on}
                   disabled={!on && keys.length >= MAX_COURSE_SOURCES}
+                  title={
+                    !on && keys.length >= MAX_COURSE_SOURCES
+                      ? `Up to ${MAX_COURSE_SOURCES} files per course`
+                      : undefined
+                  }
                   onChange={(e) =>
                     setKeys(
                       e.target.checked
@@ -997,10 +990,9 @@ function StudySetup({
           <p className="study-muted">Add PDFs or slide decks to this notebook first.</p>
         )}
       </fieldset>
-
       <div className="study-rows">
         <label className="study-row">
-          <span>Getting ready for</span>
+          <span>Goal</span>
           <select value={goal} onChange={(e) => setGoal(e.target.value as StudyGoal)}>
             <option value="mcq">MCQ test</option>
             <option value="written">Written exam</option>
@@ -1010,19 +1002,13 @@ function StudySetup({
         <label className="study-row">
           <span>Pace</span>
           <select value={pace} onChange={(e) => setPace(e.target.value as StudyPace)}>
-            <option value="fast">Fast · short lessons</option>
-            <option value="balanced">Balanced · more examples</option>
-            <option value="thorough">Thorough · every detail</option>
+            <option value="fast">Fast</option>
+            <option value="balanced">Balanced</option>
+            <option value="thorough">Thorough</option>
           </select>
         </label>
-        <SwitchRow label="Questions get harder as I go" checked={harder} onChange={setHarder} />
-        <SwitchRow label="End with a mixed final exam" checked={finalExam} onChange={setFinalExam} />
+        <SwitchRow label="Final exam" checked={finalExam} onChange={setFinalExam} />
       </div>
-
-      <p className="study-muted">
-        Knot reads the files once to plan the checkpoints. Lessons and questions come only from
-        these slides, and each lesson sends only its own slides.
-      </p>
       <div className="study-actions">
         <button type="button" onClick={onCancel}>
           Cancel

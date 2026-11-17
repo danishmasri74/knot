@@ -630,6 +630,30 @@
   flex: none;
   max-width: 60%;
 }
+/* The picker opens under the select, lined up with its right edge (it sits
+   at the panel's edge), and as wide as its longest option. */
+@supports (appearance: base-select) {
+  .study-row select::picker(select) {
+    position-area: block-end span-inline-start;
+    width: max-content;
+  }
+}
+.study-panel .study-name {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+.study-panel .study-name:focus-visible {
+  outline: 2px solid light-dark(#838383, #7e7e7e);
+  outline-offset: 1px;
+}
 
 /* The panel scrolls; its sections keep their height instead of shrinking
    (and clipping) to fit it. */
