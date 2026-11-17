@@ -3156,6 +3156,56 @@ main:has(.settings-modal) > .editor-area {
   padding: 0 16px 0 20px;
   border-bottom: 1px solid var(--shell-border);
 }
+/* Ask ⇄ Study (ToolSwitch.tsx): a two-part switch in both panels' headers. */
+.tool-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--shell-selected);
+}
+.tool-switch .tool-switch-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--shell-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tool-switch .tool-switch-option .shell-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.tool-switch .tool-switch-option[aria-pressed="true"],
+.tool-switch .tool-switch-option[aria-pressed="true"]:hover {
+  background: var(--shell-surface);
+  color: var(--shell-text);
+  box-shadow: 0 0 0 1px var(--shell-border), 0 1px 2px light-dark(#0000000f, #00000040);
+  cursor: default;
+}
+.tool-switch .tool-switch-option:not([aria-pressed="true"]):hover {
+  background: transparent;
+  color: var(--shell-text);
+}
+.tool-switch .tool-switch-option[aria-disabled="true"],
+.tool-switch .tool-switch-option[aria-disabled="true"]:hover {
+  color: var(--shell-muted);
+  opacity: 0.5;
+  cursor: default;
+}
+.tool-switch .tool-switch-option:focus-visible {
+  outline: 2px solid light-dark(#8c8b87, #b1b0a9);
+  outline-offset: 1px;
+}
 .ask-header h2 {
   display: flex;
   align-items: center;
@@ -7935,6 +7985,69 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   width: 14px;
   height: 14px;
   color: var(--ask-muted);
+}
+
+/* "Study these slides": Ask Knot suggests the Study tab when a chat keeps
+   returning to the same decks or asks about exam prep. Dismissed per chat. */
+.ask-study-nudge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 8px 9px 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  background: light-dark(#f7f7f5, #262624);
+}
+.ask-study-nudge-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-surface);
+}
+.ask-study-nudge-icon .shell-icon {
+  width: 15px;
+  height: 15px;
+}
+.ask-study-nudge-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+.ask-study-nudge-text strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ask-study-nudge-text span {
+  font-size: 12px;
+  color: var(--ask-muted);
+}
+.ask-knot .ask-study-nudge-open {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--shell-border);
+  background: var(--shell-surface);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ask-knot .ask-study-nudge-dismiss {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--ask-muted);
+}
+.ask-study-nudge-dismiss .shell-icon {
+  width: 13px;
+  height: 13px;
 }
 
 /* "(slide 3)" in an answer about PDFs: opens that page. */

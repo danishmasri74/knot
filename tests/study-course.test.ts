@@ -13,6 +13,7 @@ import {
   readiness,
   revisionSheet,
   saveCourse,
+  studyNudgeDecks,
   weakAreas,
   type StudyCourse,
   type StudyQuestion,
@@ -195,4 +196,25 @@ it("skips a Remember table that only repeats the lesson's terms", async () => {
   expect(rememberAddsTerms(lesson)).toBe(false);
   lesson.remember.rows.push(["Retrospective", "Look back"]);
   expect(rememberAddsTerms(lesson)).toBe(true);
+});
+
+describe("studyNudgeDecks", () => {
+  const ask = (question: string, decks: string[] = ["a"]) => ({ question, decks });
+  it("suggests Study for exam prep about cited slides", () => {
+    expect(studyNudgeDecks([ask("Help me revise for the midterm")])).toEqual(["a"]);
+  });
+  it("suggests Study after three answers on the same decks", () => {
+    expect(
+      studyNudgeDecks([ask("What is SDLC?"), ask("And agile?", ["a", "b"]), ask("Waterfall?")]),
+    ).toEqual(["a"]);
+  });
+  it("stays quiet for one-off questions or answers without slides", () => {
+    expect(studyNudgeDecks([ask("What is SDLC?"), ask("And agile?")])).toEqual([]);
+    expect(studyNudgeDecks([ask("Quiz me", [])])).toEqual([]);
+    expect(studyNudgeDecks([ask("A?", ["a"]), ask("B?", ["b"]), ask("C?", ["c"])])).toEqual([]);
+    expect(studyNudgeDecks([])).toEqual([]);
+  });
+  it("offers at most three decks, once each", () => {
+    expect(studyNudgeDecks([ask("exam prep", ["a", "a", "b", "c", "d"])])).toEqual(["a", "b", "c"]);
+  });
 });

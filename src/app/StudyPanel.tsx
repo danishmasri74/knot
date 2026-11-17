@@ -310,10 +310,7 @@ export function StudyPanel({
     return (
       <div className="study-panel" key="list">
         <div className="study-head">
-          <div>
-            <div className="study-kicker">Study</div>
-            <h2>Study courses</h2>
-          </div>
+          <h2>Study courses</h2>
           <button
             type="button"
             className="study-primary"

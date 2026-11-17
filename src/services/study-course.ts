@@ -355,6 +355,26 @@ export function wantsStudyCourse(message: string) {
   );
 }
 
+/** One answered question in Ask Knot: what was asked, and the PDFs the
+ * answer cited. */
+export type StudyExchange = { question: string; decks: string[] };
+
+/**
+ * The decks Ask Knot suggests studying in the Study tab, or none. It fits
+ * when the latest answer cited slides and the question was about exam prep,
+ * or the last three answers all kept returning to those slides.
+ */
+export function studyNudgeDecks(exchanges: StudyExchange[]): string[] {
+  const last = exchanges.at(-1);
+  if (!last?.decks.length) return [];
+  const recent = exchanges.slice(-3);
+  const sustained =
+    recent.length === 3 &&
+    recent.every((e) => e.decks.some((key) => last.decks.includes(key)));
+  if (!sustained && !wantsStudyCourse(last.question)) return [];
+  return [...new Set(last.decks)].slice(0, 3);
+}
+
 /** "slide 4" or "slides 2–3". */
 export function slideRange(from: number, to: number) {
   return to > from ? `slides ${from}–${to}` : `slide ${from}`;

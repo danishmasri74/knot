@@ -5,7 +5,8 @@ import { AiStarters } from "./AiStarters";
 import { AnswerFollowUps } from "./AnswerFollowUps";
 import { AskStepList, AskStepSummary } from "./AskSteps";
 import { AnswerQuiz } from "./AnswerQuiz";
-import { wantsStudyCourse } from "../services/study-course";
+import { studyNudgeDecks } from "../services/study-course";
+import { ToolSwitch, type SwitchTool } from "./ToolSwitch";
 import { PdfRef, SlidesCited } from "./PdfPreview";
 import { beginStep, endSteps, type AskStep } from "../services/ask-steps";
 import { AnswerMarkdown, type AnswerMarkdownProps } from "./AnswerMarkdown";
@@ -114,7 +115,7 @@ import {
   initialAiModel,
   saveAiModelChoice,
 } from "../services/ai-preferences";
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ShellIcon } from "./ShellIcon";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -408,9 +409,14 @@ function AskKnotPanel({
   onClose,
   onSource,
   onStudyCourse,
+  onSwitchTool,
+  studyUnavailable,
 }: {
   /** Opens the Study tab's setup with these decks (StudyPanel.tsx). */
   onStudyCourse?: (keys: string[]) => void;
+  /** The header's Ask ⇄ Study switch (ToolSwitch.tsx). */
+  onSwitchTool?: (to: SwitchTool) => void;
+  studyUnavailable?: boolean;
   workspace: string;
   documentId: string;
   initial: AiContext | null;
@@ -459,6 +465,44 @@ function AskKnotPanel({
   const [turns, setTurns] = useState<Turn[]>(
     () => chats.find((c) => c.id === chatId)?.turns ?? [],
   );
+  // Chats where the "Study these slides" suggestion was dismissed.
+  const nudgeKey = `knot.ai.study-nudge-dismissed.v1:${workspace}`;
+  const [dismissedNudges, setDismissedNudges] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(nudgeKey) ?? "[]");
+      return Array.isArray(saved)
+        ? saved.filter((id): id is string => typeof id === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  function dismissStudyNudge(id: string) {
+    const next = [...dismissedNudges.filter((x) => x !== id), id].slice(-200);
+    setDismissedNudges(next);
+    try {
+      localStorage.setItem(nudgeKey, JSON.stringify(next));
+    } catch {
+      /* Hidden for this session only. */
+    }
+  }
+  const studyDecks = useMemo(() => {
+    if (dismissedNudges.includes(chatId)) return [];
+    const exchanges = turns.flatMap((turn, i) =>
+      turn.role === "assistant"
+        ? [
+            {
+              question:
+                turns[i - 1]?.role === "user" ? turns[i - 1].content : "",
+              decks: turn.failed
+                ? []
+                : citedPdfs(turn.request).map((pdf) => pdf.key),
+            },
+          ]
+        : [],
+    );
+    return studyNudgeDecks(exchanges);
+  }, [turns, chatId, dismissedNudges]);
   const [spent, setSpent] = useState<Spent>(
     () => chats.find((c) => c.id === chatId)?.spent ?? noSpend,
   );
@@ -2574,6 +2618,13 @@ function AskKnotPanel({
         <h2>
           <ShellIcon name="sparkles" /> Ask Knot
         </h2>
+        {onSwitchTool && (
+          <ToolSwitch
+            current="ask"
+            onSwitch={onSwitchTool}
+            studyUnavailable={studyUnavailable}
+          />
+        )}
         <div className="ask-header-actions">
           <button
             aria-label={historyOpen ? "Back to chat" : "Chat history"}
@@ -3542,24 +3593,32 @@ function AskKnotPanel({
                 {turn.role === "assistant" &&
                   i === turns.length - 1 &&
                   !busy &&
-                  !turn.failed &&
                   onStudyCourse &&
-                  wantsStudyCourse(turns[i - 1]?.content ?? "") &&
-                  citedPdfs(turn.request).length > 0 && (
-                    // Test prep about these decks: a guided course fits.
-                    <div className="ask-followups" role="group" aria-label="Study">
+                  studyDecks.length > 0 && (
+                    // Studying these decks: a guided course may suit better.
+                    <div className="ask-study-nudge" role="group" aria-label="Study suggestion">
+                      <span className="ask-study-nudge-icon" aria-hidden="true">
+                        <ShellIcon name="study" />
+                      </span>
+                      <div className="ask-study-nudge-text">
+                        <strong>Study these slides</strong>
+                        <span>A short course with lessons and quizzes</span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() =>
-                          onStudyCourse(
-                            citedPdfs(turn.request)
-                              .map((pdf) => pdf.key)
-                              .slice(0, 3),
-                          )
-                        }
+                        className="ask-study-nudge-open"
+                        onClick={() => onStudyCourse(studyDecks)}
                       >
-                        <ShellIcon name="study" />
-                        <span>Make a study course</span>
+                        Open Study
+                      </button>
+                      <button
+                        type="button"
+                        className="ask-study-nudge-dismiss"
+                        aria-label="Dismiss study suggestion"
+                        data-tooltip="Not for this chat"
+                        onClick={() => dismissStudyNudge(chatId)}
+                      >
+                        <ShellIcon name="close" />
                       </button>
                     </div>
                   )}

@@ -121,6 +121,7 @@ import {
   type AiContext,
 } from "../features/editor/blocksuite/ai";
 import { StudyPanel } from "./StudyPanel";
+import { ToolSwitch, type SwitchTool } from "./ToolSwitch";
 import { observeStudyToolbar } from "../features/editor/blocksuite/study-toolbar";
 import {
   carrySidebarPreferences,
@@ -877,7 +878,27 @@ export function App() {
   /** Opens the Study tab's setup with these decks ticked. */
   function startStudyCourse(keys: string[]) {
     setStudyStart({ keys, nonce: Date.now() });
-    openSurface("study");
+    switchTool("study");
+  }
+  /** The Ask ⇄ Study switch (ToolSwitch.tsx): the other tab comes to the
+   * front, or opens in the column you switched from if it was closed. */
+  function switchTool(to: SwitchTool) {
+    if (to === "study" && (!active || library)) return;
+    const from: SwitchTool = to === "ask" ? "study" : "ask";
+    const shown = layoutRef.current;
+    const column =
+      shown.groups.find(
+        (g) =>
+          g.id === shown.lastUsedGroupId &&
+          shown.tabs[g.activeTabId]?.kind === from,
+      ) ?? shown.groups.find((g) => shown.tabs[g.activeTabId]?.kind === from);
+    paneTarget.current = column?.id ?? null;
+    try {
+      if (to === "ask") showAi();
+      else openSurface("study");
+    } finally {
+      paneTarget.current = null;
+    }
   }
   async function openPdf(location?: PdfLocation) {
     const current = session.current;
@@ -4528,6 +4549,8 @@ export function App() {
             {createPortal(
               <AskKnot
                 onStudyCourse={startStudyCourse}
+                onSwitchTool={switchTool}
+                studyUnavailable={!active || !!library}
                 key={`${workspaceCatalog.active}:ask`}
                 workspace={workspaceCatalog.active}
                 documentId={active?.id ?? ""}
@@ -5125,6 +5148,12 @@ export function App() {
                 {tab.kind === "study" &&
                   session.current &&
                   session.current.doc.id === tab.documentId && (
+                    <div className="study-tab">
+                    {aiEnabled && (
+                      <header className="study-tab-header">
+                        <ToolSwitch current="study" onSwitch={switchTool} />
+                      </header>
+                    )}
                     <StudyPanel
                       key={tab.documentId}
                       spaceDoc={session.current.doc.spaceDoc}
@@ -5201,6 +5230,7 @@ export function App() {
                         }
                       }}
                     />
+                    </div>
                   )}
                 {tab.kind === "cardDeck" &&
                   (session.current || documentLoading) && (
