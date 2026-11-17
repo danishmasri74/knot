@@ -16,7 +16,7 @@ mod migrations;
 mod mcq;
 mod paths;
 mod quarantine;
-mod slides;
+mod office;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -588,24 +588,30 @@ async fn put_blob(
 async fn get_blob(state: State<'_, AppState>, key: String) -> Reply<Vec<u8>> {
     with(&state, |w| w.get_blob(&key))
 }
-/// Make a PDF copy of a slide deck attachment with the person's own
-/// PowerPoint or LibreOffice. The workspace stays unlocked while it runs.
+/// Make a PDF copy of a slide deck or Word document attachment with the
+/// person's own Office app or LibreOffice. The workspace stays unlocked while
+/// it runs.
 #[tauri::command]
-async fn convert_slides(state: State<'_, AppState>, key: String) -> Reply<slides::Outcome> {
+async fn convert_office(
+    state: State<'_, AppState>,
+    key: String,
+    kind: office::Kind,
+) -> Reply<office::Outcome> {
     let bytes = with(&state, |w| w.get_blob(&key))?;
-    tauri::async_runtime::spawn_blocking(move || slides::convert(&bytes))
+    tauri::async_runtime::spawn_blocking(move || office::convert(kind, &bytes))
         .await
         .map_err(|e| e.to_string())
 }
-/// Open a slide deck attachment in the person's app for .pptx files.
+/// Open an Office attachment in the person's app for its file type.
 #[tauri::command]
-async fn open_slides_original(
+async fn open_office_original(
     state: State<'_, AppState>,
     key: String,
     name: String,
+    kind: office::Kind,
 ) -> Reply<()> {
     let bytes = with(&state, |w| w.get_blob(&key))?;
-    tauri::async_runtime::spawn_blocking(move || slides::open_original(&bytes, &name))
+    tauri::async_runtime::spawn_blocking(move || office::open_original(kind, &bytes, &name))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -945,8 +951,8 @@ pub fn run() {
                 save_documents,
                 put_blob,
                 get_blob,
-                convert_slides,
-                open_slides_original,
+                convert_office,
+                open_office_original,
                 list_blobs,
                 canvas_preview_load,
                 canvas_preview_save,

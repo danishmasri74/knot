@@ -32,7 +32,9 @@ function icon(item: SentAttachment) {
     case "pdf":
       return /\.pptx(\s|$)/i.test(item.label)
         ? ("slides" as const)
-        : ("pdf" as const);
+        : /\.docx(\s|$)/i.test(item.label)
+          ? ("wordDocument" as const)
+          : ("pdf" as const);
     case "video":
       return "video" as const;
     case "web":

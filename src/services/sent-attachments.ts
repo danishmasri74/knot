@@ -1,7 +1,7 @@
 import { readCitationSources } from "./ai-citations";
 import type { AiPdfSource } from "./pdf-input";
 import type { VideoLocation } from "./youtube-transcript";
-import { pageLabel } from "./slides";
+import { pageLabel } from "./office";
 
 /**
  * What a user deliberately sent with a message, shown as chips above it in

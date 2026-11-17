@@ -1,9 +1,11 @@
+import type { OfficeConverter, OfficeKind } from "../../../services/office";
 export interface PdfSource {
   key: string;
   name: string;
   documentId: string;
-  /** A PDF copy of a slide deck: the original .pptx and what converted it. */
-  slides?: { original: string; converter: "powerpoint" | "libreoffice" };
+  /** A PDF copy of a slide deck or Word document: the original .pptx/.docx
+   * file's key, its kind and what converted it. */
+  original?: { key: string; kind: OfficeKind; converter: OfficeConverter };
 }
 export type PdfRect = [number, number, number, number];
 export interface PdfLocation extends PdfSource {

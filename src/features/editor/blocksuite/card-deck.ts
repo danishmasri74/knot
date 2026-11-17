@@ -101,11 +101,16 @@ export function mediaText(card: DeckCard) {
     text("prop:caption") ||
     url ||
     mediaLabels[media.kind];
+  const office =
+    media.kind === "pdf" || media.kind === "file"
+      ? /\.(pptx|docx)$/i.exec(text("prop:name"))?.[1].toLowerCase()
+      : undefined;
   const label =
-    (media.kind === "pdf" || media.kind === "file") &&
-    /\.pptx$/i.test(text("prop:name"))
+    office === "pptx"
       ? "Slides"
-      : mediaLabels[media.kind];
+      : office === "docx"
+        ? "Document"
+        : mediaLabels[media.kind];
   let site = "";
   try {
     site = url ? new URL(url).host.replace(/^www\./, "") : "";

@@ -7,7 +7,7 @@ import {
 } from "../features/editor/blocksuite/card-deck";
 import type { MediaKind } from "../features/editor/blocksuite/media-cards";
 import { ShellIcon } from "./ShellIcon";
-import { isSlidesName } from "../services/slides";
+import { officeKind } from "../services/office";
 
 const kindIcons = {
   video: "video",
@@ -17,12 +17,17 @@ const kindIcons = {
   image: "image",
 } as const satisfies Record<MediaKind, string>;
 
-/** Slide decks, converted or not, show the slides icon. */
+/** Slide decks and Word documents, converted or not, show their own icon. */
 function mediaIcon(media: NonNullable<ReturnType<typeof cardMedia>>) {
-  return (media.kind === "pdf" || media.kind === "file") &&
-    isSlidesName(media.get("prop:name"))
+  const kind =
+    media.kind === "pdf" || media.kind === "file"
+      ? officeKind(media.get("prop:name"))
+      : undefined;
+  return kind === "slides"
     ? ("slides" as const)
-    : kindIcons[media.kind];
+    : kind === "document"
+      ? ("wordDocument" as const)
+      : kindIcons[media.kind];
 }
 
 /** The shared object icon for a card: what it is, never how it's placed. */

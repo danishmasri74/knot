@@ -1807,18 +1807,18 @@ affine-edgeless-attachment.knot-attachment-embed video {
   min-height: 0;
 }
 /* A .pptx card while Knot converts it, or why it couldn't. */
-affine-edgeless-attachment:has(> .knot-slides-status),
-affine-attachment:has(> .knot-slides-status) {
+affine-edgeless-attachment:has(> .knot-office-status),
+affine-attachment:has(> .knot-office-status) {
   position: relative;
 }
-.knot-slides-status {
+.knot-office-status {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--shell-muted);
   font: 12px/1.4 var(--affine-font-family);
 }
-affine-edgeless-attachment > .knot-slides-status {
+affine-edgeless-attachment > .knot-office-status {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -1831,19 +1831,19 @@ affine-edgeless-attachment > .knot-slides-status {
   border: 1px solid var(--shell-border);
   border-radius: 8px;
 }
-affine-attachment > .knot-slides-status {
+affine-attachment > .knot-office-status {
   flex-wrap: wrap;
   margin: 4px 0 0;
   padding: 0 4px;
 }
-.knot-slides-status p {
+.knot-office-status p {
   margin: 0;
 }
-.knot-slides-actions {
+.knot-office-actions {
   display: flex;
   gap: 6px;
 }
-.knot-slides-status button {
+.knot-office-status button {
   font: inherit;
   padding: 3px 8px;
   border: 1px solid var(--shell-border);
@@ -1852,10 +1852,10 @@ affine-attachment > .knot-slides-status {
   color: var(--shell-text);
   cursor: pointer;
 }
-.knot-slides-status button:hover {
+.knot-office-status button:hover {
   background: var(--shell-selected);
 }
-.knot-slides-status[data-state="converting"] p::before {
+.knot-office-status[data-state="converting"] p::before {
   content: "";
   display: inline-block;
   width: 9px;
@@ -1865,14 +1865,14 @@ affine-attachment > .knot-slides-status {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: knot-slides-spin 0.9s linear infinite;
+  animation: knot-office-spin 0.9s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .knot-slides-status[data-state="converting"] p::before {
+  .knot-office-status[data-state="converting"] p::before {
     animation: none;
   }
 }
-@keyframes knot-slides-spin {
+@keyframes knot-office-spin {
   to {
     transform: rotate(360deg);
   }

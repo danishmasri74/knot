@@ -27,7 +27,7 @@ import { extractTopicContent, extractDeckPassages } from "./topic-extract";
 import type { EditorSession } from "../features/editor/blocksuite/adapter";
 import { extractTopicPdf } from "./topic-pdf";
 import type { Snapshot } from "./workspace";
-import { pageLabel } from "./slides";
+import { pageLabel } from "./office";
 let active: TopicIndexer | undefined;
 export class TopicIndexer {
   private worker: Worker;

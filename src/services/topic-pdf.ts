@@ -2,7 +2,7 @@ import { openPdfBytes } from "./pdf-input";
 import { attachments } from "./workspace";
 import { splitPassage, type TopicPdf } from "./topic-extract";
 import type { TopicPassage, TopicSource } from "./topic-types";
-import { pageLabel } from "./slides";
+import { pageLabel } from "./office";
 /** Pages without a text layer listed per PDF for background OCR. */
 export const MAX_SCANNED_PAGES = 200;
 // Session cache is bounded; persistent text is held only in the disposable native index.

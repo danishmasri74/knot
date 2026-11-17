@@ -78,7 +78,7 @@ import type {
 } from "../services/youtube-transcript";
 import { ViewTransition } from "./ViewTransition";
 import { CanvasSuggestions } from "./CanvasSuggestions";
-import { pageLabel } from "../services/slides";
+import { pageLabel } from "../services/office";
 import {
   qualifiedActions,
   type CardAction,

@@ -31,7 +31,7 @@ import {
   getWorkspaceSearchEnabled,
 } from "../services/ai-preferences";
 import type { OcrLine } from "../services/ocr-passages";
-import { isSlidesName, slides } from "../services/slides";
+import { office, officeApp, officeKind } from "../services/office";
 import { openPdfBytes } from "../services/pdf-input";
 import type { AiPdfSource } from "../services/pdf-input";
 
@@ -111,8 +111,9 @@ export function PdfReader({
   );
   const [pageNumber, setPageNumber] = useState(initial?.page ?? 1);
   const source = sources.find((entry) => entry.key === key);
-  const original = source?.slides;
-  const deck = !!original || isSlidesName(source?.name);
+  const original = source?.original;
+  const kind = original?.kind ?? officeKind(source?.name);
+  const deck = kind === "slides";
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -363,7 +364,9 @@ export function PdfReader({
       const unit = deck ? "Slide" : "Page";
       let text = deck
         ? `Attached slide deck converted to PDF, with ${pdf.numPages} slides. Use the slide text and visual layout. Each PDF page is one slide.`
-        : `Attached PDF with ${pdf.numPages} pages. Use the page text and visual layout.`;
+        : kind === "document"
+          ? `Attached Word document converted to PDF, with ${pdf.numPages} pages. Use the page text and visual layout.`
+          : `Attached PDF with ${pdf.numPages} pages. Use the page text and visual layout.`;
       if (number) {
         const page = await pdf.getPage(number);
         const content = await page.getTextContent();
@@ -382,7 +385,13 @@ export function PdfReader({
       if (ticket !== aiRead.current) return;
       onAsk(
         source.name +
-          (number ? ` · ${unit} ${number}` : deck ? " · Slides" : " · PDF"),
+          (number
+            ? ` · ${unit} ${number}`
+            : deck
+              ? " · Slides"
+              : kind === "document"
+                ? " · Document"
+                : " · PDF"),
         text,
         {
         key,
@@ -687,26 +696,28 @@ export function PdfReader({
           {original && (
             <button
               className="pdf-open-original"
-              title="Open the original deck in your app for .pptx files"
+              title={`Open the original ${deck ? "deck" : "document"} in your app for .${deck ? "pptx" : "docx"} files`}
               onClick={() => {
                 setError("");
-                void slides
-                  .openOriginal(original.original, source?.name ?? "")
+                void office
+                  .openOriginal(original.key, source?.name ?? "", original.kind)
                   .catch((e: unknown) =>
-                    setError(`Couldn't open the original deck: ${String(e)}`),
+                    setError(
+                      `Couldn't open the original ${deck ? "deck" : "document"}: ${String(e)}`,
+                    ),
                   );
               }}
             >
               <ShellIcon name="external" size={14} />
-              Open in PowerPoint
+              Open in {officeApp[original.kind]}
             </button>
           )}
         </div>
       </div>
       {original?.converter === "libreoffice" && (
         <p className="pdf-ocr-note">
-          Converted with LibreOffice. Some layouts may look different from
-          PowerPoint.
+          Converted with LibreOffice. Some layouts may look different from{" "}
+          {officeApp[original.kind]}.
         </p>
       )}
       {error && <p role="alert">{error}</p>}

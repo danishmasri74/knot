@@ -39,14 +39,17 @@ import {
   revealInViewport,
 } from "./canvas-viewport";
 import { observeCanvasAttachments } from "./canvas-attachments";
-import { observeSlideCards } from "./slides-cards";
+import { observeOfficeCards } from "./office-cards";
 import {
-  isUnconvertedSlides,
-  setSlideJob,
-  slideJob,
-  slides,
-  slidesTitle,
-} from "../../../services/slides";
+  office,
+  officeJob,
+  officeTitle,
+  originalProps,
+  setOfficeJob,
+  unconvertedOffice,
+  type OfficeConverter,
+  type OfficeKind,
+} from "../../../services/office";
 import { observePdfToolbars } from "./pdf-toolbar";
 import { normalizeMediaFile, mediaImageSize } from "./media";
 import { effects as registerBlocks } from "@blocksuite/blocks/effects";
@@ -673,40 +676,38 @@ export async function openEditor(
     const stopCanvasNotePreviews = observeCanvasNotePreviews(editor);
     const stopCanvasImages = observeCanvasImages(editor);
     const stopCanvasAttachments = observeCanvasAttachments(editor);
-    /** Replace a .pptx card's file with a PDF copy made by the person's own
-     * PowerPoint or LibreOffice. The card keeps the deck's name and remembers
-     * the original, which stays in the workspace for Open in PowerPoint. */
-    const convertSlides = async (id: string) => {
+    /** Replace a .pptx or .docx card's file with a PDF copy made by the
+     * person's own PowerPoint or Word, or LibreOffice. The card keeps the
+     * file's name and remembers the original, which stays in the workspace
+     * for Open in PowerPoint/Word. */
+    const convertOffice = async (id: string) => {
       const model = doc.getBlock(id)?.model as AttachmentBlockModel | undefined;
-      if (
-        model?.flavour !== "affine:attachment" ||
-        !model.sourceId ||
-        !isUnconvertedSlides(model.type, model.name)
-      )
-        return;
+      if (model?.flavour !== "affine:attachment" || !model.sourceId) return;
+      const kind = unconvertedOffice(model.type, model.name);
+      if (!kind) return;
       const original = model.sourceId;
-      if (slideJob(original)?.state === "converting") return;
-      setSlideJob(original, { state: "converting" });
+      if (officeJob(original)?.state === "converting") return;
+      setOfficeJob(original, { state: "converting" });
       try {
-        const outcome = await slides.convert(original);
+        const outcome = await office.convert(original, kind);
         if (outcome.status === "missing")
-          return setSlideJob(original, { state: "missing" });
+          return setOfficeJob(original, { state: "missing" });
         if (outcome.status === "failed")
-          return setSlideJob(original, {
+          return setOfficeJob(original, {
             state: "failed",
             reason: outcome.reason,
           });
-        if (disposed) return setSlideJob(original, undefined);
+        if (disposed) return setOfficeJob(original, undefined);
         const pdf = new File(
           [new Uint8Array(outcome.pdf)],
-          `${slidesTitle(model.name)}.pdf`,
+          `${officeTitle(model.name, kind)}.pdf`,
           { type: "application/pdf" },
         );
         const key = await doc.blobSync.set(pdf);
         const current = doc.getBlock(id)?.model as
           AttachmentBlockModel | undefined;
         if (disposed || !current || current.sourceId !== original)
-          return setSlideJob(original, undefined);
+          return setOfficeJob(original, undefined);
         const inNote = doc.getParent(current)?.flavour !== "affine:surface";
         doc.transact(() => {
           doc.updateBlock(current, {
@@ -718,17 +719,17 @@ export async function openEditor(
           // Not part of BlockSuite's attachment schema; kept in the block's
           // stored properties so cards, backups and .knotbook carry them.
           const raw = doc.spaceDoc.getMap<Y.Map<unknown>>("blocks").get(id);
-          raw?.set("prop:slidesSourceId", original);
-          raw?.set("prop:slidesConverter", outcome.converter);
+          raw?.set(originalProps[kind].source, original);
+          raw?.set(originalProps[kind].converter, outcome.converter);
         });
-        setSlideJob(original, undefined);
+        setOfficeJob(original, undefined);
         await persistence.flush();
       } catch (error) {
-        setSlideJob(original, { state: "failed", reason: String(error) });
+        setOfficeJob(original, { state: "failed", reason: String(error) });
       }
     };
-    const stopSlideCards = observeSlideCards(editor, (id) => {
-      void convertSlides(id);
+    const stopOfficeCards = observeOfficeCards(editor, (id) => {
+      void convertOffice(id);
     });
     const stopPdfToolbars = observePdfToolbars(editor, onPdfNavigate);
     const pdfClick = (event: MouseEvent) => {
@@ -1335,20 +1336,32 @@ export async function openEditor(
             const raw = doc.spaceDoc
               .getMap<Y.Map<unknown>>("blocks")
               .get(attachment.id);
-            const original = raw?.get("prop:slidesSourceId");
-            const converter = raw?.get("prop:slidesConverter");
+            // Decks converted by 0.6.3 store only the slides props.
+            const kind: OfficeKind | undefined =
+              typeof raw?.get(originalProps.document.source) === "string"
+                ? "document"
+                : typeof raw?.get(originalProps.slides.source) === "string"
+                  ? "slides"
+                  : undefined;
+            const original = kind && raw?.get(originalProps[kind].source);
+            const converter = kind && raw?.get(originalProps[kind].converter);
             result.set(attachment.sourceId, {
               key: attachment.sourceId,
               name: attachment.name,
               documentId: doc.id,
-              ...(typeof original === "string" &&
+              ...(kind &&
+                typeof original === "string" &&
                 original && {
-                  slides: {
-                    original,
-                    converter:
-                      converter === "libreoffice"
-                        ? "libreoffice"
-                        : "powerpoint",
+                  original: {
+                    key: original,
+                    kind,
+                    converter: (
+                      ["powerpoint", "word", "libreoffice"] as const
+                    ).includes(converter as OfficeConverter)
+                      ? (converter as OfficeConverter)
+                      : kind === "slides"
+                        ? "powerpoint"
+                        : "word",
                   },
                 }),
             });
@@ -1900,7 +1913,7 @@ export async function openEditor(
         stopCanvasNotePreviews();
         doc.spaceDoc.off("update", syncEmptyNote);
         stopCanvasAttachments();
-        stopSlideCards();
+        stopOfficeCards();
         stopPdfToolbars();
         disposed = true;
         editor.removeEventListener("keydown", selectVisibleNotes, true);
