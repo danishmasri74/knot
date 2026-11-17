@@ -22,9 +22,11 @@ import {
   revisionSheet,
   saveCourse,
   weakAreas,
+  currentAttempt,
   slideRange,
   withoutTerm,
   type StudyCourse,
+  type StudyLesson,
   type StudyGoal,
   type StudyPace,
   type StudyQuestion,
@@ -118,7 +120,9 @@ export function StudyPanel({
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState("");
   const abort = useRef<AbortController>();
-  const prefetching = useRef(new Set<string>());
+  /** Lessons being made in the background, shared with an open checkpoint
+   * so the same lesson is never requested (and paid for) twice. */
+  const prefetching = useRef(new Map<string, Promise<StudyLesson>>());
   useEffect(() => () => abort.current?.abort(), []);
 
   const course = "id" in view ? courses.find((c) => c.id === view.id) : undefined;
@@ -148,7 +152,11 @@ export function StudyPanel({
     if (needs.startsWith("lesson:")) {
       const index = Number(needs.slice(7));
       void work("Preparing the lesson", async (signal) => {
-        const made = await makeLesson(c, index, costTo(c.id), signal);
+        // Already being made in the background: wait for that one.
+        const pending = prefetching.current.get(`${c.id}:${index}`);
+        const made = pending
+          ? await pending
+          : await makeLesson(c, index, costTo(c.id), signal);
         update(c.id, (latest) => {
           latest.checkpoints[index].lesson ??= made;
         });
@@ -198,8 +206,9 @@ export function StudyPanel({
     const next = c.checkpoints[index];
     const key = `${c.id}:${index}`;
     if (!next || next.lesson || prefetching.current.has(key) || readonly) return;
-    prefetching.current.add(key);
-    void makeLesson(c, index, costTo(c.id))
+    const pending = makeLesson(c, index, costTo(c.id));
+    prefetching.current.set(key, pending);
+    void pending
       .then((lesson) =>
         update(c.id, (latest) => {
           latest.checkpoints[index].lesson ??= lesson;
@@ -271,7 +280,12 @@ export function StudyPanel({
         }}
         onCreate={(setup) =>
           void work("Reading the files and planning checkpoints", async (signal) => {
-            const plan = await planCourse(setup, () => {}, signal);
+            let planCost = 0;
+            const plan = await planCourse(
+              setup,
+              (cost) => (planCost += cost.usd ?? 0),
+              signal,
+            );
             const created: StudyCourse = {
               id: crypto.randomUUID(),
               created: Date.now(),
@@ -281,6 +295,7 @@ export function StudyPanel({
               options: setup.options,
               sources: plan.sources,
               checkpoints: plan.checkpoints,
+              ...(planCost && { spent: planCost }),
             };
             saveCourse(spaceDoc, created);
             setView({ kind: "course", id: created.id });
@@ -372,7 +387,7 @@ export function StudyPanel({
     const checkpoint = course.checkpoints[index];
     const lesson = checkpoint?.lesson;
     if (lesson) prefetch(course, index + 1);
-    const graded = checkpoint?.attempts.at(-1);
+    const graded = checkpoint ? currentAttempt(checkpoint) : undefined;
     const isLast = index === course.checkpoints.length - 1;
     return (
       <div className="study-panel">
@@ -434,14 +449,16 @@ export function StudyPanel({
                   </p>
                 ))}
                 <StudyQuiz
-                  key={`${index}:${checkpoint.attempts.length}:${lesson.questions[0]?.question}`}
+                  key={`${index}:${lesson.round ?? 0}:${checkpoint.attempts.length}`}
                   title={`Checkpoint ${index + 1} quiz`}
                   questions={lesson.questions}
                   graded={graded}
                   renderSlide={(q) => slideChip(course, q.source, q.slide)}
                   onSubmit={(picks) =>
                     update(course.id, (c) => {
-                      c.checkpoints[index].attempts.push(grade(lesson.questions, picks));
+                      c.checkpoints[index].attempts.push(
+                        grade(lesson.questions, picks, lesson.round ?? 0),
+                      );
                     })
                   }
                   footer={
@@ -459,12 +476,14 @@ export function StudyPanel({
                             );
                             update(course.id, (c) => {
                               const l = c.checkpoints[index].lesson;
-                              if (l) l.questions = questions.map(({ area, shortcut, ...q }) => {
+                              if (!l) return;
+                              l.questions = questions.map(({ area, shortcut, ...q }) => {
                                 void area;
                                 void shortcut;
                                 return q;
                               });
-                              c.checkpoints[index].attempts = c.checkpoints[index].attempts.slice(0, -1);
+                              // A new round: earlier scores stay in the history.
+                              l.round = (l.round ?? 0) + 1;
                             });
                           })
                         }
@@ -745,6 +764,7 @@ export function StudyPanel({
         {course.checkpoints.map((c, i) => {
           const state = states[i];
           const score = bestScore(c.attempts);
+          const bestOf = c.attempts.find((attempt) => attempt.score === score);
           const range = c.slides
             .map((r) => `${shortPdfName(course.sources[r.source]?.name ?? "")} · ${slideRange(r.from, r.to)}`)
             .join(", ");
@@ -759,7 +779,7 @@ export function StudyPanel({
               </span>
               {state === "done" ? (
                 <button type="button" onClick={() => setView({ kind: "checkpoint", id: course.id, index: i })}>
-                  {score}/{c.lesson?.questions.length ?? "?"}
+                  {score}/{bestOf?.total ?? c.lesson?.questions.length ?? "?"}
                 </button>
               ) : state === "locked" ? (
                 <span className="study-muted" aria-label="Locked">

@@ -26,8 +26,18 @@ export type StudyLesson = {
   remember: { columns: string[]; rows: string[][] };
   traps: string[];
   questions: StudyQuestion[];
+  /** Bumped by Retry with new questions; earlier attempts keep their score. */
+  round?: number;
 };
-export type StudyAttempt = { picks: number[]; score: number; at: number };
+export type StudyAttempt = {
+  picks: number[];
+  score: number;
+  at: number;
+  /** Questions in the set it answered (older attempts: the lesson's count). */
+  total?: number;
+  /** Which question set it answered: Retry starts a new round. */
+  round?: number;
+};
 export type StudyCheckpoint = {
   title: string;
   slides: SlideRange[];
@@ -127,9 +137,9 @@ export function courseProgress(course: StudyCourse) {
   let asked = 0;
   for (const checkpoint of course.checkpoints) {
     const last = checkpoint.attempts.at(-1);
-    if (!last || !checkpoint.lesson) continue;
+    if (!last) continue;
     right += last.score;
-    asked += checkpoint.lesson.questions.length;
+    asked += totalOf(last, checkpoint);
   }
   const finalLast = course.final?.attempts.at(-1);
   if (finalLast && course.final) {
@@ -141,13 +151,30 @@ export function courseProgress(course: StudyCourse) {
 
 // Grading -----------------------------------------------------------------
 
-export function grade(questions: StudyQuestion[], picks: number[]): StudyAttempt {
+export function grade(
+  questions: StudyQuestion[],
+  picks: number[],
+  round = 0,
+): StudyAttempt {
   return {
     picks,
     score: questions.filter((q, i) => picks[i] === q.correct).length,
     at: Date.now(),
+    total: questions.length,
+    round,
   };
 }
+
+/** The attempt at the lesson's current questions, if there is one. */
+export function currentAttempt(checkpoint: StudyCheckpoint) {
+  const last = checkpoint.attempts.at(-1);
+  return last && (last.round ?? 0) === (checkpoint.lesson?.round ?? 0)
+    ? last
+    : undefined;
+}
+/** An attempt's question count. */
+const totalOf = (attempt: StudyAttempt, checkpoint: StudyCheckpoint) =>
+  attempt.total ?? checkpoint.lesson?.questions.length ?? 0;
 
 export type Readiness = "Excellent" | "Good" | "Review";
 /** Accuracy per checkpoint over its latest attempt and the final exam's
@@ -157,9 +184,9 @@ export function readiness(course: StudyCourse) {
     let right = 0;
     let asked = 0;
     const last = checkpoint.attempts.at(-1);
-    if (last && checkpoint.lesson) {
+    if (last) {
       right += last.score;
-      asked += checkpoint.lesson.questions.length;
+      asked += totalOf(last, checkpoint);
     }
     const final = course.final;
     const finalLast = final?.attempts.at(-1);
@@ -225,7 +252,9 @@ export function readPlan(value: unknown, sources: StudySource[]): StudyCheckpoin
       .filter((r) => r.from <= r.to);
     return title && slides.length ? [{ title, slides, attempts: [] }] : [];
   });
-  if (checkpoints.length < 2) throw new Error("The course plan was too short. Try again.");
+  // One short deck on one topic is a course of one checkpoint.
+  if (!checkpoints.length)
+    throw new Error("Knot couldn't find topics to study in these files. Try again.");
   return checkpoints;
 }
 

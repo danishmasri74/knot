@@ -156,3 +156,28 @@ it("tidies lesson text", async () => {
     "Development and operations working together.",
   );
 });
+
+describe("edge cases", () => {
+  it("accepts a one-checkpoint plan and refuses an empty one", () => {
+    const plan = readPlan({ checkpoints: [{ title: "Only topic", slides: [{ source: 1, from: 1, to: 4 }] }] }, sources);
+    expect(plan).toHaveLength(1);
+    expect(() => readPlan({ checkpoints: [{ title: "", slides: [] }] }, sources)).toThrow(/couldn't find topics/);
+  });
+
+  it("keeps earlier scores when retrying with new questions", async () => {
+    const { currentAttempt } = await import("../src/services/study-course");
+    const c = course();
+    const lesson = lessonOf([q(1), q(2)]);
+    c.checkpoints[0].lesson = lesson;
+    c.checkpoints[0].attempts.push(grade(lesson.questions, [1, 0], 0));
+    expect(currentAttempt(c.checkpoints[0])?.score).toBe(1);
+    // Retry: new questions in a new round; the old attempt stays.
+    lesson.questions = [q(3), q(4), q(5)];
+    lesson.round = 1;
+    expect(currentAttempt(c.checkpoints[0])).toBeUndefined();
+    expect(checkpointStates(c)[0]).toBe("done");
+    c.checkpoints[0].attempts.push(grade(lesson.questions, [0, 0, 0], 1));
+    expect(c.checkpoints[0].attempts.map((a) => `${a.score}/${a.total}`)).toEqual(["1/2", "3/3"]);
+    expect(courseProgress(c)).toMatchObject({ right: 3, asked: 3 });
+  });
+});

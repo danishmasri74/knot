@@ -68,9 +68,32 @@ async function request(
   }
 }
 
+/** A deck the course needs that is no longer in the notebook. */
+async function readDeck<T>(name: string, read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    // Size and page errors already say what's wrong; anything else here
+    // means the file can't be read (removed from the notebook).
+    if (error instanceof Error && /large|pages|at most/i.test(error.message)) throw error;
+    throw new Error(
+      `“${name}” is no longer in this notebook. Add it back to continue this course.`,
+    );
+  }
+}
+
 async function wholeFiles(sources: StudySource[]): Promise<Files> {
-  const { preparePdfFiles } = await import("./pdf-input");
-  return preparePdfFiles(sources.map(({ key, name }) => ({ key, name })));
+  const { preparePdfInput, MAX_PDF_FILES_BYTES } = await import("./pdf-input");
+  const files: Files = [];
+  let total = 0;
+  for (const { key, name } of sources) {
+    const data = await readDeck(name, () => preparePdfInput({ key }));
+    total += data.length;
+    if (total > MAX_PDF_FILES_BYTES)
+      throw new Error("These files are too large to send together. Select fewer or smaller files.");
+    files.push({ name, data });
+  }
+  return files;
 }
 
 /** Only these slide ranges, one small PDF per range. */
@@ -83,7 +106,9 @@ async function slicedFiles(sources: StudySource[], ranges: SlideRange[]) {
     if (!source) continue;
     files.push({
       name: `${source.name} (slides ${range.from}-${range.to})`,
-      data: await slicePdf(source.key, range.from, range.to),
+      data: await readDeck(source.name, () =>
+        slicePdf(source.key, range.from, range.to),
+      ),
     });
     described.push({
       index: range.source,
@@ -105,7 +130,10 @@ export async function planCourse(
 ): Promise<{ sources: StudySource[]; checkpoints: StudyCheckpoint[] }> {
   const { pdfPageCount } = await import("./pdf-input");
   const sources = await Promise.all(
-    course.sources.map(async (s) => ({ ...s, pages: await pdfPageCount(s.key) })),
+    course.sources.map(async (s) => ({
+      ...s,
+      pages: await readDeck(s.name, () => pdfPageCount(s.key)),
+    })),
   );
   const plan = await request(
     "course_plan",
