@@ -10,3 +10,4 @@
 - Select up to three PDFs or slide decks on a canvas and Ask Knot reads all of them, not just the first. The chip shows how many files are included.
 - In answers about PDFs and slide decks, citations like "slide 3" are links that open the file at that page. With several files, each citation names its file.
 - Next-step buttons also appear under answers about PDFs and slide decks, and they build on the answer without sending the files again.
+- After you apply cards or a mind map from Ask Knot, the canvas moves to show them, and Show on canvas works for mind maps too.

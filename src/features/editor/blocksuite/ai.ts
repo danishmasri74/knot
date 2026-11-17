@@ -38,6 +38,7 @@ import {
 import { youtubeVideoId } from "../../../services/youtube-transcript";
 import { aiConnectorPorts, layoutCards, type LayoutKind } from "./ai-layout";
 import { dissolveDotsAmong, isRerouteDot } from "./reroute";
+import { fitInViewport } from "./canvas-viewport";
 import type { AiPdfFile, AiPdfSource } from "../../../services/pdf-input";
 import type { BlockModel, Doc } from "@blocksuite/store";
 import type { AffineEditorContainer } from "@blocksuite/presets";
@@ -1027,7 +1028,7 @@ export function applyAiProposal(
     /** Break this into ideas: the canvas card the new cards replace. */
     replaces?: string;
   },
-): (() => void) & { noteId?: string } {
+): (() => void) & { noteId?: string; created?: string[] } {
   const proposal = validateProposal(input, context.webContext);
   if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
   if (mode === "arrange")
@@ -1225,6 +1226,8 @@ export function applyAiProposal(
       ? Math.max(0, ...canvasObstacles(doc).map((b) => b[0] + b[2] + 80))
       : 0;
   let noteId: string | undefined;
+  /** Cards and mind map made on the canvas, to bring into view. */
+  const created: string[] = [];
   doc.captureSync();
   doc.transact(() => {
     if (mode === "note") {
@@ -1292,7 +1295,9 @@ export function applyAiProposal(
         proposal.mindmap.forEach(({ parent }, i) => {
           if (i) nodes[parent].children.push(nodes[i]);
         });
-        surface!.addElement({ type: "mindmap", children: nodes[0] });
+        created.push(
+          surface!.addElement({ type: "mindmap", children: nodes[0] }),
+        );
       }
       const ids = proposal.blocks.map((block, i) => {
         const [x, y, w, h] = bounds[i];
@@ -1329,6 +1334,7 @@ export function applyAiProposal(
       });
       // The first new card, for Show on canvas.
       noteId = ids[0];
+      created.push(...ids);
       if (proposal.mindmap?.some((n) => n.sourceRefs?.length)) {
         const id =
           ids[0] ??
@@ -1465,7 +1471,40 @@ export function applyAiProposal(
     undoApplied(doc, item, appliedVersion);
     if (trashed) deck!.restore(replacedCard!);
   };
-  return Object.assign(undo, { noteId });
+  return Object.assign(undo, { noteId, created });
+}
+
+/**
+ * Brings objects on the open canvas into view (new AI cards are placed right
+ * of everything, often off screen). False when none of them is there.
+ */
+export function revealCanvasObjects(
+  editor: AffineEditorContainer,
+  ids: string[],
+): boolean {
+  const canvas =
+    editor.mode === "edgeless"
+      ? editor.querySelector("affine-edgeless-root")
+      : null;
+  if (!canvas || !ids.length) return false;
+  const surface = editor.doc.getBlocksByFlavour("affine:surface")[0]
+    ?.model as SurfaceBlockModel | undefined;
+  const boxes = ids.flatMap((id) => {
+    const model =
+      editor.doc.getBlock(id)?.model ?? surface?.getElementById(id) ?? undefined;
+    const b = model && "xywh" in model ? parseBox(model.xywh) : undefined;
+    return b ? [b] : [];
+  });
+  if (!boxes.length) return false;
+  const x = Math.min(...boxes.map((b) => b[0]));
+  const y = Math.min(...boxes.map((b) => b[1]));
+  fitInViewport(canvas.gfx.viewport, {
+    x,
+    y,
+    w: Math.max(...boxes.map((b) => b[0] + b[2])) - x,
+    h: Math.max(...boxes.map((b) => b[1] + b[3])) - y,
+  });
+  return true;
 }
 
 /**

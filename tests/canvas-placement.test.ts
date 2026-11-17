@@ -1,5 +1,9 @@
-import { expect, it } from "vitest";
-import { placeInView, revealInViewport } from "../src/features/editor/blocksuite/canvas-viewport";
+import { describe, expect, it } from "vitest";
+import {
+  fitInViewport,
+  placeInView,
+  revealInViewport,
+} from "../src/features/editor/blocksuite/canvas-viewport";
 
 function viewport(x: number, y: number, w: number, h: number, zoom = 1) {
   const v = {
@@ -43,4 +47,38 @@ it("pans the least distance to show a box, and leaves visible boxes alone", () =
   // Larger than the view: align its top-left corner.
   revealInViewport(v, { x: 0, y: 0, w: 5000, h: 5000 });
   expect([v.viewportBounds.x, v.viewportBounds.y]).toEqual([-32, -32]);
+});
+
+describe("fitInViewport", () => {
+  const viewport = (zoom = 1) => {
+    const calls: [number, [number, number] | undefined][] = [];
+    return {
+      calls,
+      zoom,
+      centerX: 400,
+      centerY: 300,
+      width: 800 * zoom,
+      height: 600 * zoom,
+      viewportBounds: { x: 0, y: 0, w: 800, h: 600 },
+      setCenter() {},
+      setViewport(z: number, c?: [number, number]) {
+        calls.push([z, c]);
+      },
+    };
+  };
+
+  it("leaves visible content alone", () => {
+    const v = viewport();
+    fitInViewport(v, { x: 100, y: 100, w: 200, h: 200 });
+    expect(v.calls).toEqual([]);
+  });
+
+  it("centres off-screen content, zooming out only to fit", () => {
+    const near = viewport();
+    fitInViewport(near, { x: 2000, y: 0, w: 300, h: 200 });
+    expect(near.calls).toEqual([[1, [2150, 100]]]);
+    const wide = viewport();
+    fitInViewport(wide, { x: 2000, y: 0, w: 2000, h: 1000 }, 0);
+    expect(wide.calls[0][0]).toBeCloseTo(0.4);
+  });
 });

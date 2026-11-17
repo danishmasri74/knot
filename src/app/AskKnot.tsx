@@ -113,6 +113,7 @@ import {
 import {
   addAiMessageCard,
   applyAiProposal,
+  revealCanvasObjects,
   captureAiContext,
   captureCardContext,
   structuredAiBlocks,
@@ -174,6 +175,8 @@ type Turn = {
   /** What an applied proposal created (a note, quiz or the first canvas
    * card): its first block, for the Open button. */
   createdNote?: { block: string; text: string };
+  /** Cards and mind map an applied proposal made on the canvas. */
+  createdOnCanvas?: string[];
   /** Break this into ideas: the canvas card these cards replace. */
   replaces?: string;
   /** Source passages the replacement cards don't cover (kept on Apply). */
@@ -3011,6 +3014,17 @@ function AskKnotPanel({
                                   block: first.id,
                                   text: first.text?.toString() ?? "",
                                 };
+                              // New canvas content goes right of everything,
+                              // often off screen: bring it into view once
+                              // BlockSuite has laid out any mind map.
+                              if (undo.created?.length) {
+                                turn.createdOnCanvas = undo.created;
+                                const ids = undo.created;
+                                setTimeout(
+                                  () => revealCanvasObjects(s.editor, ids),
+                                  60,
+                                );
+                              }
                               recordAiOutcome(turn.attemptId, "apply");
                               turn.status = "applied";
                               update([...turns]);
@@ -3059,11 +3073,26 @@ function AskKnotPanel({
                           {turn.status === "applied" ? "Applied" : "Dismissed"}
                         </small>
                         {turn.status === "applied" &&
-                          turn.createdNote &&
+                          (turn.createdNote || turn.createdOnCanvas) &&
                           turn.context && (
                             <button
                               onClick={() => {
                                 setError("");
+                                const s = getSession();
+                                if (
+                                  turn.createdOnCanvas &&
+                                  s &&
+                                  s.doc === turn.context?.instance &&
+                                  revealCanvasObjects(
+                                    s.editor,
+                                    turn.createdOnCanvas,
+                                  )
+                                )
+                                  return;
+                                if (!turn.createdNote)
+                                  return setError(
+                                    "Open this canvas to see what was added.",
+                                  );
                                 void onSource(
                                   turn.context!.document,
                                   turn.createdNote!.block,
@@ -3095,6 +3124,7 @@ function AskKnotPanel({
                                 recordAiOutcome(turn.attemptId, "undo");
                                 turn.undo = undefined;
                                 turn.createdNote = undefined;
+                                turn.createdOnCanvas = undefined;
                                 turn.status = "dismissed";
                                 update([...turns]);
                               } catch (e) {

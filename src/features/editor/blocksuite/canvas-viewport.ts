@@ -24,6 +24,38 @@ export function revealInViewport(viewport: Viewport, box: Box, margin = 32) {
   if (dx || dy) viewport.setCenter(viewport.centerX + dx, viewport.centerY + dy);
 }
 
+/**
+ * Brings `box` into view: no change when it is already visible, else centred
+ * on it, zooming out (never in) when it doesn't fit at the current zoom.
+ */
+export function fitInViewport(
+  viewport: Viewport & {
+    width: number;
+    height: number;
+    setViewport(zoom: number, center?: [number, number], smooth?: boolean): void;
+  },
+  box: Box,
+  margin = 48,
+) {
+  const view = viewport.viewportBounds;
+  if (
+    box.x >= view.x &&
+    box.y >= view.y &&
+    box.x + box.w <= view.x + view.w &&
+    box.y + box.h <= view.y + view.h
+  )
+    return;
+  const zoom = Math.max(
+    0.1,
+    Math.min(
+      viewport.zoom,
+      (viewport.width - 2 * margin) / Math.max(1, box.w),
+      (viewport.height - 2 * margin) / Math.max(1, box.h),
+    ),
+  );
+  viewport.setViewport(zoom, [box.x + box.w / 2, box.y + box.h / 2], true);
+}
+
 /** Where a new note goes: centered in view, moved down past notes it would cover. */
 export function placeInView(viewport: Viewport, size: { w: number; h: number }, notes: Box[]) {
   const x = viewport.centerX - size.w / 2;
