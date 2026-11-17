@@ -3814,6 +3814,45 @@ main:has(.settings-modal) > .editor-area {
   line-height: 1.5;
   white-space: normal;
 }
+/* A scene before it's applied (ScenePreview.tsx): the plan, a count and an
+   outline of sections and what they hold. */
+.ask-scene-preview {
+  white-space: normal;
+}
+.ask-preview p.ask-scene-plan {
+  margin-bottom: 6px;
+}
+.ask-preview p.ask-scene-count {
+  margin-bottom: 8px;
+  color: var(--ask-muted);
+  font-size: 12px;
+}
+.ask-scene-outline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ask-scene-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  line-height: 1.5;
+  padding-block: 1px;
+}
+.ask-scene-item[data-kind="frame"] {
+  margin-top: 6px;
+  font-weight: 600;
+}
+.ask-scene-item[data-kind="frame"]:first-child {
+  margin-top: 0;
+}
+.ask-scene-kind {
+  flex: none;
+  min-width: 58px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ask-muted);
+}
 .ask-quiz-preview {
   margin: 0;
   padding-left: 22px;

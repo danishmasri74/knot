@@ -141,6 +141,8 @@ import { quizLines } from "../services/ai-quiz";
 import { uncoveredPassages } from "../services/ai-atomize";
 import { renderVisibleCanvas } from "../features/editor/blocksuite/canvas-snapshot";
 import { canvasHandles } from "../services/canvas-map-format";
+import { sceneBlocks } from "../features/editor/blocksuite/scene";
+import { ScenePreview } from "./ScenePreview";
 import {
   chooseLayout,
   type LayoutKind,
@@ -186,6 +188,8 @@ type Turn = {
   proposal?: AiProposal;
   context?: AiContext;
   mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange" | "connect";
+  /** What Knot adjusted while placing a scene (scene-solver.ts). */
+  layoutReport?: string[];
   /** connect_cards: suggestions the user unticked (indexes). */
   skipped?: number[];
   /** What an applied proposal created (a note, quiz or the first canvas
@@ -1062,6 +1066,7 @@ function AskKnotPanel({
                 : `${turn.proposal!.mindmap![node.parent].text} → ${node.text}`,
             ),
             ...turn.proposal.blocks.map(aiBlockText),
+            ...sceneBlocks(turn.proposal.scene).map(aiBlockText),
             ...quizLines(turn.proposal.questions),
           ].join("\n")
       : plainAnswer(turn.content);
@@ -1231,6 +1236,7 @@ function AskKnotPanel({
                     : `${turn.proposal!.mindmap![node.parent].text} → ${node.text}`,
               })),
               ...turn.proposal.blocks,
+              ...sceneBlocks(turn.proposal.scene),
               ...quizLines(turn.proposal.questions).map((line) => ({
                 type: "paragraph" as const,
                 text: line,
@@ -1909,9 +1915,11 @@ function AskKnotPanel({
         : "Split this answer into canvas cards",
       undefined,
       undefined,
-      action,
+      action === "insert" ? action : undefined,
       {
         message: `${action === "insert" ? "Add the following answer to my note" : "Turn the following answer into canvas content"}. Keep its facts and do not add new ones.\n\n${turn.content}`,
+        // The canvas gets a composed scene, as when asked in chat.
+        ...(action === "canvas" && { onlyTool: "create_on_canvas" as const }),
       },
     );
   }
@@ -1919,9 +1927,10 @@ function AskKnotPanel({
   function chooseFollowUp(turn: Turn, followUp: FollowUp) {
     const message = followUpMessage(followUp, turn.content);
     if (followUp.action === "cards" || followUp.action === "mindmap")
-      void send(undefined, followUp.label, undefined, undefined, "canvas", {
+      void send(undefined, followUp.label, undefined, undefined, undefined, {
         message,
         answerSource: true,
+        onlyTool: "create_on_canvas",
       });
     else if (followUp.action === "insert")
       void send(undefined, followUp.label, undefined, undefined, "insert", {
@@ -2477,13 +2486,17 @@ function AskKnotPanel({
             ).filter((tool) => !options?.onlyTool || tool === options.onlyTool)
           : [];
       if (action === "auto" && options?.onlyTool && !tools.length)
-        throw new Error("Open a note or notebook Knot can edit, then retry.");
+        throw new Error(
+          options.onlyTool === "create_on_canvas"
+            ? "Open the canvas, then retry."
+            : "Open a note or notebook Knot can edit, then retry.",
+        );
       const chosenModel =
         model === "auto"
           ? automaticAiModel(
               models,
               action === "auto"
-                ? tools.length && editIntent(input)
+                ? tools.length && (options?.onlyTool || editIntent(input))
                   ? "rewrite"
                   : // Connections and map checks on a canvas need judgement.
                     (tools.includes("connect_cards") && connectIntent(input))
@@ -2563,6 +2576,9 @@ function AskKnotPanel({
                 { replacements: [], blocks: [], ...JSON.parse(toolArguments) }
               : JSON.parse(output),
             requestContext,
+            editContext.canvasMap
+              ? new Set(canvasHandles(editContext.canvasMap).keys())
+              : undefined,
           );
           // Questions go into the note only when it may be edited.
           if (
@@ -3243,6 +3259,9 @@ function AskKnotPanel({
                             The original goes to Trash; Undo brings it back.
                           </p>
                         )}
+                        {turn.proposal.scene && (
+                          <ScenePreview scene={turn.proposal.scene} />
+                        )}
                         {turn.proposal.mindmap?.map((node, i, nodes) => (
                           <p key={i}>
                             {node.parent < 0 ? (
@@ -3418,7 +3437,11 @@ function AskKnotPanel({
                                 turn.mode!,
                                 turn.replaces
                                   ? { replaces: turn.replaces }
-                                  : undefined,
+                                  : {
+                                      view: visibleCanvas(s.editor),
+                                      reveal: (ids) =>
+                                        revealCanvasObjects(s.editor, ids),
+                                    },
                               );
                               turn.undo = undo;
                               // A new note stays where it was put; Open note
@@ -3441,6 +3464,12 @@ function AskKnotPanel({
                                   () => revealCanvasObjects(s.editor, ids),
                                   60,
                                 );
+                                // A scene settles once its cards are
+                                // measured; show where it ended up.
+                                void undo.settled?.then(() => {
+                                  turn.layoutReport = undo.report;
+                                  revealCanvasObjects(s.editor, ids);
+                                });
                               }
                               recordAiOutcome(turn.attemptId, "apply");
                               turn.status = "applied";
@@ -4649,6 +4678,16 @@ function copyableHtml(prose: Element): string {
   return copy.innerHTML;
 }
 /** The PDFs a message sent, with full names, for its answer's citations. */
+/** The part of the canvas on screen, for a scene anchored to the view. */
+function visibleCanvas(
+  editor: EditorSession["editor"],
+): [number, number, number, number] | undefined {
+  const root = editor.querySelector("affine-edgeless-root") as unknown as {
+    gfx?: { viewport: { viewportBounds: { x: number; y: number; w: number; h: number } } };
+  } | null;
+  const v = root?.gfx?.viewport.viewportBounds;
+  return v ? [v.x, v.y, v.w, v.h] : undefined;
+}
 function citedPdfs(request?: Turn["request"]): CitedPdf[] {
   const chips = (request?.attachments ?? []).filter(
     (item) => item.kind === "pdf" && item.pdf,

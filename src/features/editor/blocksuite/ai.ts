@@ -2,7 +2,10 @@ import * as Y from "yjs";
 import {
   cleanAiBlock,
   cleanAiProposal,
+  cleanScene,
 } from "../../../services/ai-generated-content";
+import { validateScene, type Scene } from "./scene";
+import { applyScene } from "./scene-apply";
 import { ConnectorMode } from "@blocksuite/blocks";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
 import {
@@ -80,6 +83,8 @@ export type AiProposal = {
   /** arrange_cards: the existing cards to move (K handles) and how. */
   cards?: string[];
   layout?: LayoutKind | "auto";
+  /** create_on_canvas: a scene the model composed (scene.ts). */
+  scene?: Scene;
 };
 export type { AiQuestion } from "../../../services/ai-quiz";
 export type AiLink = {
@@ -172,7 +177,7 @@ export function structuredAiBlocks(root: BlockModel): ContextBlock[] {
   return result;
 }
 const revisions = new WeakMap<Doc, number>();
-const version = (doc: Doc) => {
+export const version = (doc: Doc) => {
   if (!revisions.has(doc)) {
     revisions.set(doc, 0);
     doc.spaceDoc.on("update", (_update, _origin, _doc, transaction) => {
@@ -211,7 +216,7 @@ const version = (doc: Doc) => {
  * version unchanged (re-centred arrow labels), may sit above it on the undo
  * stack; they are stepped back first. Anything else is a newer edit.
  */
-function undoApplied(doc: Doc, item: unknown, appliedVersion: string) {
+export function undoApplied(doc: Doc, item: unknown, appliedVersion: string) {
   const newer = () =>
     new Error(
       "There are newer edits. Use the editor’s Undo to undo them in order.",
@@ -522,7 +527,29 @@ export function captureAiContext(
 export function validateProposal(
   value: unknown,
   webContext?: string,
+  /** Canvas map handles the request could refer to (K1, F2…). */
+  handles: Set<string> = new Set(),
 ): AiProposal {
+  // A scene: create_on_canvas's arguments, or one saved with a chat.
+  const raw = value as { objects?: unknown; scene?: unknown };
+  if (raw && (Array.isArray(raw.objects) || raw.scene)) {
+    const source = raw.scene ?? raw;
+    if (JSON.stringify(source).length > 2_000_000)
+      throw new Error("The canvas response is too large. Ask for it in parts.");
+    const scene = cleanScene(validateScene(source, handles));
+    validateSourceRefs(
+      {
+        blocks: scene.objects.map((o) => ({
+          ...(o.sourceRefs && { sourceRefs: o.sourceRefs }),
+          children: o.content,
+        })),
+        connections: scene.connectors,
+        mindmap: scene.objects.flatMap((o) => o.nodes),
+      },
+      webContext,
+    );
+    return { replacements: [], blocks: [], scene };
+  }
   const p = value as AiProposal;
   if (
     !p ||
@@ -651,7 +678,7 @@ export function validateProposal(
   return cleanAiProposal(p);
 }
 
-function aiConnectorStroke(index: number) {
+export function aiConnectorStroke(index: number) {
   // A golden-angle step keeps successive arrows far apart on the color wheel.
   const hue = 210 + index * 137.5;
   const channels = [0, 120, 240].map(
@@ -1027,8 +1054,38 @@ export function applyAiProposal(
   options?: {
     /** Break this into ideas: the canvas card the new cards replace. */
     replaces?: string;
+    /** The visible part of the canvas, for a scene anchored to the view. */
+    view?: Box;
+    /** A scene: brings new objects into view so the editor measures them. */
+    reveal?: (ids: string[]) => void;
   },
-): (() => void) & { noteId?: string; created?: string[] } {
+): (() => void) & {
+  noteId?: string;
+  created?: string[];
+  settled?: Promise<void>;
+  report?: string[];
+} {
+  if (input.scene) {
+    if (mode !== "canvas") throw new Error("This proposal belongs on the canvas.");
+    const handles = context.canvasMap
+      ? new Set(canvasHandles(context.canvasMap).keys())
+      : new Set<string>();
+    const { scene } = validateProposal(input, context.webContext, handles);
+    if (
+      doc !== context.instance ||
+      doc.id !== context.document ||
+      workspace !== context.workspace ||
+      version(doc) !== context.version ||
+      doc.readonly
+    )
+      throw new Error("This edit is stale. Capture fresh context and try again.");
+    // Notes from the first check survive the second.
+    scene!.notes = [...new Set([...(input.scene.notes ?? []), ...scene!.notes])];
+    return applyScene(doc, context, scene!, {
+      view: options?.view,
+      reveal: options?.reveal,
+    });
+  }
   const proposal = validateProposal(input, context.webContext);
   if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
   if (mode === "arrange")
@@ -1512,7 +1569,7 @@ export function revealCanvasObjects(
  * label editor measures as you type. Programmatic labels get an estimated
  * box; BlockSuite re-centres it on the arrow whenever the path changes.
  */
-function connectorLabel(
+export function connectorLabel(
   label: string,
   /** Where the label sits along the arrow, from its start (0-1). */
   distance?: number,
@@ -1543,7 +1600,7 @@ function connectorLabel(
 /** BlockSuite's default label colours, black in both themes. */
 const DEFAULT_LABEL_BLACKS = new Set(["#000000", "--affine-palette-line-black"]);
 /** Arrow label text: dark on a light canvas, light on a dark one. */
-const ARROW_LABEL_COLOR = { light: "#2b2b2b", dark: "#e3e3e3" };
+export const ARROW_LABEL_COLOR = { light: "#2b2b2b", dark: "#e3e3e3" };
 
 /** Gives a connector with a default-black label colour the theme-aware one. */
 function themeArrowLabel(surface: SurfaceBlockModel, element: unknown) {
@@ -1666,7 +1723,7 @@ export function canvasObstacles(
       add(element.id, element.xywh);
   return boxes;
 }
-function parseBox(xywh: unknown): Box | undefined {
+export function parseBox(xywh: unknown): Box | undefined {
   try {
     const b: unknown = JSON.parse(String(xywh));
     return Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)

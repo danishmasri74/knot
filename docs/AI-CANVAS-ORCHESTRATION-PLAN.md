@@ -1,6 +1,24 @@
 # AI canvas orchestration — plan
 
-Status: proposal, 17 November 2026. Nothing here is built yet.
+Status: phase 1 built, 17 November 2026 (not yet benchmarked against the
+old path; that needs a paid run). Phases 2 to 5 are proposals.
+
+Phase 1 as built:
+
+- `create_on_canvas` returns a scene (`SCENE_RULES` and `scene_schema` in
+  `src-tauri/src/ai.rs`). The forced canvas mode keeps the old cards format
+  for "Break this into ideas" until phase 4.
+- `scene.ts` validates and repairs a scene; `scene-solver.ts` places it;
+  `scene-apply.ts` draws it and settles it once the editor has measured the
+  cards. Unit tests: `tests/scene.test.ts`; in a real editor:
+  `tests/ai-scene.browser.mjs`.
+- The solver is our own, not kiwi.js: the relations are simple enough that a
+  dependency-free resolver is smaller and easier to test.
+- Card heights are estimated from text (calibrated on measured cards) and
+  replaced by the editor's measurement for cards on screen; new content is
+  brought into view before measuring so that usually covers all of it.
+- Follow-up buttons ("Make … cards", "Make a mind map") and "Split this
+  answer into canvas cards" now go through `create_on_canvas`.
 
 Ask Knot can read the canvas (the canvas map, `view_canvas`) but it can't
 compose on it. This plan hands composition to the model: it decides what goes

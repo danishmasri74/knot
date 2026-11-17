@@ -1,5 +1,6 @@
 import type { AiProposal } from "../features/editor/blocksuite/ai";
 import type { AiBlock } from "../features/editor/blocksuite/ai-content";
+import type { Scene } from "../features/editor/blocksuite/scene";
 
 /** Request-local citation IDs have no meaning in an editable document. */
 export function stripAiSourceMarkers(text: string): string {
@@ -76,5 +77,20 @@ export function cleanAiProposal(proposal: AiProposal): AiProposal {
         explanation: stripAiSourceMarkers(q.explanation).trim(),
       })),
     }),
+  };
+}
+
+/** A scene without request-local citation markers in any text it draws. */
+export function cleanScene(scene: Scene): Scene {
+  return {
+    ...scene,
+    plan: stripAiSourceMarkers(scene.plan),
+    objects: scene.objects.map((o) => ({
+      ...o,
+      text: stripAiSourceMarkers(o.text),
+      content: o.content.map(cleanAiBlock),
+      nodes: o.nodes.map((n) => ({ ...n, text: stripAiSourceMarkers(n.text) })),
+    })),
+    connectors: scene.connectors.map((c) => ({ ...c, label: stripAiSourceMarkers(c.label) })),
   };
 }
