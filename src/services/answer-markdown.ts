@@ -10,6 +10,39 @@ import type {
   Table,
 } from "mdast";
 import type { AiContent } from "../features/editor/blocksuite/ai-content";
+import { quizLines, validQuizQuestions, type AiQuestion } from "./ai-quiz";
+
+/** The fenced block an answer's inline quiz comes in (BASE_QUIZ in ai.rs). */
+export const QUIZ_LANG = "knot-quiz";
+/** Questions one chat quiz shows; saving uses the Card Deck limits. */
+export const MAX_CHAT_QUESTIONS = 10;
+
+/** A quiz block's questions, or undefined while incomplete or invalid. */
+export function readQuiz(value: string): AiQuestion[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    const list =
+      parsed && typeof parsed === "object" && "questions" in parsed
+        ? (parsed as { questions: unknown }).questions
+        : parsed;
+    if (!Array.isArray(list)) return;
+    const questions = list.slice(0, MAX_CHAT_QUESTIONS);
+    return validQuizQuestions(questions) ? questions : undefined;
+  } catch {
+    return;
+  }
+}
+
+/** An answer as plain text, with quiz blocks as readable questions. */
+export function plainAnswer(text: string): string {
+  return text.replace(
+    /```knot-quiz[^\n]*\n([\s\S]*?)(?:```|$)/g,
+    (block, body: string) => {
+      const questions = readQuiz(body);
+      return questions ? quizLines(questions).join("\n") : block;
+    },
+  );
+}
 
 /**
  * Ask Knot answers as GitHub Markdown (see docs/AI-RICH-ANSWERS-PLAN.md).
@@ -144,6 +177,11 @@ export function answerBlocks(root: Root): AiContent[] {
           push({ type: "paragraph", text: `“${plain(child)}”` });
         break;
       case "code":
+        if (node.lang === QUIZ_LANG) {
+          for (const line of quizLines(readQuiz(node.value)))
+            push({ type: "paragraph", text: line });
+          break;
+        }
         for (const line of node.value.split("\n"))
           push({ type: "paragraph", text: line });
         break;

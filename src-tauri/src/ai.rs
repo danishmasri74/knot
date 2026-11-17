@@ -559,7 +559,7 @@ fn tool_description(name: &str) -> &'static str {
         _ => "Propose cards, arrows and/or a mind map for the open canvas.",
     }
 }
-const QUIZ_RULES: &str = "create_quiz makes interactive multiple-choice questions; use it when the user asks for a quiz, MCQs, multiple-choice or practice questions, or to test them on the material. target card puts the questions on a new quiz card beside the note, linked to it; use card unless the user explicitly asks to add the questions into this or the current note, which is target note. Base every question on the supplied context unless the user asks for general knowledge; never test facts the context does not state. Return the number of questions the user asks for (default 5, maximum 20). Each question is self-contained and unambiguous, with 2 to 4 options (prefer 4), exactly one correct option, and plausible distractors of similar length and style; avoid all of the above, none of the above and trick wording. correct is the zero-based index of the correct option; vary its position across questions. explanation says briefly why the answer is right, in one or two sentences. Plain text only, no Markdown or citation markers. Question under 1000 characters, each option under 500, explanation under 4000.";
+const QUIZ_RULES: &str = "create_quiz saves multiple-choice questions to the notebook; use it when the user asks to create, make, add or save a quiz, MCQs or practice questions as a quiz card or in the note. When the user only wants to be quizzed or tested now (quiz me, test me), answer in chat with a knot-quiz block instead. target card puts the questions on a new quiz card beside the note, linked to it; use card unless the user explicitly asks to add the questions into this or the current note, which is target note. Base every question on the supplied context unless the user asks for general knowledge; never test facts the context does not state. Return the number of questions the user asks for (default 5, maximum 20). Each question is self-contained and unambiguous, with 2 to 4 options (prefer 4), exactly one correct option, and plausible distractors of similar length and style; avoid all of the above, none of the above and trick wording. correct is the zero-based index of the correct option; vary its position across questions. explanation says briefly why the answer is right, in one or two sentences. Plain text only, no Markdown or citation markers. Question under 1000 characters, each option under 500, explanation under 4000.";
 /// Strict parameters of create_quiz. The app checks the limits again and
 /// writes each question as a Card Deck question, referenced from a new quiz
 /// card (target card) or the end of the current note (target note).
@@ -825,6 +825,8 @@ const BASE_REWRITE: &str = "For rewrite, return exactly one replacement string p
 const BASE_REWRITE_BLOCKS: &str = "For rewrite, leave blocks empty.";
 /// Chat answers are drawn as GitHub Markdown (AnswerMarkdown.tsx).
 const BASE_ANSWER_FORMAT: &str = "Format chat answers in GitHub Markdown when it helps: a table for comparisons, - [ ] items for checklists, > to quote a source, nested lists for hierarchy. Keep short answers plain. Never use HTML.";
+/// Inline quizzes in chat answers (AnswerQuiz.tsx reads the block).
+const BASE_QUIZ: &str = "Only when the user asks to be quizzed or tested now, or for practice questions to answer here, write one short line, then the questions as a single fenced code block with the language knot-quiz holding JSON {\"questions\":[{\"question\":\"...\",\"options\":[\"...\",\"...\"],\"correct\":0,\"explanation\":\"...\"}]}: at most 10 questions (default 5), 2 to 4 unique options each, exactly one correct option at zero-based index correct (vary its position), a one or two sentence explanation, plain text without Markdown or citation markers, and only facts the supplied sources state. Never use knot-quiz otherwise.";
 const BASE_INSERT: &str = "For insert, return native blocks of the requested types.";
 const BASE_EDIT: &str = "Never include HTML. In edit mode output only the specified JSON proposal; the user reviews it before applying.";
 /// Visual rules apply only with an image/PDF input or PDF-sourced context;
@@ -849,7 +851,7 @@ fn base_instructions(mode: &str, context: &str, visual_input: bool) -> String {
     parts.push(BASE_EVIDENCE);
     if surrounding { parts.push(BASE_SURROUNDING_EDIT); }
     if canvas_map { parts.extend([CANVAS_MAP_RULES, CANVAS_MAP_LIMITS]); } else { parts.push(BASE_LIMITS); }
-    if mode == "ask" { parts.push(BASE_ANSWER_FORMAT); }
+    if mode == "ask" { parts.extend([BASE_ANSWER_FORMAT, BASE_QUIZ]); }
     if mode == "rewrite" { parts.extend([BASE_REWRITE, BASE_REWRITE_BLOCKS]); }
     if mode == "insert" { parts.push(BASE_INSERT); }
     if mode != "ask" { parts.push(BASE_EDIT); }
@@ -1512,7 +1514,10 @@ mod tests {
         assert_eq!(item["required"], json!(["question", "options", "correct", "explanation"]));
         assert_eq!(tool_schema("quiz", true, false), tool_schema("quiz", false, false), "no sourceRefs");
         let instructions = body["instructions"].as_str().unwrap();
-        assert!(instructions.contains("create_quiz makes interactive multiple-choice questions"));
+        assert!(instructions.contains("create_quiz saves multiple-choice questions to the notebook"));
+        // "Quiz me" answers inline instead (BASE_QUIZ).
+        assert!(instructions.contains("answer in chat with a knot-quiz block instead"));
+        assert!(instructions.contains(BASE_QUIZ));
         assert!(instructions.contains("use card unless the user explicitly asks"));
         assert!(instructions.contains("exactly one correct option"));
         let without = tool_request_body(MODELS[0], &messages, context, &["insert_blocks".into()], &[], &[], None, None);
@@ -1687,10 +1692,11 @@ mod tests {
         assert_eq!(insert.replace(&format!("{BASE_LIMITS} "), &format!("{BASE_LIMITS} {BASE_REWRITE} ")), full);
         // A plain note question carries only the always-on rules.
         let ask = base_instructions("ask", r#"{"citationSources":[{"citation":"[S1]","text":"t"}]}"#, false);
-        assert_eq!(ask, [BASE_CORE, BASE_CITATIONS, BASE_NOTES, BASE_EVIDENCE, BASE_LIMITS, BASE_ANSWER_FORMAT].join(" "));
+        assert_eq!(ask, [BASE_CORE, BASE_CITATIONS, BASE_NOTES, BASE_EVIDENCE, BASE_LIMITS, BASE_ANSWER_FORMAT, BASE_QUIZ].join(" "));
         // Markdown guidance is for chat answers only, never edit proposals.
         for mode in ["rewrite", "insert", "canvas"] {
             assert!(!base_instructions(mode, "{}", false).contains(BASE_ANSWER_FORMAT), "{mode}");
+            assert!(!base_instructions(mode, "{}", false).contains(BASE_QUIZ), "{mode}");
         }
         assert!(ask.contains("No browsing, tools, diagram edits or cross-document edits."));
         // Visual rules follow image/PDF inputs and PDF-sourced context.

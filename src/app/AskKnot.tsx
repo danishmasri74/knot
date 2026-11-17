@@ -4,9 +4,16 @@ import { AskSuggestion } from "./AskSuggestion";
 import { AiStarters } from "./AiStarters";
 import { AnswerFollowUps } from "./AnswerFollowUps";
 import { AskStepList, AskStepSummary } from "./AskSteps";
+import { AnswerQuiz } from "./AnswerQuiz";
 import { beginStep, endSteps, type AskStep } from "../services/ask-steps";
 import { AnswerMarkdown, type AnswerMarkdownProps } from "./AnswerMarkdown";
-import { answerBlocks, parseAnswer } from "../services/answer-markdown";
+import {
+  answerBlocks,
+  parseAnswer,
+  plainAnswer,
+  QUIZ_LANG,
+  readQuiz,
+} from "../services/answer-markdown";
 import type { AiBlock } from "../features/editor/blocksuite/ai-content";
 import {
   PDF_CITATION,
@@ -194,6 +201,11 @@ type Turn = {
   activity?: string;
   /** What Knot did for this reply, step by step (see ask-steps.ts). */
   steps?: AskStep[];
+  /** Inline quizzes: the option picked per question (-1 unanswered), by
+   * the quiz's position among the answer's code blocks. */
+  quizChoices?: Record<number, number[]>;
+  /** Inline quizzes saved as quiz cards, for Show quiz. */
+  quizSaved?: Record<number, { document: string; block: string; text: string }>;
   status?: "applied" | "dismissed";
   undo?: () => void;
   cost?: AiCost;
@@ -962,7 +974,7 @@ function AskKnotPanel({
             ...turn.proposal.blocks.map(aiBlockText),
             ...quizLines(turn.proposal.questions),
           ].join("\n")
-      : turn.content;
+      : plainAnswer(turn.content);
     try {
       // Rich apps (Word, email) get tables and lists; plain text stays Markdown.
       const prose = turn.proposal
@@ -1010,6 +1022,104 @@ function AskKnotPanel({
             )
           : Promise.resolve();
     void Promise.resolve(opened).catch((e) => setError(String(e)));
+  }
+  /** Undo for inline quizzes saved this session, by attempt and quiz. */
+  const quizUndo = useRef(new Map<string, () => void>());
+  /** Draws an answer's knot-quiz block as an interactive quiz. */
+  function renderQuiz(turn: Turn, value: string, index: number) {
+    const questions = readQuiz(value);
+    if (!questions)
+      return busy && turn.attemptId === request.current ? (
+        <span className="ask-thinking">
+          Preparing quiz<span>…</span>
+        </span>
+      ) : (
+        <p className="ask-quiz-error">This quiz couldn’t be shown.</p>
+      );
+    const key = `${turn.attemptId ?? ""}:${index}`;
+    const choices = turn.quizChoices?.[index] ?? questions.map(() => -1);
+    const saved = turn.quizSaved?.[index];
+    const s = getSession();
+    const set = (next: number[]) => {
+      turn.quizChoices = { ...turn.quizChoices, [index]: next };
+      update([...turnsRef.current]);
+    };
+    return (
+      <AnswerQuiz
+        questions={questions}
+        choices={choices}
+        onChoose={(q, option) =>
+          set(choices.map((c, i) => (i === q ? option : c)))
+        }
+        onReset={() => set(questions.map(() => -1))}
+        saved={!!saved}
+        saveBlocked={
+          !s || s.doc.readonly
+            ? "Open a notebook you can edit to save this quiz."
+            : undefined
+        }
+        onSave={() => {
+          try {
+            const session = getSession();
+            if (!session) throw Error("Open a notebook to save this quiz.");
+            const captured = captureAiContext(
+              session.editor,
+              workspace,
+              session.revealedNoteId,
+            );
+            const undo = applyAiProposal(
+              session.doc,
+              workspace,
+              captured,
+              { replacements: [], blocks: [], questions, target: "card" },
+              "quiz",
+            );
+            const first = undo.noteId
+              ? session.doc.getBlock(undo.noteId)?.model.children[0]
+              : undefined;
+            quizUndo.current.set(key, undo);
+            turn.quizSaved = {
+              ...turn.quizSaved,
+              [index]: {
+                document: session.doc.id,
+                block: first?.id ?? "",
+                text: first?.text?.toString() ?? "",
+              },
+            };
+            update([...turnsRef.current]);
+            setError("");
+          } catch (e) {
+            setError(String(e));
+          }
+        }}
+        onShow={
+          saved?.block
+            ? () => {
+                setError("");
+                void onSource(saved.document, saved.block, saved.text).catch(
+                  (e) => setError(String(e)),
+                );
+              }
+            : undefined
+        }
+        onUndo={
+          quizUndo.current.has(key)
+            ? () => {
+                try {
+                  quizUndo.current.get(key)!();
+                  quizUndo.current.delete(key);
+                  const rest = { ...turn.quizSaved };
+                  delete rest[index];
+                  turn.quizSaved = rest;
+                  update([...turnsRef.current]);
+                } catch (e) {
+                  setError(String(e));
+                }
+              }
+            : undefined
+        }
+      />
+    );
   }
   function addTurnAsCard(turn: Turn, index: number) {
     try {
@@ -1728,11 +1838,18 @@ function AskKnotPanel({
         message,
         answerSource: true,
       });
+    else if (followUp.action === "quiz")
+      // An inline quiz in the answer; Save makes the card if wanted.
+      void send(undefined, followUp.label, undefined, undefined, undefined, {
+        message,
+        answerSource: true,
+        answerOnly: true,
+      });
     else
       void send(undefined, followUp.label, undefined, undefined, undefined, {
         message,
         answerSource: true,
-        onlyTool: followUp.action === "quiz" ? "create_quiz" : "create_note",
+        onlyTool: "create_note",
       });
   }
   async function send(
@@ -2847,6 +2964,11 @@ function AskKnotPanel({
                             text={turn.content}
                             context={shownContext(turn.request)}
                             pdfs={citedPdfs(turn.request)}
+                            renderCode={(node, index) =>
+                              node.lang === QUIZ_LANG
+                                ? renderQuiz(turn, node.value, index)
+                                : undefined
+                            }
                             onPdf={(pdf, page) =>
                               openAttachment({
                                 kind: "pdf",

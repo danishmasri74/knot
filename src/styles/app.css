@@ -8185,3 +8185,163 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   margin: 6px 0 2px;
   font-size: 12px;
 }
+
+/* Inline quiz in an Ask Knot answer (AnswerQuiz.tsx, design proposal A). */
+.ask-quiz {
+  margin: 8px 0 14px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  overflow: hidden;
+  white-space: normal;
+}
+.ask-quiz > header,
+.ask-quiz > footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--ask-muted);
+}
+.ask-quiz > header {
+  border-bottom: 1px solid var(--shell-border);
+}
+.ask-quiz > header strong {
+  color: var(--shell-text, inherit);
+  font-weight: 600;
+}
+.ask-quiz > header .shell-icon {
+  width: 14px;
+  height: 14px;
+}
+.ask-quiz-progress {
+  margin-left: auto;
+}
+.ask-quiz-question {
+  padding: 12px;
+  border-bottom: 1px solid var(--shell-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ask-quiz-prompt {
+  font-weight: 500;
+}
+.ask-quiz [role="radiogroup"] {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ask-quiz [role="radio"] {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ask-quiz [role="radio"]:not([data-state]):hover {
+  background: var(--ask-hover);
+}
+.ask-quiz [role="radio"][data-state] {
+  cursor: default;
+}
+.ask-quiz-mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ask-hover);
+  color: var(--ask-muted);
+}
+/* Right is blue with a tick, wrong orange with a cross: they differ in
+   lightness and shape, not only hue. */
+.ask-quiz [data-state="right"] {
+  border-color: var(--control-accent);
+  background: light-dark(#f2f7fc, #1f2a36);
+}
+.ask-quiz [data-state="right"] .ask-quiz-mark {
+  background: var(--control-accent);
+  color: #fff;
+}
+.ask-quiz [data-state="wrong"] {
+  border-color: light-dark(#c26a1b, #d98a45);
+  background: light-dark(#fdf4ec, #33261b);
+}
+.ask-quiz [data-state="wrong"] .ask-quiz-mark {
+  background: light-dark(#c26a1b, #d98a45);
+  color: #fff;
+}
+.ask-quiz [data-state="other"] {
+  color: var(--ask-muted);
+}
+.ask-quiz-feedback {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.95em;
+}
+.ask-quiz-feedback[data-good="true"] {
+  background: light-dark(#f2f7fc, #1f2a36);
+  color: light-dark(#24507d, #9fc3ea);
+}
+.ask-quiz-feedback[data-good="false"] {
+  background: light-dark(#fdf4ec, #33261b);
+  color: light-dark(#8a4510, #e8b07e);
+}
+.ask-quiz > footer {
+  background: var(--shell-nav);
+}
+.ask-quiz-score {
+  font-weight: 500;
+  color: var(--shell-text, inherit);
+}
+.ask-quiz-saved,
+.ask-quiz-reset {
+  margin-left: auto;
+}
+.ask-quiz > footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: inherit;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ask-quiz > footer button:hover:not(:disabled) {
+  background: var(--ask-hover);
+}
+.ask-quiz > footer button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ask-quiz > footer .ask-quiz-save {
+  border: 1px solid var(--shell-border);
+  background: var(--shell-bg, transparent);
+}
+.ask-quiz > footer .shell-icon {
+  width: 13px;
+  height: 13px;
+}
+.ask-quiz-error {
+  color: var(--ask-muted);
+  font-style: italic;
+}

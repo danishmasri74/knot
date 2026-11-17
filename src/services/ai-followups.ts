@@ -138,7 +138,7 @@ export function followUpMessage(followUp: FollowUp, answer: string): string {
       "Turn the following answer into separate canvas cards, one per idea. Do not make a mind map.",
     mindmap:
       "Turn the following answer into a native mind map on the canvas, adding detail cards only where branches need explanation.",
-    quiz: "Create a multiple-choice quiz from the following answer.",
+    quiz: "Quiz me on the following answer here in chat, as a knot-quiz block.",
     note: "Create a new note from the following answer.",
     insert: "Add the following answer to my note.",
   }[followUp.action];
