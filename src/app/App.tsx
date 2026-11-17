@@ -120,6 +120,7 @@ import {
   type AiContext,
 } from "../features/editor/blocksuite/ai";
 import { StudyPanel } from "./StudyPanel";
+import { observeStudyToolbar } from "../features/editor/blocksuite/study-toolbar";
 import {
   carrySidebarPreferences,
   expandedPlace,
@@ -303,6 +304,8 @@ export function App() {
       console.warn("Browser pane cleanup failed during close", e),
     );
   });
+  /** Decks picked on the canvas or in Ask Knot to start a study course. */
+  const [studyStart, setStudyStart] = useState<{ keys: string[]; nonce: number }>();
   const [quizReset, setQuizReset] = useState(false);
   const [sharing, setSharing] = useState<{ id: string; title: string } | null>(null);
   // A .knotbook waiting to be imported, by opaque token (paths stay native).
@@ -870,6 +873,11 @@ export function App() {
     initial?: PdfLocation;
     id: string;
   } | null>(null);
+  /** Opens the Study tab's setup with these decks ticked. */
+  function startStudyCourse(keys: string[]) {
+    setStudyStart({ keys, nonce: Date.now() });
+    openSurface("study");
+  }
   async function openPdf(location?: PdfLocation) {
     const current = session.current;
     await current?.flush();
@@ -1363,9 +1371,11 @@ export function App() {
       if (focused instanceof HTMLElement) invoker.current = focused;
       openPane("note", id);
     });
+    const offStudy = observeStudyToolbar(current.editor, startStudyCourse);
     return () => {
       clearTimeout(labelTimer);
       off();
+      offStudy();
       current.doc.spaceDoc.off("update", refresh);
     };
   }, [active?.id, workspaceCatalog.active]);
@@ -4516,6 +4526,7 @@ export function App() {
             <div className="ask-parking" ref={aiParking} hidden />
             {createPortal(
               <AskKnot
+                onStudyCourse={startStudyCourse}
                 key={`${workspaceCatalog.active}:ask`}
                 workspace={workspaceCatalog.active}
                 documentId={active?.id ?? ""}
@@ -5119,6 +5130,7 @@ export function App() {
                       documentId={session.current.doc.id}
                       readonly={session.current.doc.readonly}
                       pdfs={() => session.current?.pdfSources() ?? []}
+                      start={studyStart}
                       selected={() => {
                         const s = session.current;
                         if (!s) return [];

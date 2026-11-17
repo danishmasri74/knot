@@ -318,3 +318,10 @@ export function readExam(
   if (!questions.length) throw new Error("The questions were incomplete. Try again.");
   return questions;
 }
+
+/** A message about getting ready for a test, where a study course helps. */
+export function wantsStudyCourse(message: string) {
+  return /\b(exam|test|quiz|mcq|revis\w*|revision|study|studying|prepare|prep|midterm|final)\b/i.test(
+    message,
+  );
+}

@@ -1,6 +1,6 @@
 # Study course
 
-Status: phases 1–3 implemented 17 November 2026 (Study tab, setup, plan, lessons, batch quizzes, final exam, results, drill). New course preselects decks selected on the canvas; the canvas toolbar button and Ask Knot chip (phase 4) are still to do. Design chosen: proposal A, a Study tab (canvas "Rich Ask Knot answers", artboards Course 1–4: https://claude.ai/artifact/Br2YK5afwPh9ggQr4DZatA). No application changes are made by this plan.
+Status: phases 1–3 implemented 17 November 2026 (Study tab, setup, plan, lessons, batch quizzes, final exam, results, drill). Phase 4 added the same day: Make a study course on the canvas toolbar (1–3 selected PDFs) and in Ask Knot after a test-prep question about PDFs; New course preselects selected decks. Design chosen: proposal A, a Study tab (canvas "Rich Ask Knot answers", artboards Course 1–4: https://claude.ai/artifact/Br2YK5afwPh9ggQr4DZatA). No application changes are made by this plan.
 
 ## Goal
 

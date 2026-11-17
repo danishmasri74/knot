@@ -80,6 +80,7 @@ export function StudyPanel({
   readonly,
   pdfs,
   selected,
+  start,
   onOpenPdf,
   onSaveSheet,
   onSaveQuestions,
@@ -91,12 +92,24 @@ export function StudyPanel({
   pdfs: () => Pdf[];
   /** PDFs selected on the canvas: a new course starts with these. */
   selected: () => string[];
+  /** Decks picked on the canvas toolbar or in Ask Knot: open the setup. */
+  start?: { keys: string[]; nonce: number };
   onOpenPdf: (pdf: Pdf, page: number) => void;
   onSaveSheet: (blocks: AiBlock[]) => void;
   onSaveQuestions: (questions: AiQuestion[]) => void;
 }) {
   const courses = useCourses(spaceDoc);
-  const [view, setView] = useState<View>({ kind: "list" });
+  const [view, setView] = useState<View>(() =>
+    start && Date.now() - start.nonce < 5000
+      ? { kind: "setup", picked: start.keys }
+      : { kind: "list" },
+  );
+  const startedAt = useRef(start?.nonce);
+  useEffect(() => {
+    if (!start || startedAt.current === start.nonce) return;
+    startedAt.current = start.nonce;
+    setView({ kind: "setup", picked: start.keys });
+  }, [start]);
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState("");
   const abort = useRef<AbortController>();

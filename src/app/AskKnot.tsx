@@ -5,6 +5,7 @@ import { AiStarters } from "./AiStarters";
 import { AnswerFollowUps } from "./AnswerFollowUps";
 import { AskStepList, AskStepSummary } from "./AskSteps";
 import { AnswerQuiz } from "./AnswerQuiz";
+import { wantsStudyCourse } from "../services/study-course";
 import { PdfRef, SlidesCited } from "./PdfPreview";
 import { beginStep, endSteps, type AskStep } from "../services/ask-steps";
 import { AnswerMarkdown, type AnswerMarkdownProps } from "./AnswerMarkdown";
@@ -406,7 +407,10 @@ function AskKnotPanel({
   getSession,
   onClose,
   onSource,
+  onStudyCourse,
 }: {
+  /** Opens the Study tab's setup with these decks (StudyPanel.tsx). */
+  onStudyCourse?: (keys: string[]) => void;
   workspace: string;
   documentId: string;
   initial: AiContext | null;
@@ -3534,6 +3538,30 @@ function AskKnotPanel({
                         recordCost(turn, cost as AiCost, chatIdRef.current)
                       }
                     />
+                  )}
+                {turn.role === "assistant" &&
+                  i === turns.length - 1 &&
+                  !busy &&
+                  !turn.failed &&
+                  onStudyCourse &&
+                  wantsStudyCourse(turns[i - 1]?.content ?? "") &&
+                  citedPdfs(turn.request).length > 0 && (
+                    // Test prep about these decks: a guided course fits.
+                    <div className="ask-followups" role="group" aria-label="Study">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onStudyCourse(
+                            citedPdfs(turn.request)
+                              .map((pdf) => pdf.key)
+                              .slice(0, 3),
+                          )
+                        }
+                      >
+                        <ShellIcon name="study" />
+                        <span>Make a study course</span>
+                      </button>
+                    </div>
                   )}
               </article>
             ))}

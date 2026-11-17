@@ -132,3 +132,12 @@ it("stores courses in the notebook document", () => {
   deleteCourse(doc, "c1");
   expect(readCourses(doc)).toHaveLength(0);
 });
+
+it("spots test-prep questions for the study course button", async () => {
+  const { wantsStudyCourse } = await import("../src/services/study-course");
+  expect(wantsStudyCourse("Help me get ready for an MCQ test")).toBe(true);
+  expect(wantsStudyCourse("Quiz me on these slides")).toBe(true);
+  expect(wantsStudyCourse("I need quick revision notes")).toBe(true);
+  // "Testing" in a subject name is not a request to study.
+  expect(wantsStudyCourse("Summarize the Software Testing decks")).toBe(false);
+});
