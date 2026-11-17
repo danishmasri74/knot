@@ -68,7 +68,7 @@ try {
     await page
       .locator("#root")
       .evaluate((el, width) => (el.style.width = `${width}px`), width);
-    const toolbar = await page.locator(".pdf-reader-toolbar").boundingBox();
+    const toolbar = await page.locator(".pdf-reader-header").boundingBox();
     assert.ok(
       toolbar.height <= (width >= 1000 ? 36 : 66),
       `Compact toolbar at ${width}px: ${toolbar.height}`,
@@ -103,10 +103,16 @@ try {
       await page.locator(".pdf-scroll").evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
-      await page.getByText("Page 2 of 2", { exact: true }).waitFor();
+      await page.getByLabel("Page 2 of 2", { exact: true }).waitFor();
     }
-    await page.getByLabel("PDF context for Ask Knot").selectOption(scope);
-    await page.getByRole("button", { name: "Ask Knot" }).click();
+    await page.getByRole("button", { name: "PDF context for Ask Knot" }).click();
+    await page
+      .getByRole("button", {
+        name: scope === "page" ? "This page" : "Whole PDF",
+        exact: true,
+      })
+      .click();
+    await page.getByRole("button", { name: "Ask Knot", exact: true }).click();
     await page.waitForFunction((l) => window.result?.label === l, label);
     assert.match(
       await page.evaluate(() => window.result.text),

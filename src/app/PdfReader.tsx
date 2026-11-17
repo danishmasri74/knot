@@ -3,6 +3,7 @@ import {
   getEditorPreferences,
 } from "../services/editor-preferences";
 import { ShellIcon } from "./ShellIcon";
+import { ChoicePopover } from "./ChoicePopover";
 import {
   useCallback,
   useLayoutEffect,
@@ -34,6 +35,11 @@ import type { OcrLine } from "../services/ocr-passages";
 import { office, officeApp, officeKind } from "../services/office";
 import { openPdfBytes } from "../services/pdf-input";
 import type { AiPdfSource } from "../services/pdf-input";
+
+/** A file's name for the reader header, without its extension. */
+function fileTitle(name: string): string {
+  return name.trim().replace(/\.(pdf|pptx|docx)$/i, "") || name;
+}
 
 /** Which PDF, zoom and scroll position each notebook's reader was left at,
  * kept on this device so switching notebooks or restarting comes back to it. */
@@ -114,6 +120,12 @@ export function PdfReader({
   const original = source?.original;
   const kind = original?.kind ?? officeKind(source?.name);
   const deck = kind === "slides";
+  const unitName = deck ? "Slide" : "Page";
+  /** What Ask Knot reads: the whole file, or the page in view. */
+  const scopeLabels = [
+    deck ? "Whole deck" : kind === "document" ? "Whole document" : "Whole PDF",
+    deck ? "This slide" : "This page",
+  ];
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -616,8 +628,22 @@ export function PdfReader({
         }
       }}
     >
-      <div className="pdf-reader-toolbar">
-        <div className="pdf-toolbar">
+      <div className="pdf-reader-header">
+        <ShellIcon
+          name={
+            deck ? "slides" : kind === "document" ? "wordDocument" : "pdf"
+          }
+          size={16}
+        />
+        <label
+          className="pdf-file-picker"
+          data-tooltip={source?.name}
+          data-choices={sources.length > 1 || undefined}
+        >
+          <span className="pdf-file-title">
+            {source ? fileTitle(source.name) : "PDF"}
+          </span>
+          {sources.length > 1 && <ShellIcon name="selector" size={14} />}
           <select
             aria-label="PDF attachment"
             value={key}
@@ -635,84 +661,86 @@ export function PdfReader({
               </option>
             ))}
           </select>
-          {onAsk && (
-            <div className="pdf-ai-controls">
-              <select
-                aria-label="PDF context for Ask Knot"
-                title="Send the full PDF or a visual of only the current page with your question"
-                value={askScope}
-                disabled={readingForAi}
-                onChange={(e) => setAskScope(e.target.value)}
-              >
-                <option value="document">
-                  {deck ? "Entire deck" : "Entire PDF"}
-                </option>
-                <option value="page">
-                  {deck ? "Current slide" : "Current page"}
-                </option>
-              </select>
-              <button
-                disabled={!pdf || loading || busy || pending || readingForAi}
-                onClick={() => void askAboutPdf()}
-              >
-                <ShellIcon name="sparkles" size={15} />
-                {readingForAi ? "Reading PDF…" : "Ask Knot"}
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="pdf-controls">
-          <div className="pdf-pagination" role="group" aria-label="PDF pages">
-            <span>
-              {deck ? "Slide" : "Page"} {pageNumber} of {pdf?.numPages ?? "–"}
-            </span>
-          </div>
-          <div className="pdf-view-tools" role="group" aria-label="PDF zoom">
+        </label>
+        <span className="pdf-header-divider" aria-hidden="true" />
+        <span
+          className="pdf-page-count"
+          role="status"
+          aria-label={`${unitName} ${pageNumber} of ${pdf?.numPages ?? "–"}`}
+          data-tooltip={`${unitName} ${pageNumber} of ${pdf?.numPages ?? "–"}`}
+        >
+          {pageNumber} / {pdf?.numPages ?? "–"}
+        </span>
+        <div className="pdf-view-tools" role="group" aria-label="PDF zoom">
+          <button
+            aria-label="Zoom out PDF"
+            data-tooltip="Zoom out"
+            disabled={zoom <= 0.5}
+            onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
+          >
+            <ShellIcon name="minus" size={14} />
+          </button>
+          {zoom !== 1 && (
             <button
-              aria-label="Zoom out PDF"
-              title="Zoom out"
-              disabled={zoom <= 0.5}
-              onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
-            >
-              −
-            </button>
-            <span>{Math.round(zoom * 100)}%</span>
-            <button
-              aria-label="Zoom in PDF"
-              title="Zoom in"
-              disabled={zoom >= 1.5}
-              onClick={() => setZoom((value) => Math.min(1.5, value + 0.25))}
-            >
-              +
-            </button>
-            <button
-              aria-label="Fit width"
-              title="Fit width"
+              className="pdf-zoom-reset"
+              aria-label={`Zoom ${Math.round(zoom * 100)}%. Fit width`}
+              data-tooltip="Fit width"
               onClick={() => setZoom(1)}
             >
-              ↔
-            </button>
-          </div>
-          {original && (
-            <button
-              className="pdf-open-original"
-              title={`Open the original ${deck ? "deck" : "document"} in your app for .${deck ? "pptx" : "docx"} files`}
-              onClick={() => {
-                setError("");
-                void office
-                  .openOriginal(original.key, source?.name ?? "", original.kind)
-                  .catch((e: unknown) =>
-                    setError(
-                      `Couldn't open the original ${deck ? "deck" : "document"}: ${String(e)}`,
-                    ),
-                  );
-              }}
-            >
-              <ShellIcon name="external" size={14} />
-              Open in {officeApp[original.kind]}
+              {Math.round(zoom * 100)}%
             </button>
           )}
+          <button
+            aria-label="Zoom in PDF"
+            data-tooltip="Zoom in"
+            disabled={zoom >= 1.5}
+            onClick={() => setZoom((value) => Math.min(1.5, value + 0.25))}
+          >
+            <ShellIcon name="plus" size={14} />
+          </button>
         </div>
+        {original && (
+          <button
+            className="pdf-open-original"
+            aria-label={`Open in ${officeApp[original.kind]}`}
+            data-tooltip={`Open in ${officeApp[original.kind]}`}
+            onClick={() => {
+              setError("");
+              void office
+                .openOriginal(original.key, source?.name ?? "", original.kind)
+                .catch((e: unknown) =>
+                  setError(
+                    `Couldn't open the original ${deck ? "deck" : "document"}: ${String(e)}`,
+                  ),
+                );
+            }}
+          >
+            <ShellIcon name="external" size={15} />
+          </button>
+        )}
+        {onAsk && (
+          <div className="pdf-ask">
+            <button
+              className="pdf-ask-button"
+              disabled={!pdf || loading || busy || pending || readingForAi}
+              onClick={() => void askAboutPdf()}
+            >
+              <ShellIcon name="sparkles" size={15} />
+              {readingForAi ? "Reading…" : "Ask Knot"}
+            </button>
+            <ChoicePopover
+              label="PDF context for Ask Knot"
+              className="pdf-ask-scope"
+              disabled={readingForAi}
+              value={scopeLabels[askScope === "page" ? 1 : 0]}
+              options={scopeLabels}
+              onChange={(label) =>
+                setAskScope(label === scopeLabels[1] ? "page" : "document")
+              }
+              trigger={<ShellIcon name="chevron" size={12} />}
+            />
+          </div>
+        )}
       </div>
       {original?.converter === "libreoffice" && (
         <p className="pdf-ocr-note">

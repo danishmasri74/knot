@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Popover } from "./Collections";
 import { ShellIcon } from "./ShellIcon";
 
@@ -10,6 +11,7 @@ export function ChoicePopover({
   className = "",
   disabled = false,
   placement = "bottom",
+  trigger,
 }: {
   label: string;
   icon?: "sortAlpha" | "filter";
@@ -19,22 +21,24 @@ export function ChoicePopover({
   className?: string;
   disabled?: boolean;
   placement?: "top" | "bottom";
+  /** Replaces the default trigger (the value and a chevron). */
+  trigger?: ReactNode;
 }) {
   return (
     <Popover
       label={label}
-      className={`${icon ? "deck-tool-button" : "library-filter-button"} ${className}`}
+      className={`${icon ? "deck-tool-button" : trigger ? "" : "library-filter-button"} ${className}`}
       disabled={disabled}
       placement={placement}
       trigger={
-        icon ? (
+        trigger ?? (icon ? (
           <ShellIcon name={icon} />
         ) : (
           <>
             <span>{value}</span>
             <ShellIcon name="chevron" />
           </>
-        )
+        ))
       }
     >
       {(close) => (
