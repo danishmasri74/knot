@@ -123,7 +123,8 @@ A new `scene-solver.ts`, free of the editor so it can be unit tested:
    read its real height. This replaces `estimatedHeight` and `aiBlockSize`
    guesses. Mind maps report their real size after layout.
 2. **Solve.** Turn the relations into positions. A constraint solver (for
-   example kiwi.js, MIT, a Cassowary implementation) handles alignment, order,
+   example kiwi.js, a Cassowary implementation;
+   check its licence first) handles alignment, order,
    gaps and containment. Relations treated as preferences give way before
    hard ones.
 3. **Keep the physics.** Remove overlaps between objects that aren't nested,
