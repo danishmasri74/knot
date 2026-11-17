@@ -39,6 +39,7 @@ const icons = {
   cardDeck: "cardDeck",
   reference: "link",
   video: "video",
+  study: "study",
   library: "library",
 } as const;
 export function WorkspacePanes({

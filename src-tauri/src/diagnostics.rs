@@ -175,7 +175,7 @@ impl Measurement {
                 } else {
                     "unknown".into()
                 },
-                operation: if ["ask", "auto", "rewrite", "insert", "canvas", "suggestions", "followups"].contains(&operation) {
+                operation: if ["ask", "auto", "rewrite", "insert", "canvas", "suggestions", "followups"].contains(&operation) || crate::ai::COURSE_MODES.contains(&operation) {
                     operation.into()
                 } else {
                     "unknown".into()

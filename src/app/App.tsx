@@ -113,10 +113,13 @@ import { getAiEnabled } from "../services/ai-preferences";
 import { AskKnot } from "./AskKnot";
 import { flushChatSaves } from "../services/ai-chats";
 import {
+  addAiMessageCard,
+  applyAiProposal,
   captureAiContext,
   captureCardContext,
   type AiContext,
 } from "../features/editor/blocksuite/ai";
+import { StudyPanel } from "./StudyPanel";
 import {
   carrySidebarPreferences,
   expandedPlace,
@@ -2908,6 +2911,7 @@ export function App() {
             }),
         ],
         ["Ask Knot", "sparkles", () => showAi()],
+        ["Study", "study", () => openSurface("study")],
         [
           "Links",
           "link",
@@ -5105,6 +5109,82 @@ export function App() {
                         seek={videoSeek}
                       />
                     </Suspense>
+                  )}
+                {tab.kind === "study" &&
+                  session.current &&
+                  session.current.doc.id === tab.documentId && (
+                    <StudyPanel
+                      key={tab.documentId}
+                      spaceDoc={session.current.doc.spaceDoc}
+                      documentId={session.current.doc.id}
+                      readonly={session.current.doc.readonly}
+                      pdfs={() => session.current?.pdfSources() ?? []}
+                      selected={() => {
+                        const s = session.current;
+                        if (!s) return [];
+                        try {
+                          const c = captureAiContext(
+                            s.editor,
+                            workspaceCatalog.active ?? "",
+                            s.revealedNoteId,
+                          );
+                          return c.pdfFiles?.map((f) => f.key) ??
+                            (c.pdfSource ? [c.pdfSource.key] : []);
+                        } catch {
+                          return [];
+                        }
+                      }}
+                      onOpenPdf={(pdf, page) =>
+                        void run(() =>
+                          openPdf({
+                            key: pdf.key,
+                            name: pdf.name,
+                            documentId: session.current?.doc.id ?? "",
+                            page,
+                            rects: [],
+                          }),
+                        )
+                      }
+                      onSaveSheet={(blocks) => {
+                        const s = session.current;
+                        if (!s) return;
+                        try {
+                          addAiMessageCard(s.doc, blocks);
+                          setNotice("Revision sheet added to the canvas.");
+                        } catch (e) {
+                          setError(String(e));
+                        }
+                      }}
+                      onSaveQuestions={(questions) => {
+                        const s = session.current;
+                        if (!s) return;
+                        try {
+                          // A quiz card holds up to 20 questions.
+                          for (let i = 0; i < questions.length; i += 20)
+                            applyAiProposal(
+                              s.doc,
+                              workspaceCatalog.active ?? "",
+                              captureAiContext(
+                                s.editor,
+                                workspaceCatalog.active ?? "",
+                                s.revealedNoteId,
+                              ),
+                              {
+                                replacements: [],
+                                blocks: [],
+                                questions: questions.slice(i, i + 20),
+                                target: "card",
+                              },
+                              "quiz",
+                            );
+                          setNotice(
+                            `Saved ${questions.length} questions to Card Deck.`,
+                          );
+                        } catch (e) {
+                          setError(String(e));
+                        }
+                      }}
+                    />
                   )}
                 {tab.kind === "cardDeck" &&
                   (session.current || documentLoading) && (

@@ -15,6 +15,7 @@ export const surfaceTitles = {
   browser: "Browser",
   export: "Export document",
   library: "Library",
+  study: "Study",
   search: "Library search",
   workspace: "Workspaces",
   backups: "Backups",

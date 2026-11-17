@@ -7,6 +7,8 @@ export type PaneKind =
   | "ask"
   | "reference"
   | "video"
+  /** A notebook's study courses (StudyPanel.tsx). */
+  | "study"
   /** The Library's own layout: its main tab, like a notebook's canvas. */
   | "library";
 export const supportingKinds = new Set<string>([
@@ -18,6 +20,7 @@ export const supportingKinds = new Set<string>([
   "ask",
   "reference",
   "video",
+  "study",
 ]);
 /** Up to two content columns sit beside the sidebar. */
 export const MAX_COLUMNS = 2;
@@ -40,6 +43,7 @@ export const tabPolicy: Record<
   ask: { idle: "alive", minWidth: 320 },
   cardDeck: { idle: "alive", minWidth: 320 },
   reference: { idle: "alive", minWidth: 320 },
+  study: { idle: "alive", minWidth: 340 },
   library: { idle: "alive", minWidth: 420 },
 };
 /** A layout's main tab: the notebook's Canvas or the Library. It fills the

@@ -64,6 +64,8 @@ export const shellIconPaths = {
   cardDeck:
     "M7 3h10 M5 6h14 M5 9h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z M7 13h10 M7 17h6",
   board: "M3 4h18v13H3z M8 21l4-4 4 4",
+  study: "M4 19V5 M4 19h16 M8 15l3-4 3 2 4-6",
+  lock: "M6 11h12v10H6z M8 11V8a4 4 0 0 1 8 0v3",
   eyeOff:
     "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 3l18 18",
   mindmap:

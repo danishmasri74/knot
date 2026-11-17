@@ -156,3 +156,34 @@ export function renderPdfThumbnail(key: string, page: number, width = 320): Prom
   }
   return made;
 }
+
+/** How many pages (slides) a PDF attachment has. */
+export async function pdfPageCount(key: string): Promise<number> {
+  return (await openDoc(key)).numPages;
+}
+
+function dataUrl(bytes: Uint8Array): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the PDF."));
+    reader.readAsDataURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" }));
+  });
+}
+
+/**
+ * Only the given pages of a PDF, as a new small PDF (a study checkpoint's
+ * slides), cut on the device so requests don't resend whole decks.
+ */
+export async function slicePdf(key: string, from: number, to: number): Promise<string> {
+  const { PDFDocument } = await import("pdf-lib");
+  const source = await PDFDocument.load(new Uint8Array(await attachments.get(key)), {
+    ignoreEncryption: true,
+  });
+  const last = Math.min(to, source.getPageCount());
+  const pages = Array.from({ length: Math.max(0, last - from + 1) }, (_, i) => from - 1 + i);
+  if (!pages.length) throw new PdfPageMissing(source.getPageCount());
+  const slice = await PDFDocument.create();
+  for (const page of await slice.copyPages(source, pages)) slice.addPage(page);
+  return dataUrl(await slice.save());
+}
