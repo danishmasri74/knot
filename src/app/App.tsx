@@ -3633,6 +3633,35 @@ export function App() {
           >
             <ShellIcon name="search" />
           </button>
+          <button
+            aria-label="Library"
+            data-tooltip="Library"
+            aria-current={library ? "page" : undefined}
+            disabled={busy}
+            onClick={() =>
+              void run(
+                () =>
+                  openLibrary({
+                    id: `library:${library?.library ?? "notebooks"}`,
+                    library: library?.library ?? "notebooks",
+                  }),
+                true,
+              )
+            }
+          >
+            <ShellIcon name="library" />
+          </button>
+          <button
+            className="shell-rail-settings"
+            aria-label={updateDot ? "Settings, update available" : "Settings"}
+            data-tooltip={updateDot ? "Settings · Update available" : "Settings"}
+            aria-current={surface === "settings" ? "page" : undefined}
+            disabled={busy}
+            onClick={() => openSurface("settings")}
+          >
+            <ShellIcon name="options" />
+            {updateDot && <span className="shell-rail-dot" aria-hidden="true" />}
+          </button>
         </nav>
       )}
       <main

@@ -7410,6 +7410,24 @@ knot-web-source { display: block; margin-block: 8px; }
   background: var(--shell-selected);
   color: var(--shell-text);
 }
+.shell-rail > button[aria-current="page"] {
+  background: var(--shell-selected);
+  color: var(--shell-text);
+}
+/* Settings sits at the bottom of the rail, as it does in the sidebar. */
+.shell-rail > .shell-rail-settings {
+  position: relative;
+  margin-top: auto;
+}
+.shell-rail-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--shell-accent);
+}
 .shell-rail {
   flex: none;
   width: 44px;
@@ -7417,7 +7435,7 @@ knot-web-source { display: block; margin-block: 8px; }
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding-top: 8px;
+  padding: 8px 0;
   border-right: 1px solid var(--shell-border);
   background: var(--shell-surface);
 }
