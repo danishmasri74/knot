@@ -115,6 +115,7 @@ import { flushChatSaves } from "../services/ai-chats";
 import {
   addAiMessageCard,
   applyAiProposal,
+  revealCanvasObjects,
   captureAiContext,
   captureCardContext,
   type AiContext,
@@ -5162,7 +5163,9 @@ export function App() {
                         const s = session.current;
                         if (!s) return;
                         try {
-                          addAiMessageCard(s.doc, blocks);
+                          const id = addAiMessageCard(s.doc, blocks);
+                          // It goes right of everything: bring it into view.
+                          setTimeout(() => revealCanvasObjects(s.editor, [id]), 60);
                           setNotice("Revision sheet added to the canvas.");
                         } catch (e) {
                           setError(String(e));

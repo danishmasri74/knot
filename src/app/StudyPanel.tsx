@@ -308,7 +308,7 @@ export function StudyPanel({
 
   if (!course || view.kind === "list")
     return (
-      <div className="study-panel">
+      <div className="study-panel" key="list">
         <div className="study-head">
           <div>
             <div className="study-kicker">Study</div>
@@ -391,7 +391,7 @@ export function StudyPanel({
     const graded = checkpoint ? currentAttempt(checkpoint) : undefined;
     const isLast = index === course.checkpoints.length - 1;
     return (
-      <div className="study-panel">
+      <div className="study-panel" key={`checkpoint:${index}`}>
         <div className="study-bar-row">
           {back}
           {tracker}
@@ -539,7 +539,7 @@ export function StudyPanel({
     const set = drill ? course.drill : course.final;
     const graded = drill ? set?.attempts.at(-1) : undefined;
     return (
-      <div className="study-panel">
+      <div className="study-panel" key={view.kind}>
         <div className="study-bar-row">
           {back}
           {tracker}
@@ -606,7 +606,7 @@ export function StudyPanel({
       ...final.questions,
     ];
     return (
-      <div className="study-panel">
+      <div className="study-panel" key="results">
         <div className="study-bar-row">
           {back}
           {tracker}
@@ -740,7 +740,7 @@ export function StudyPanel({
   // The tracker.
   const firstOpen = states.findIndex((s) => s === "current");
   return (
-    <div className="study-panel">
+    <div className="study-panel" key="tracker">
       <button type="button" className="study-back" onClick={() => setView({ kind: "list" })}>
         <ShellIcon name="back" /> All courses
       </button>
