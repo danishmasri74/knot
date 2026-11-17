@@ -325,3 +325,22 @@ export function wantsStudyCourse(message: string) {
     message,
   );
 }
+
+/** "slide 4" or "slides 2–3". */
+export function slideRange(from: number, to: number) {
+  return to > from ? `slides ${from}–${to}` : `slide ${from}`;
+}
+
+/** A definition without the term repeated at its start ("Component
+ * testing, also called…" under "Component testing"). */
+export function withoutTerm(term: string, definition: string) {
+  const t = term.trim().toLowerCase();
+  const d = definition.trim();
+  if (!t || !d.toLowerCase().startsWith(t)) return d;
+  const rest = d.slice(t.length).replace(/^[\s,:;–—-]+/, "");
+  if (!rest) return d;
+  return /^(is|are|was|means|refers)\b/i.test(rest) || /^[a-z]/.test(rest)
+    ? rest.charAt(0).toUpperCase() + rest.slice(1)
+    : d;
+}
+

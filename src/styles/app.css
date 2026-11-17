@@ -6123,7 +6123,7 @@ details[open] > .diagnostics-disclosure > .shell-icon {
   background: var(--shell-surface);
   pointer-events: auto;
 }
-.pane-content:has(.pdf-reader, .browser-panel, .ask-knot, .note-page-pane, .video-reader) {
+.pane-content:has(.pdf-reader, .browser-panel, .ask-knot, .note-page-pane, .video-reader, .study-panel) {
   padding: 0;
   overflow: hidden;
   display: flex;

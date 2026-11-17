@@ -5130,6 +5130,7 @@ export function App() {
                       documentId={session.current.doc.id}
                       readonly={session.current.doc.readonly}
                       pdfs={() => session.current?.pdfSources() ?? []}
+                      notebookTitle={session.current.doc.meta?.title ?? ""}
                       start={studyStart}
                       selected={() => {
                         const s = session.current;

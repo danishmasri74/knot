@@ -141,3 +141,18 @@ it("spots test-prep questions for the study course button", async () => {
   // "Testing" in a subject name is not a request to study.
   expect(wantsStudyCourse("Summarize the Software Testing decks")).toBe(false);
 });
+
+it("tidies lesson text", async () => {
+  const { slideRange, withoutTerm } = await import("../src/services/study-course");
+  expect(slideRange(4, 4)).toBe("slide 4");
+  expect(slideRange(2, 3)).toBe("slides 2–3");
+  expect(withoutTerm("Component testing", "Component testing, also called unit testing, tests parts.")).toBe(
+    "Also called unit testing, tests parts.",
+  );
+  expect(withoutTerm("System testing", "System testing checks the whole system.")).toBe(
+    "Checks the whole system.",
+  );
+  expect(withoutTerm("DevOps", "Development and operations working together.")).toBe(
+    "Development and operations working together.",
+  );
+});

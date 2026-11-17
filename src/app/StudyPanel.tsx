@@ -22,6 +22,8 @@ import {
   revisionSheet,
   saveCourse,
   weakAreas,
+  slideRange,
+  withoutTerm,
   type StudyCourse,
   type StudyGoal,
   type StudyPace,
@@ -79,6 +81,7 @@ export function StudyPanel({
   documentId,
   readonly,
   pdfs,
+  notebookTitle,
   selected,
   start,
   onOpenPdf,
@@ -90,6 +93,8 @@ export function StudyPanel({
   readonly: boolean;
   /** PDFs and slide decks attached to the notebook. */
   pdfs: () => Pdf[];
+  /** The notebook's title, the default name for a course over several decks. */
+  notebookTitle: string;
   /** PDFs selected on the canvas: a new course starts with these. */
   selected: () => string[];
   /** Decks picked on the canvas toolbar or in Ask Knot: open the setup. */
@@ -204,7 +209,7 @@ export function StudyPanel({
       .finally(() => prefetching.current.delete(key));
   }
 
-  const slideChip = (c: StudyCourse, source: number, slide: number) => {
+  const slideChip = (c: StudyCourse, source: number, slide: number, to = slide) => {
     const pdf = c.sources[source];
     if (!pdf || !slide) return null;
     return (
@@ -212,7 +217,7 @@ export function StudyPanel({
         cited={{
           pdf: { key: pdf.key, name: pdf.name, document: documentId },
           page: slide,
-          label: `${shortPdfName(pdf.name)}, slide ${slide}`,
+          label: `${shortPdfName(pdf.name)} · ${slideRange(slide, to)}`,
         }}
         onOpen={(p, page) => onOpenPdf({ key: p.key, name: p.name }, page)}
       />
@@ -254,6 +259,7 @@ export function StudyPanel({
   if (view.kind === "setup")
     return (
       <StudySetup
+        notebookTitle={notebookTitle}
         pdfs={pdfs()}
         picked={view.picked}
         busy={!!busy}
@@ -374,7 +380,7 @@ export function StudyPanel({
           {back}
           {tracker}
           <span className="study-muted">
-            {progress.done} of {progress.steps}
+            {progress.done}/{progress.steps} done
           </span>
         </div>
         {checkpoint && (
@@ -385,10 +391,7 @@ export function StudyPanel({
             <h2>{checkpoint.title}</h2>
             <div className="study-sources">
               {checkpoint.slides.map((r, i) => (
-                <span key={i}>
-                  {slideChip(course, r.source, r.from)}
-                  {r.to > r.from && <span className="study-muted"> to {r.to}</span>}
-                </span>
+                <span key={i}>{slideChip(course, r.source, r.from, r.to)}</span>
               ))}
             </div>
             {lesson && (
@@ -397,7 +400,7 @@ export function StudyPanel({
                 <ol className="study-points">
                   {lesson.points.map((p, i) => (
                     <li key={i}>
-                      <strong>{p.term}</strong> · {p.definition}
+                      <strong>{p.term}</strong> · {withoutTerm(p.term, p.definition)}
                       {p.example && <div className="study-example">e.g. {p.example}</div>}
                     </li>
                   ))}
@@ -743,7 +746,7 @@ export function StudyPanel({
           const state = states[i];
           const score = bestScore(c.attempts);
           const range = c.slides
-            .map((r) => `${shortPdfName(course.sources[r.source]?.name ?? "")} · slides ${r.from}${r.to > r.from ? `–${r.to}` : ""}`)
+            .map((r) => `${shortPdfName(course.sources[r.source]?.name ?? "")} · ${slideRange(r.from, r.to)}`)
             .join(", ");
           return (
             <li key={i} data-state={state}>
@@ -886,6 +889,7 @@ function SwitchRow({
 
 /** New course: which files, what it's for, how fast (design Course 1). */
 function StudySetup({
+  notebookTitle,
   pdfs: allPdfs,
   picked,
   busy,
@@ -894,6 +898,7 @@ function StudySetup({
   onCancel,
   onCreate,
 }: {
+  notebookTitle: string;
   pdfs: Pdf[];
   picked?: string[];
   busy: boolean;
@@ -917,21 +922,30 @@ function StudySetup({
     );
   });
   const chosen = pdfs.filter((p) => keys.includes(p.key));
-  const [name, setName] = useState(() =>
-    chosen.length === 1 ? shortPdfName(chosen[0].name) : "",
-  );
+  const [name, setName] = useState("");
   const [goal, setGoal] = useState<StudyGoal>("mcq");
   const [pace, setPace] = useState<StudyPace>("fast");
   const [harder, setHarder] = useState(true);
   const [finalExam, setFinalExam] = useState(true);
-  const title = name.trim() || (chosen.length ? shortPdfName(chosen[0].name) : "");
+  const fallback =
+    chosen.length === 1 ? shortPdfName(chosen[0].name) : notebookTitle || "Study course";
+  const title = name.trim() || fallback;
   return (
     <form
       className="study-panel study-setup"
       onSubmit={(event) => {
         event.preventDefault();
         if (chosen.length && title)
-          onCreate({ name: title, goal, pace, options: { harder, finalExam }, sources: chosen });
+          onCreate({
+            name: title,
+            goal,
+            pace,
+            options: { harder, finalExam },
+            // Plan in the decks' own order (11, 12, 13), not the list's.
+            sources: [...chosen].sort((a, b) =>
+              a.name.localeCompare(b.name, undefined, { numeric: true }),
+            ),
+          });
       }}
     >
       <div>
@@ -944,7 +958,7 @@ function StudySetup({
         <input
           value={name}
           maxLength={80}
-          placeholder={chosen.length ? shortPdfName(chosen[0].name) : "Course name"}
+          placeholder={fallback}
           onChange={(e) => setName(e.target.value)}
         />
       </label>
