@@ -23,6 +23,7 @@ import {
   saveCourse,
   weakAreas,
   currentAttempt,
+  rememberAddsTerms,
   slideRange,
   withoutTerm,
   type StudyCourse,
@@ -412,15 +413,22 @@ export function StudyPanel({
             {lesson && (
               <>
                 {lesson.intro && <p className="study-intro">{lesson.intro}</p>}
-                <ol className="study-points">
+                <dl className="study-points">
                   {lesson.points.map((p, i) => (
-                    <li key={i}>
-                      <strong>{p.term}</strong> · {withoutTerm(p.term, p.definition)}
-                      {p.example && <div className="study-example">e.g. {p.example}</div>}
-                    </li>
+                    <div key={i}>
+                      <dt>{p.term}</dt>
+                      <dd>
+                        {withoutTerm(p.term, p.definition)}
+                        {p.example && (
+                          <span className="study-example">e.g. {p.example}</span>
+                        )}
+                      </dd>
+                    </div>
                   ))}
-                </ol>
-                {lesson.remember.rows.length > 0 && (
+                </dl>
+                {/* The table only when it adds terms the list above doesn't
+                    already cover; it always goes in the revision sheet. */}
+                {rememberAddsTerms(lesson) && (
                   <div className="ask-table">
                     <table>
                       <caption>Remember</caption>
@@ -443,11 +451,16 @@ export function StudyPanel({
                     </table>
                   </div>
                 )}
-                {lesson.traps.map((trap, i) => (
-                  <p className="study-trap" key={i}>
-                    <strong>MCQ trap:</strong> {trap}
-                  </p>
-                ))}
+                {lesson.traps.length > 0 && (
+                  <section className="study-traps" aria-label="MCQ traps">
+                    <h3>Watch out</h3>
+                    <ul>
+                      {lesson.traps.map((trap, i) => (
+                        <li key={i}>{trap}</li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
                 <StudyQuiz
                   key={`${index}:${lesson.round ?? 0}:${checkpoint.attempts.length}`}
                   title={`Checkpoint ${index + 1} quiz`}

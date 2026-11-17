@@ -13,12 +13,12 @@
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 20px 22px 32px;
+  padding: 24px 32px 48px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  font-size: 13.5px;
-  line-height: 1.55;
+  gap: 18px;
+  font-size: 14px;
+  line-height: 1.6;
   color: var(--shell-text);
 }
 .study-panel h2 {
@@ -260,10 +260,14 @@
 .study-tracker > span[data-state="open"] {
   background: light-dark(#9fc0e3, #3d5a78);
 }
+/* A lesson reads like a page: a comfortable line length, room between
+   parts, no boxes around plain text. */
 .study-lesson {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
+  width: 100%;
+  max-width: 680px;
 }
 .study-sources {
   display: flex;
@@ -277,14 +281,39 @@
 }
 .study-points {
   margin: 0;
-  padding-left: 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
+}
+.study-points dt {
+  font-weight: 600;
+}
+.study-points dd {
+  margin: 2px 0 0;
+  color: light-dark(#4a4a48, #c2c1bd);
 }
 .study-example {
-  font-size: 12.5px;
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
   color: var(--study-muted);
+}
+.study-traps {
+  padding-left: 14px;
+  border-left: 2px solid var(--study-orange);
+}
+.study-traps h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--study-orange-text);
+}
+.study-traps ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .study-panel .ask-table caption {
   caption-side: top;
@@ -363,11 +392,11 @@
   color: var(--study-blue-text);
 }
 .study-quiz-question {
-  padding: 12px;
+  padding: 16px;
   border-bottom: 1px solid var(--shell-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .study-quiz-prompt {
   font-weight: 500;
@@ -375,7 +404,7 @@
 .study-quiz [role="radiogroup"] {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 .study-panel .study-quiz [role="radio"] {
   display: flex;

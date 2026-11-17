@@ -373,3 +373,11 @@ export function withoutTerm(term: string, definition: string) {
     : d;
 }
 
+
+const plainTerm = (text: string) =>
+  text.toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+/** Whether a lesson's Remember table names terms its points don't. */
+export function rememberAddsTerms(lesson: StudyLesson) {
+  const terms = new Set(lesson.points.map((p) => plainTerm(p.term)));
+  return lesson.remember.rows.some((row) => row[0] && !terms.has(plainTerm(row[0])));
+}

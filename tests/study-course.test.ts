@@ -181,3 +181,18 @@ describe("edge cases", () => {
     expect(courseProgress(c)).toMatchObject({ right: 3, asked: 3 });
   });
 });
+
+it("skips a Remember table that only repeats the lesson's terms", async () => {
+  const { rememberAddsTerms } = await import("../src/services/study-course");
+  const lesson = {
+    ...lessonOf([q(1)]),
+    points: [
+      { term: "Software development lifecycle (SDLC)", definition: "Stages.", example: "", slide: 2 },
+      { term: "Shift-left", definition: "Test earlier.", example: "", slide: 3 },
+    ],
+  };
+  lesson.remember = { columns: ["Term", "Recall"], rows: [["Software development lifecycle", "Stages"], ["Shift left", "Earlier"]] };
+  expect(rememberAddsTerms(lesson)).toBe(false);
+  lesson.remember.rows.push(["Retrospective", "Look back"]);
+  expect(rememberAddsTerms(lesson)).toBe(true);
+});
