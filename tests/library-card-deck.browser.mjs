@@ -269,7 +269,7 @@ try {
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   assert.match(
-    await page.locator(".library-note-card").first().getAttribute("aria-label"),
+    await page.locator(".library-note-card-open").first().getAttribute("aria-label"),
     /64$/,
   );
   await page.getByRole("button", { name: "Sort cards", exact: true }).click();

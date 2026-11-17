@@ -5110,7 +5110,10 @@ knot-cited-excerpt {
 .library-note-card[data-placement="here"],
 .card-deck-card[data-placement="here"] {
   border-color: var(--card-placement-here);
-  background: color-mix(in srgb, var(--card-placement-here) 8%, var(--shell-surface));
+  background: light-dark(
+    color-mix(in srgb, var(--card-placement-here) 8%, var(--shell-surface)),
+    color-mix(in srgb, var(--card-placement-here) 13%, var(--shell-surface))
+  );
 }
 :is(.library-note-card, .card-deck-card):is(
     [data-placement="here"],
@@ -5118,7 +5121,12 @@ knot-cited-excerpt {
     [data-placement="unplaced"]
   )
   .card-placement {
-  color: color-mix(in srgb, var(--placement-color) 80%, var(--shell-text));
+  /* Darkened for contrast on light cards; the dark-theme colours are
+     already light enough to read as they are. */
+  color: light-dark(
+    color-mix(in srgb, var(--placement-color) 80%, var(--shell-text)),
+    var(--placement-color)
+  );
   font-weight: 500;
 }
 .card-deck-footer {
