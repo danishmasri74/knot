@@ -192,3 +192,54 @@ export function answerBlocks(root: Root): AiContent[] {
   root.children.forEach(visit);
   return blocks;
 }
+
+/** Shortest answer, and fewest sections, that fold (part 4 of the plan). */
+export const FOLD_MIN_LENGTH = 1500;
+export const FOLD_MIN_SECTIONS = 4;
+
+export type AnswerSections = {
+  preamble: RootContent[];
+  sections: {
+    heading: Extract<RootContent, { type: "heading" }>;
+    body: RootContent[];
+    /** A bold question opening the section ("What does it test?"), shown
+     * beside the heading while answers are covered. */
+    hint?: string;
+  }[];
+};
+
+/**
+ * An answer split at its most common top-level heading level, when it is
+ * long enough and has enough sections to be worth folding.
+ */
+export function answerSections(
+  root: Root,
+  length: number,
+): AnswerSections | undefined {
+  if (length < FOLD_MIN_LENGTH) return;
+  const counts = new Map<number, number>();
+  for (const node of root.children)
+    if (node.type === "heading")
+      counts.set(node.depth, (counts.get(node.depth) ?? 0) + 1);
+  let depth = 0;
+  let most = 0;
+  for (const [d, n] of [...counts].sort((a, b) => a[0] - b[0]))
+    if (n > most) [depth, most] = [d, n];
+  if (most < FOLD_MIN_SECTIONS) return;
+  const result: AnswerSections = { preamble: [], sections: [] };
+  for (const node of root.children) {
+    if (node.type === "heading" && node.depth === depth)
+      result.sections.push({ heading: node, body: [] });
+    else if (result.sections.length) result.sections.at(-1)!.body.push(node);
+    else result.preamble.push(node);
+  }
+  for (const section of result.sections) {
+    const first = section.body[0];
+    const lead =
+      first?.type === "paragraph" && first.children[0]?.type === "strong"
+        ? phrasingText(first.children[0].children).trim()
+        : "";
+    if (lead.endsWith("?")) section.hint = lead;
+  }
+  return result;
+}

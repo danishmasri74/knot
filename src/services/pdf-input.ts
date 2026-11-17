@@ -1,4 +1,5 @@
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { attachments } from "./workspace";
 GlobalWorkerOptions.workerSrc = workerUrl;
@@ -79,4 +80,79 @@ export async function preparePdfInput(source: AiPdfSource): Promise<string> {
   } finally {
     await task.destroy();
   }
+}
+
+/** A page past the end of the file: the reader shows how many there are. */
+export class PdfPageMissing extends Error {
+  constructor(public pages: number) {
+    super(`The file has ${pages} pages.`);
+  }
+}
+// Opening a file is the slow part: keep the last two open, and the last
+// two dozen thumbnails as object URLs.
+type OpenDoc = { pdf: Promise<PDFDocumentProxy>; close: () => void };
+const openDocs = new Map<string, OpenDoc>();
+const thumbnails = new Map<string, Promise<string>>();
+const MAX_OPEN_DOCS = 2;
+const MAX_THUMBNAILS = 24;
+
+function openDoc(key: string): Promise<PDFDocumentProxy> {
+  const hit = openDocs.get(key);
+  if (hit) {
+    openDocs.delete(key);
+    openDocs.set(key, hit);
+    return hit.pdf;
+  }
+  let task: ReturnType<typeof openPdfBytes> | undefined;
+  const pdf = attachments.get(key).then((buffer) => {
+    task = openPdfBytes(new Uint8Array(buffer));
+    return task.promise;
+  });
+  pdf.catch(() => openDocs.delete(key));
+  openDocs.set(key, {
+    pdf,
+    close: () => void pdf.then(() => task?.destroy(), () => {}),
+  });
+  while (openDocs.size > MAX_OPEN_DOCS) {
+    const [oldest, old] = openDocs.entries().next().value!;
+    openDocs.delete(oldest);
+    old.close();
+  }
+  return pdf;
+}
+
+/**
+ * A small JPEG of one page (a cited slide), as an object URL. Rejects with
+ * PdfPageMissing when the page is past the end of the file.
+ */
+export function renderPdfThumbnail(key: string, page: number, width = 320): Promise<string> {
+  const id = `${key}:${page}:${width}`;
+  const cached = thumbnails.get(id);
+  if (cached) {
+    thumbnails.delete(id);
+    thumbnails.set(id, cached);
+    return cached;
+  }
+  const made = (async () => {
+    const pdf = await openDoc(key);
+    if (page < 1 || page > pdf.numPages) throw new PdfPageMissing(pdf.numPages);
+    const view = await pdf.getPage(page);
+    const size = view.getViewport({ scale: 1 });
+    const viewport = view.getViewport({ scale: (width * 2) / size.width });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await view.render({ canvas, viewport, background: "white" }).promise;
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (!blob) throw new Error("Could not draw this page.");
+    return URL.createObjectURL(blob);
+  })();
+  made.catch(() => thumbnails.delete(id));
+  thumbnails.set(id, made);
+  while (thumbnails.size > MAX_THUMBNAILS) {
+    const [oldest, old] = thumbnails.entries().next().value!;
+    thumbnails.delete(oldest);
+    void old.then((url) => URL.revokeObjectURL(url), () => {});
+  }
+  return made;
 }

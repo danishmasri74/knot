@@ -67,3 +67,22 @@ export function resolvePdfCitation(
         : `${unit} ${pages}`,
   };
 }
+
+/** The distinct pages an answer cites, in order, at most `limit`. */
+export function citedPages(
+  text: string,
+  pdfs: CitedPdf[],
+  limit = 6,
+): PdfCitation[] {
+  const seen = new Set<string>();
+  const result: PdfCitation[] = [];
+  for (const match of text.matchAll(new RegExp(PDF_CITATION, "g"))) {
+    const cited = resolvePdfCitation(match[0], pdfs);
+    const id = cited && `${cited.pdf.key}:${cited.page}`;
+    if (!cited || !id || seen.has(id)) continue;
+    seen.add(id);
+    result.push(cited);
+    if (result.length === limit) break;
+  }
+  return result;
+}

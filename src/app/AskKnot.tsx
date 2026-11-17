@@ -5,6 +5,7 @@ import { AiStarters } from "./AiStarters";
 import { AnswerFollowUps } from "./AnswerFollowUps";
 import { AskStepList, AskStepSummary } from "./AskSteps";
 import { AnswerQuiz } from "./AnswerQuiz";
+import { PdfRef, SlidesCited } from "./PdfPreview";
 import { beginStep, endSteps, type AskStep } from "../services/ask-steps";
 import { AnswerMarkdown, type AnswerMarkdownProps } from "./AnswerMarkdown";
 import {
@@ -16,6 +17,7 @@ import {
 } from "../services/answer-markdown";
 import type { AiBlock } from "../features/editor/blocksuite/ai-content";
 import {
+  citedPages,
   PDF_CITATION,
   resolvePdfCitation,
   type CitedPdf,
@@ -2964,6 +2966,9 @@ function AskKnotPanel({
                             text={turn.content}
                             context={shownContext(turn.request)}
                             pdfs={citedPdfs(turn.request)}
+                            foldable={
+                              !(busy && turn.attemptId === request.current)
+                            }
                             renderCode={(node, index) =>
                               node.lang === QUIZ_LANG
                                 ? renderQuiz(turn, node.value, index)
@@ -2978,6 +2983,22 @@ function AskKnotPanel({
                               })
                             }
                           />
+                          {!(busy && turn.attemptId === request.current) && (
+                            <SlidesCited
+                              cited={citedPages(
+                                turn.content,
+                                citedPdfs(turn.request),
+                              )}
+                              onOpen={(pdf, page) =>
+                                openAttachment({
+                                  kind: "pdf",
+                                  label: pdf.name,
+                                  document: pdf.document,
+                                  pdf: { key: pdf.key, page },
+                                })
+                              }
+                            />
+                          )}
                           <CitationSources
                             text={turn.content}
                             context={shownContext(turn.request)}
@@ -4060,6 +4081,7 @@ const ChatText = memo(function ChatText({
   pdfs = [],
   onPdf,
   renderCode,
+  foldable,
 }: {
   text: string;
   context?: string;
@@ -4068,6 +4090,8 @@ const ChatText = memo(function ChatText({
   onPdf?: (pdf: CitedPdf, page: number) => void;
   /** Draws Knot's own fenced blocks (an inline quiz). */
   renderCode?: AnswerMarkdownProps["renderCode"];
+  /** Finished answers with many sections can fold. */
+  foldable?: boolean;
 }) {
   const table = readCitationSources(context);
   const validMarkers = new Set(
@@ -4124,30 +4148,11 @@ const ChatText = memo(function ChatText({
       renderText={renderText}
       onLink={(href) => void openWebLink(href)}
       renderCode={renderCode}
+      foldable={foldable}
     />
   );
 });
 
-/** A "(slide 3)" citation: opens that page of the file. */
-function PdfRef({
-  cited,
-  onOpen,
-}: {
-  cited: NonNullable<ReturnType<typeof resolvePdfCitation>>;
-  onOpen: (pdf: CitedPdf, page: number) => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="ask-pdf-ref"
-      data-tooltip={`Open ${cited.pdf.name} at ${cited.label.split(", ").at(-1)}`}
-      onClick={() => onOpen(cited.pdf, cited.page)}
-    >
-      <ShellIcon name="pdf" />
-      {cited.label}
-    </button>
-  );
-}
 
 const CitationSources = memo(function CitationSources({
   text,

@@ -8345,3 +8345,209 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   color: var(--ask-muted);
   font-style: italic;
 }
+
+/* Slide previews for PDF citations (PdfPreview.tsx), on the shared
+   floating-surface tokens. */
+.ask-pdf-preview {
+  position: fixed;
+  z-index: 1000;
+  width: 312px;
+  box-sizing: border-box;
+  padding: var(--dropdown-padding);
+  border: 1px solid var(--dropdown-border);
+  border-radius: var(--dropdown-radius);
+  background: var(--dropdown-surface);
+  color: var(--dropdown-text);
+  box-shadow: var(--dropdown-shadow);
+  pointer-events: none;
+  font-size: 12.5px;
+}
+.ask-pdf-preview-page {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--shell-nav);
+  color: var(--ask-muted, #787774);
+  text-align: center;
+}
+.ask-pdf-preview-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.ask-pdf-preview-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 4px 2px;
+  min-width: 0;
+}
+.ask-pdf-preview-name span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask-pdf-preview-name span:last-of-type {
+  flex: none;
+  color: var(--ask-muted, #787774);
+}
+.ask-pdf-preview-name .shell-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--ask-muted, #787774);
+}
+.ask-slides-cited {
+  margin: 12px 0 4px;
+  white-space: normal;
+}
+.ask-slides-cited-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ask-muted);
+  margin-bottom: 6px;
+}
+.ask-slides-cited-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ask-slide-thumb {
+  width: 148px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ask-slide-thumb:hover,
+.ask-slide-thumb:focus-visible {
+  border-color: var(--control-accent);
+}
+.ask-slide-thumb-page {
+  display: block;
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--shell-nav);
+}
+.ask-slide-thumb-page img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.ask-slide-thumb-caption {
+  font-size: 11.5px;
+  color: var(--ask-muted);
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapsible sections in long answers (AnswerMarkdown.tsx, proposal A). */
+.ask-fold-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0 8px;
+  padding: 3px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: normal;
+}
+.ask-fold-tools > span {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--shell-border);
+}
+.ask-fold-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--ask-muted);
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ask-fold-tools button:hover {
+  background: var(--ask-hover);
+  color: inherit;
+}
+.ask-fold-tools button[aria-pressed="true"] {
+  background: light-dark(#f2f7fc, #1f2a36);
+  color: var(--control-accent);
+  font-weight: 500;
+}
+.ask-fold-tools .shell-icon {
+  width: 13px;
+  height: 13px;
+}
+.ask-fold-note {
+  font-size: 12px;
+  color: var(--ask-muted);
+}
+.ask-fold-list {
+  border-top: 1px solid var(--shell-border);
+  margin-bottom: 12px;
+}
+.ask-fold {
+  border-bottom: 1px solid var(--shell-border);
+}
+.ask-prose .ask-fold > h4,
+.ask-prose .ask-fold > h5 {
+  margin: 0;
+}
+.ask-fold > :is(h4, h5) > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: normal;
+}
+.ask-fold > :is(h4, h5) > button:hover {
+  background: var(--ask-hover);
+}
+.ask-fold > :is(h4, h5) .shell-icon {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  color: var(--ask-muted);
+  transition: transform 0.15s;
+}
+.ask-fold[data-open="true"] > :is(h4, h5) .shell-icon {
+  transform: rotate(90deg);
+}
+.ask-fold-hint {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ask-muted);
+}
+.ask-fold-body {
+  padding: 0 4px 6px 23px;
+}

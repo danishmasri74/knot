@@ -1,7 +1,11 @@
 import { Fragment, memo, useMemo, useState, type ReactNode } from "react";
 import type { Code, ListItem, PhrasingContent, RootContent } from "mdast";
 import { ShellIcon } from "./ShellIcon";
-import { parseAnswer, safeHref } from "../services/answer-markdown";
+import {
+  answerSections,
+  parseAnswer,
+  safeHref,
+} from "../services/answer-markdown";
 
 export type AnswerMarkdownProps = {
   text: string;
@@ -10,6 +14,8 @@ export type AnswerMarkdownProps = {
   onLink: (href: string) => void;
   /** A fenced block Knot draws itself (a quiz); undefined draws code. */
   renderCode?: (node: Code, index: number) => ReactNode | undefined;
+  /** Long answers with many sections may fold (not while streaming). */
+  foldable?: boolean;
 };
 
 /**
@@ -22,8 +28,18 @@ export const AnswerMarkdown = memo(function AnswerMarkdown({
   renderText,
   onLink,
   renderCode,
+  foldable,
 }: AnswerMarkdownProps) {
   const root = useMemo(() => parseAnswer(text), [text]);
+  const plan = useMemo(
+    () => (foldable ? answerSections(root, text.length) : undefined),
+    [foldable, root, text.length],
+  );
+  // Everything starts open. Cover answers folds every section for recall
+  // practice; opening one there counts it as checked.
+  const [closed, setClosed] = useState<ReadonlySet<number>>(new Set());
+  const [cover, setCover] = useState(false);
+  const [seen, setSeen] = useState<ReadonlySet<number>>(new Set());
   let codeIndex = 0;
 
   const inline = (nodes: PhrasingContent[]): ReactNode[] =>
@@ -195,9 +211,92 @@ export const AnswerMarkdown = memo(function AnswerMarkdown({
     }
   }
 
+  if (!plan)
+    return (
+      <div className="ask-prose">
+        {root.children.map((node, i) => block(node, i))}
+      </div>
+    );
+  const toggle = (set: ReadonlySet<number>, i: number) => {
+    const next = new Set(set);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    return next;
+  };
+  const all = new Set(plan.sections.map((_, i) => i));
   return (
     <div className="ask-prose">
-      {root.children.map((node, i) => block(node, i))}
+      {plan.preamble.map((node, i) => block(node, i))}
+      <div className="ask-fold-tools" role="toolbar" aria-label="Sections">
+        <button
+          type="button"
+          onClick={() => {
+            setCover(false);
+            setClosed(new Set());
+          }}
+        >
+          Expand all
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCover(false);
+            setClosed(all);
+          }}
+        >
+          Collapse all
+        </button>
+        <span aria-hidden="true" />
+        <button
+          type="button"
+          aria-pressed={cover}
+          onClick={() => {
+            setCover(!cover);
+            setSeen(new Set());
+          }}
+        >
+          <ShellIcon name="eyeOff" />
+          Cover answers
+        </button>
+      </div>
+      {cover && (
+        <p className="ask-fold-note">
+          Answer each one in your head, then open it to check. {seen.size} of{" "}
+          {plan.sections.length} checked.
+        </p>
+      )}
+      <div className="ask-fold-list">
+        {plan.sections.map((section, i) => {
+          const open = cover ? seen.has(i) : !closed.has(i);
+          const Heading = section.heading.depth <= 2 ? "h4" : "h5";
+          return (
+            <section key={i} className="ask-fold" data-open={open}>
+              <Heading data-depth={section.heading.depth}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() =>
+                    cover
+                      ? setSeen(toggle(seen, i))
+                      : setClosed(toggle(closed, i))
+                  }
+                >
+                  <ShellIcon name="chevron" />
+                  <span>{inline(section.heading.children)}</span>
+                  {cover && !open && section.hint && (
+                    <span className="ask-fold-hint">{section.hint}</span>
+                  )}
+                </button>
+              </Heading>
+              {open && (
+                <div className="ask-fold-body">
+                  {section.body.map((node, j) => block(node, j))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 });

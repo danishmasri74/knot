@@ -1,6 +1,6 @@
 # Rich Ask Knot answers
 
-Status: plan, 17 November 2026. No application changes are made by this plan.
+Status: implemented 17 November 2026 (releases A, B and C). Designs chosen from the canvas at https://claude.ai/artifact/Br2YK5afwPh9ggQr4DZatA: progress proposal A (step list), quiz proposal A (stacked), sections proposal A (fold in place with Cover answers).
 
 ## Goal
 
@@ -185,8 +185,8 @@ Rust: rule-placement tests for the new Markdown and quiz rules; `pnpm checks` be
 - **Unsafe content.** No HTML rendering, link schemes allow-listed, remote images never loaded.
 - **Prompt cache.** Each instruction change misses the cache once; keep the added rules short.
 
-## Decisions for the user
+## Decisions
 
-1. Inline quiz layout: all questions stacked (proposed) or one at a time with Next?
-2. Collapsible sections: start expanded (proposed) or start folded for long revision answers?
-3. Adding the Markdown library (about 50 KB, pinned): acceptable, or keep extending the hand-written renderer (more work, fewer features)?
+1. Inline quiz: all questions stacked (proposal A).
+2. Collapsible sections: start expanded, with Collapse all, Expand all and Cover answers (proposal A).
+3. Markdown: `mdast-util-from-markdown` 2.0.2 with GFM (`micromark-extension-gfm` 3.0.0, `mdast-util-gfm` 3.1.0), pinned.
