@@ -3,7 +3,7 @@ import {
   useCardPlacements,
 } from "./CardPlacement";
 import { repository } from "../services/workspace";
-import { ChoicePopover } from "./ChoicePopover";
+import { Popover } from "./Collections";
 import { CardDeckPreview } from "./CardDeckPreview";
 import { openCardMenu } from "../features/editor/blocksuite/card-menu";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -29,6 +29,41 @@ const filters = [
   "Not on this canvas",
   "Not on any canvas",
 ];
+/** Card types the filter offers, by the card's object icon. */
+const types = [
+  { label: "Notes", icons: ["note"] },
+  { label: "Files", icons: ["pdf", "wordDocument", "slides", "attach"] },
+  { label: "Images and video", icons: ["image", "video"] },
+  { label: "Links", icons: ["link"] },
+  { label: "Quizzes", icons: ["multipleChoice"] },
+] as const;
+type TypeLabel = (typeof types)[number]["label"];
+function cardType(card: DeckCard): TypeLabel {
+  const icon: string = cardIcon(card);
+  return (
+    types.find((type) => (type.icons as readonly string[]).includes(icon))
+      ?.label ?? "Notes"
+  );
+}
+type Placement = ReturnType<typeof cardPlacement>["state"];
+function matchesPlacement(filter: string, state: Placement) {
+  return (
+    filter === filters[0] ||
+    (filter === filters[1] && state === "here") ||
+    (filter === filters[2] && state !== "here" && state !== "unknown") ||
+    (filter === filters[3] && state === "unplaced")
+  );
+}
+/** The placement colour a filter choice shows, if it has one. */
+function placementState(option: string) {
+  return option === filters[1]
+    ? "here"
+    : option === filters[3]
+      ? "unplaced"
+      : option === filters[2]
+        ? "linked"
+        : undefined;
+}
 const pageSize = 40;
 type Preview = {
   id: string;
@@ -131,6 +166,9 @@ export function CardDeckPanel({
     return saved && orders.includes(saved) ? saved : orders[0];
   });
   const [filter, setFilter] = useState(filters[0]);
+  const [typeFilter, setTypeFilter] = useState<ReadonlySet<TypeLabel>>(
+    new Set(),
+  );
   const [query, setQuery] = useState("");
   const menu = useRef<() => void>(() => {});
   useEffect(() => () => menu.current(), [deck]);
@@ -152,21 +190,41 @@ export function CardDeckPanel({
     );
   };
   const loading = !deck || index?.deck !== deck;
-  const cards = useMemo(() => {
+  // Search first, then count each placement and type among the matches so
+  // the filter menu shows what each choice would leave.
+  const searched = useMemo(() => {
     const term = query.toLowerCase();
-    const rows =
-      index?.rows.filter((card) => {
-        if (!card.searchable.includes(term)) return false;
+    return (
+      index?.rows.flatMap((card) => {
+        if (!card.searchable.includes(term)) return [];
         const state = cardPlacement(placements, card.id, canvas).state;
         // Its notebook is in Trash: back in the deck when it's restored.
-        if (state === "trashed") return false;
-        return (
-          filter === filters[0] ||
-          (filter === filters[1] && state === "here") ||
-          (filter === filters[2] && state !== "here" && state !== "unknown") ||
-          (filter === filters[3] && state === "unplaced")
-        );
-      }) ?? [];
+        if (state === "trashed") return [];
+        return [{ card, state, type: cardType(card.source) }];
+      }) ?? []
+    );
+  }, [index, query, placements, canvas]);
+  const counts = useMemo(() => {
+    const placement = new Map<string, number>();
+    const type = new Map<TypeLabel, number>();
+    for (const row of searched) {
+      if (!typeFilter.size || typeFilter.has(row.type))
+        for (const option of filters)
+          if (matchesPlacement(option, row.state))
+            placement.set(option, (placement.get(option) ?? 0) + 1);
+      if (matchesPlacement(filter, row.state))
+        type.set(row.type, (type.get(row.type) ?? 0) + 1);
+    }
+    return { placement, type };
+  }, [searched, filter, typeFilter]);
+  const cards = useMemo(() => {
+    const rows = searched
+      .filter(
+        (row) =>
+          matchesPlacement(filter, row.state) &&
+          (!typeFilter.size || typeFilter.has(row.type)),
+      )
+      .map((row) => row.card);
     return rows.sort((a, b) => {
       if (sort === orders[3] || sort === orders[4]) {
         return (
@@ -181,12 +239,23 @@ export function CardDeckPanel({
         (sort === orders[1] ? -1 : 1)
       );
     });
-  }, [index, query, sort, filter, placements, canvas]);
+  }, [searched, sort, filter, typeFilter]);
+  const placementOptions = canvas
+    ? filters
+    : filters.filter((option) => option !== filters[1] && option !== filters[2]);
+  const activeFilters = (filter !== filters[0] ? 1 : 0) + typeFilter.size;
   const pages = Math.ceil(cards.length / pageSize);
   const current = Math.min(page, Math.max(0, pages - 1));
   const changePage = (next: number) => {
     setPage(next);
     panel.current?.scrollTo(0, 0);
+  };
+  const toggleType = (label: TypeLabel) => {
+    const next = new Set(typeFilter);
+    if (next.has(label)) next.delete(label);
+    else next.add(label);
+    setTypeFilter(next);
+    changePage(0);
   };
   return (
     <section
@@ -208,38 +277,128 @@ export function CardDeckPanel({
             }}
           />
         </label>
-        <ChoicePopover
-          label="Sort cards"
-          icon="sortAlpha"
-          value={sort}
-          options={orders}
-          onChange={(value) => {
-            setSort(value);
-            localStorage.setItem(preference, value);
-            changePage(0);
-          }}
-        />
-        <ChoicePopover
-          label="Filter cards"
-          icon="filter"
-          value={filter}
-          options={filters}
-          onChange={(value) => {
-            setFilter(value);
-            changePage(0);
-          }}
-        />
-      </div>
-      {filter !== filters[0] && (
-        <button
-          aria-label={"Clear filter: " + filter}
-          onClick={() => {
-            setFilter(filters[0]);
-            changePage(0);
-          }}
+        <Popover
+          label={
+            activeFilters
+              ? `Filter and sort, ${activeFilters} ${activeFilters === 1 ? "filter" : "filters"} on`
+              : "Filter and sort"
+          }
+          className="deck-tool-button"
+          trigger={
+            <>
+              <ShellIcon name="filter" />
+              {activeFilters > 0 && (
+                <span className="deck-filter-badge" aria-hidden="true">
+                  {activeFilters}
+                </span>
+              )}
+            </>
+          }
         >
-          {filter} ×
-        </button>
+          {() => (
+            <div className="deck-filter-menu">
+              <div className="placement-menu-heading">Placement</div>
+              <div
+                role="group"
+                aria-label="Placement"
+                className="library-filter-options"
+              >
+                {placementOptions.map((option) => (
+                  <button
+                    key={option}
+                    aria-pressed={option === filter}
+                    data-placement={placementState(option)}
+                    onClick={() => {
+                      setFilter(option);
+                      changePage(0);
+                    }}
+                  >
+                    <span className="deck-filter-dot" aria-hidden="true" />
+                    <span className="deck-filter-label">{option}</span>
+                    <span className="deck-filter-count">
+                      {counts.placement.get(option) ?? 0}
+                    </span>
+                    <ShellIcon name="check" />
+                  </button>
+                ))}
+              </div>
+              <div className="placement-menu-separator" role="separator" />
+              <div className="placement-menu-heading">Type</div>
+              <div
+                role="group"
+                aria-label="Type"
+                className="library-filter-options"
+              >
+                {types.map(({ label }) => (
+                  <button
+                    key={label}
+                    aria-pressed={typeFilter.has(label)}
+                    onClick={() => toggleType(label)}
+                  >
+                    <span className="deck-filter-label">{label}</span>
+                    <span className="deck-filter-count">
+                      {counts.type.get(label) ?? 0}
+                    </span>
+                    <ShellIcon name="check" />
+                  </button>
+                ))}
+              </div>
+              <div className="placement-menu-separator" role="separator" />
+              <div className="placement-menu-heading">Sort</div>
+              <div
+                role="group"
+                aria-label="Sort cards"
+                className="library-filter-options"
+              >
+                {orders.map((option) => (
+                  <button
+                    key={option}
+                    aria-pressed={option === sort}
+                    onClick={() => {
+                      setSort(option);
+                      localStorage.setItem(preference, option);
+                      changePage(0);
+                    }}
+                  >
+                    <span className="deck-filter-label">{option}</span>
+                    <ShellIcon name="check" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Popover>
+      </div>
+      {activeFilters > 0 && (
+        <div className="deck-active-filters">
+          {filter !== filters[0] && (
+            <button
+              data-placement={placementState(filter)}
+              aria-label={"Clear filter: " + filter}
+              onClick={() => {
+                setFilter(filters[0]);
+                changePage(0);
+              }}
+            >
+              <span className="deck-filter-dot" aria-hidden="true" />
+              {filter}
+              <ShellIcon name="close" size={12} />
+            </button>
+          )}
+          {[...typeFilter].map((label) => (
+            <button
+              key={label}
+              aria-label={"Clear filter: " + label}
+              onClick={() => toggleType(label)}
+            >
+              {label}
+              <ShellIcon name="close" size={12} />
+            </button>
+          ))}
+          <span className="deck-filter-total">
+            {cards.length} of {searched.length}
+          </span>
+        </div>
       )}
       {!loading && pages > 1 && (
         <nav className="deck-pagination" aria-label="Card Deck pages">
@@ -325,19 +484,35 @@ export function CardDeckPanel({
                   <ShellIcon name="more" />
                 </button>
                 <CardDeckPreview deck={deck?.data} deckVersion={deck?.contentVersion} card={card.source} />
-                <PlacementMenu
-                  index={placements}
-                  cardId={card.id}
-                  deck={deck?.data}
-                  canvas={canvas}
-                  onOpen={onOpenUse}
-                />
+                <div className="card-deck-footer">
+                  <PlacementMenu
+                    index={placements}
+                    cardId={card.id}
+                    deck={deck?.data}
+                    canvas={canvas}
+                    onOpen={onOpenUse}
+                  />
+                  {canvas &&
+                    ["linked", "unplaced"].includes(
+                      cardPlacement(placements, card.id, canvas).state,
+                    ) && (
+                      <button
+                        className="card-deck-add"
+                        aria-label={`Add ${card.name || "card"} to canvas`}
+                        data-tooltip="Add to canvas"
+                        onClick={() => void onPlace(card.id)}
+                      >
+                        <ShellIcon name="plus" size={12} />
+                        Add
+                      </button>
+                    )}
+                </div>
               </article>
             ))}
       </div>
       {!loading && !cards.length && (
         <p>
-          {query || filter !== filters[0]
+          {query || activeFilters
             ? "No matching cards."
             : "Your notes, videos, links, files and images appear here. Plain text stays on its whiteboard."}
         </p>

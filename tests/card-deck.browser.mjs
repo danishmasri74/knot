@@ -146,27 +146,40 @@ try {
   });
   await page.getByText("1 of 75", { exact: true }).waitFor();
   assert.equal(await page.locator(".card-deck-grid article").count(), 40);
-  await page.getByRole("button", { name: "Sort cards", exact: true }).click();
+  await page.getByRole("button", { name: /^Filter and sort/ }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("group", { name: "Sort cards", exact: true })
     .getByRole("button", { name: "Name Z–A", exact: true })
     .click();
   assert.equal(
     await page.locator(".card-deck-preview").first().innerText(),
     "Card 2999",
   );
-  await page.getByRole("button", { name: "Filter cards", exact: true }).click();
   await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "On this canvas", exact: true })
+    .getByRole("group", { name: "Placement", exact: true })
+    .getByRole("button", { name: /^Not on any canvas/ })
     .click();
   await page.getByText("No matching cards.").waitFor();
-  await page.getByLabel("Clear filter: On this canvas").click();
-  await page.getByRole("button", { name: "Sort cards", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("button", { name: "Filter and sort, 1 filter on", exact: true })
+    .waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Clear filter: Not on any canvas").click();
+  await page.getByRole("button", { name: "Filter and sort", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Type", exact: true })
+    .getByRole("button", { name: /^Quizzes/ })
+    .click();
+  await page.getByText("No matching cards.").waitFor();
+  await page
+    .getByRole("group", { name: "Type", exact: true })
+    .getByRole("button", { name: /^Quizzes/ })
+    .click();
+  await page
+    .getByRole("group", { name: "Sort cards", exact: true })
     .getByRole("button", { name: "Newest first", exact: true })
     .click();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await page.getByText("Card 40", { exact: true }).waitFor();
   await page.getByLabel("Search Card Deck").fill("CARD 2999");
