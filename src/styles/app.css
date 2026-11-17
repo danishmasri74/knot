@@ -5379,7 +5379,7 @@ knot-cited-excerpt {
 }
 /* One menu for placement, type and sort. */
 .deck-filter-menu {
-  width: 260px;
+  min-width: 0;
 }
 /* Only the label stretches; the shared rule stretches every span. */
 .knot-dropdown .deck-filter-menu button > :is(.deck-filter-dot, .deck-filter-count) {
