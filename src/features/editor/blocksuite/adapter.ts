@@ -1,5 +1,9 @@
 import { observeMcqMenu } from "./mcq-menu";
-import { observeArrowLabelColors, repairArrowLabelColors } from "./ai";
+import {
+  canvasObstacles,
+  observeArrowLabelColors,
+  repairArrowLabelColors,
+} from "./ai";
 import { BookmarkPreviewSpec } from "./bookmark";
 import { McqEditConflict, PendingMcqSave, captureMcqTarget, captureNoteMcqTarget, prepareMcqInsertion, type McqDestination, type McqInsertionTarget } from "./mcq-insertion";
 import { observeFloatingToc } from "./floating-toc";
@@ -1194,7 +1198,12 @@ export async function openEditor(
             ? editor.querySelector("affine-edgeless-root")
             : null;
         const { x, y } = canvas
-          ? placeInView(canvas.gfx.viewport, size, notes)
+          ? placeInView(
+              canvas.gfx.viewport,
+              size,
+              // Clear of PDFs, images and drawings too, not only cards.
+              canvasObstacles(doc).map(([x, y, w, h]) => ({ x, y, w, h })),
+            )
           : { x: Math.max(0, ...notes.map((n) => n.x + n.w + 40)), y: 0 };
         let id = "";
         let paragraph = "";

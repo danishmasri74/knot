@@ -6,3 +6,4 @@
 - Card Deck fits as many columns as the panel allows, cards on the current canvas are tinted green, each card shows its placement in colour with an Add button, and one Filter and sort menu covers placement, card type and order.
 - When an Ask Knot answer suits it, buttons under the answer offer next steps such as canvas cards, a mind map, a quiz or a new note. Each one shows a preview before anything changes.
 - Cards Ask Knot adds to a canvas leave room for their arrow labels, so labels no longer sit on top of the cards, and comparisons ("A vs. B") are no longer laid out as a step-by-step flow.
+- Cards added to a canvas by Ask Knot or Add note no longer land on top of PDFs, images or drawings and hide them.

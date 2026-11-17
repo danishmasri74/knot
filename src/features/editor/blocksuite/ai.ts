@@ -721,13 +721,7 @@ function applyQuiz(
   const bounds = card
     ? quizCardPlacement(
         sourceBounds,
-        [
-          ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
-          ...(surface?.elementModels ?? []),
-        ].flatMap((element) => {
-          const b = "xywh" in element ? parse(element.xywh) : undefined;
-          return b ? [b] : [];
-        }),
+        canvasObstacles(doc),
         quizCardSize(proposal.questions),
       )
     : undefined;
@@ -861,24 +855,12 @@ function applyArrange(
     | undefined;
   const moving = new Set(cards.map((c) => c.model.id));
   const frames = map.frames.filter((f) => f.members.some((id) => moving.has(id)));
-  const occupied = [
-    ...doc
-      .getBlocksByFlavour("affine:note")
-      .map((b) => b.model)
-      .filter((m) => !moving.has(m.id)),
-    ...(surface?.elementModels ?? []).filter(
-      (e) =>
-        e.type !== "connector" &&
-        e.type !== "group" &&
-        !isRerouteDot(e) &&
-        !moving.has(e.id),
-    ),
-  ].flatMap((e) => {
-    // Cards sharing a frame with the arranged ones may stay inside it.
-    if (frames.some((f) => f.members.includes(e.id))) return [];
-    const b = "xywh" in e ? parseBox(e.xywh) : undefined;
-    return b ? [b] : [];
-  });
+  const occupied = canvasObstacles(
+    doc,
+    // Objects sharing a frame with the arranged cards may stay inside it.
+    (id) => moving.has(id) || frames.some((f) => f.members.includes(id)),
+    false,
+  );
   const region = clearPlacement(
     Math.min(...cards.map((c) => c.box[0])),
     Math.min(...cards.map((c) => c.box[1])),
@@ -1005,16 +987,8 @@ export function addAiMessageCard(doc: Doc, blocks: AiBlock[]) {
   if (doc.readonly || !doc.root)
     throw new Error("Open an editable notebook to add a card.");
   if (!blocks.length) throw new Error("This message has no content to add.");
-  let right = 0;
-  for (const { model } of doc.getBlocksByFlavour("affine:note")) {
-    const bounds: unknown = JSON.parse((model as NoteBlockModel).xywh);
-    if (
-      Array.isArray(bounds) &&
-      bounds.length === 4 &&
-      bounds.every(Number.isFinite)
-    )
-      right = Math.max(right, bounds[0] + bounds[2] + 80);
-  }
+  // Right of everything on the canvas, PDFs and images included.
+  const right = Math.max(0, ...canvasObstacles(doc).map((b) => b[0] + b[2] + 80));
   const sizes = blocks.map(aiBlockSize);
   const width = Math.max(...sizes.map((size) => size.width));
   const height = sizes.reduce((sum, size) => sum + size.height, 0);
@@ -1169,19 +1143,8 @@ export function applyAiProposal(
     const width = Math.max(...laid.map((b) => b[0] + b[2])) - minX + 2 * FRAME_PAD;
     const height =
       Math.max(...laid.map((b) => b[1] + b[3])) - minY + FRAME_PAD + FRAME_TOP;
-    const occupied = [
-      ...doc
-        .getBlocksByFlavour("affine:note")
-        .map((b) => b.model as NoteBlockModel)
-        .filter((m) => m.id !== note.id),
-      // Arrows and groups don't block; the arrows to the original move.
-      ...(surface?.elementModels ?? []).filter(
-        (e) => e.type !== "connector" && e.type !== "group" && !isRerouteDot(e),
-      ),
-    ].flatMap((e) => {
-      const b = "xywh" in e ? parseBox(e.xywh) : undefined;
-      return b ? [b] : [];
-    });
+    // Arrows and groups don't block; the arrows to the original move.
+    const occupied = canvasObstacles(doc, (id) => id === note.id);
     const region = clearPlacement(box[0], box[1], occupied, [width, height]);
     replaced = {
       note,
@@ -1231,15 +1194,7 @@ export function applyAiProposal(
       Math.max(...laid.map((b) => b[1] + b[3])) - minY,
     ];
     const targets = links.map((l) => l.target.box);
-    const occupied = [
-      ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
-      ...(surface?.elementModels ?? []).filter(
-        (e) => e.type !== "connector" && e.type !== "group" && !isRerouteDot(e),
-      ),
-    ].flatMap((e) => {
-      const b = "xywh" in e ? parseBox(e.xywh) : undefined;
-      return b ? [b] : [];
-    });
+    const occupied = canvasObstacles(doc);
     const region = clearPlacement(
       Math.max(...targets.map((b) => b[0] + b[2])) + 160,
       Math.min(...targets.map((b) => b[1])),
@@ -1253,18 +1208,11 @@ export function applyAiProposal(
     elbowed: ConnectorMode.Orthogonal,
     straight: ConnectorMode.Straight,
   }[getAiConnectorShape()];
-  let right = 0;
-  if (mode === "canvas")
-    for (const element of [
-      ...doc.getBlocksByFlavour("affine:note").map((b) => b.model),
-      ...(surface?.elementModels ?? []),
-    ]) {
-      if ("xywh" in element) {
-        const b = JSON.parse(String(element.xywh));
-        if (Array.isArray(b) && b.length === 4 && b.every(Number.isFinite))
-          right = Math.max(right, b[0] + b[2] + 80);
-      }
-    }
+  // New cards start right of everything, so none covers a PDF or image.
+  const right =
+    mode === "canvas"
+      ? Math.max(0, ...canvasObstacles(doc).map((b) => b[0] + b[2] + 80))
+      : 0;
   let noteId: string | undefined;
   doc.captureSync();
   doc.transact(() => {
@@ -1629,6 +1577,45 @@ function treeLabelDistance(child: Box, parent: Box) {
 
 const FRAME_PAD = 40;
 const FRAME_TOP = 60;
+/**
+ * Everything on the canvas new cards must not cover: cards, the blocks kept
+ * under the surface (PDFs and other attachments, images, embeds and, unless
+ * left out, frames) and drawn elements other than arrows and groups.
+ * Attachments live under the surface, not among its elements, so leaving
+ * them out put AI cards on top of PDFs, hiding them.
+ */
+export function canvasObstacles(
+  doc: Doc,
+  skip: (id: string) => boolean = () => false,
+  frames = true,
+): Box[] {
+  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
+    | SurfaceBlockModel
+    | undefined;
+  const boxes: Box[] = [];
+  const add = (id: string, xywh: unknown) => {
+    if (skip(id)) return;
+    const b = parseBox(xywh);
+    if (b) boxes.push(b);
+  };
+  for (const { model } of doc.getBlocksByFlavour("affine:note")) {
+    const note = model as NoteBlockModel;
+    // Page-only notes aren't on the canvas.
+    if (note.displayMode !== "doc") add(note.id, note.xywh);
+  }
+  for (const child of surface?.children ?? []) {
+    if (!frames && child.flavour === "affine:frame") continue;
+    add(child.id, (child as unknown as { xywh?: unknown }).xywh);
+  }
+  for (const element of surface?.elementModels ?? [])
+    if (
+      element.type !== "connector" &&
+      element.type !== "group" &&
+      !isRerouteDot(element)
+    )
+      add(element.id, element.xywh);
+  return boxes;
+}
 function parseBox(xywh: unknown): Box | undefined {
   try {
     const b: unknown = JSON.parse(String(xywh));
