@@ -20,7 +20,7 @@
 }
 .study-panel h2 {
   margin: 0;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -36,32 +36,28 @@
 }
 .study-panel button {
   font: inherit;
+  font-size: 13px;
   color: inherit;
   border: 1px solid var(--shell-border);
-  background: transparent;
-  border-radius: 6px;
-  padding: 6px 11px;
+  background: var(--shell-surface);
+  border-radius: 5px;
+  padding: 5px 10px;
   cursor: pointer;
 }
 .study-panel button:hover:not(:disabled) {
-  background: var(--study-soft);
+  background: var(--shell-selected);
 }
 .study-panel button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+/* The main action: the same neutral button, a little firmer. */
 .study-panel .study-primary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--shell-text);
-  border-color: var(--shell-text);
-  color: light-dark(#fff, #1c1c1b);
   font-weight: 500;
-}
-.study-panel .study-primary:hover:not(:disabled) {
-  background: var(--shell-text);
-  opacity: 0.9;
+  border-color: light-dark(#cfcfcd, #4a4a48);
 }
 .study-panel .shell-icon {
   width: 14px;
@@ -401,11 +397,11 @@
   color: var(--study-muted);
 }
 .study-panel .study-quiz [data-state="picked"] {
-  border-color: var(--shell-text);
-  background: var(--study-soft);
+  border-color: light-dark(#a8a7a3, #6a6a67);
+  background: var(--shell-selected);
 }
 .study-quiz [data-state="picked"] .study-quiz-mark {
-  background: var(--shell-text);
+  background: light-dark(#57534e, #a3a3a3);
   color: light-dark(#fff, #1c1c1b);
 }
 /* Right is blue with a tick, wrong orange with a cross: they differ in
@@ -532,80 +528,102 @@
 .study-setup .study-actions {
   justify-content: flex-end;
 }
+
+/* Setup form: Knot's own controls (Settings rows, the shared dropdown,
+   .knot-switch, a plain checklist like collection choices). */
+.study-setup {
+  gap: 18px;
+}
 .study-field {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   font-weight: 500;
 }
 .study-field input {
   font: inherit;
   font-weight: 400;
-  padding: 8px 10px;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 10px;
   border: 1px solid var(--shell-border);
   border-radius: 6px;
-  background: transparent;
+  background: var(--shell-surface);
   color: inherit;
 }
-.study-files,
-.study-choice {
+.study-files {
   border: 0;
   margin: 0;
   padding: 0;
-}
-.study-files legend,
-.study-choice legend {
-  font-weight: 500;
-  margin-bottom: 6px;
-  padding: 0;
-}
-.study-files label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 0;
-}
-.study-choice > div {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-.study-choice label {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 8px 6px;
-  border: 1px solid var(--shell-border);
-  border-radius: 8px;
-  text-align: center;
-  cursor: pointer;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
 }
-.study-choice label span {
-  font-size: 11.5px;
-  color: var(--study-muted);
+.study-files legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-weight: 500;
 }
-.study-choice label[data-checked="true"] {
-  border-color: var(--control-accent);
-  background: var(--study-blue-soft);
-  color: var(--study-blue-text);
-}
-.study-choice input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-.study-choice label:focus-within {
-  outline: 2px solid var(--control-accent);
-  outline-offset: 1px;
-}
-.study-check {
+.study-panel .study-files label {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 4px;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
 }
-.study-check input,
-.study-files input {
-  accent-color: var(--control-accent);
+.study-panel .study-files label:hover {
+  background: var(--shell-selected);
+}
+.study-files input[type="checkbox"] {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: light-dark(#57534e, #a3a3a3);
+}
+.study-files label > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.study-files .shell-icon {
+  color: var(--study-muted);
+}
+.study-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--shell-border);
+}
+.study-panel .study-row,
+.study-panel .study-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--shell-border);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.study-panel .study-switch-row:hover:not(:disabled) {
+  background: transparent;
+}
+.study-row select {
+  flex: none;
+  max-width: 60%;
 }

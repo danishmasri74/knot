@@ -846,9 +846,47 @@ function DeleteCourse({ onDelete }: { onDelete: () => void }) {
   );
 }
 
+/** A deck added to the canvas twice (an embed and a card) is listed once,
+ * keeping the copy that was selected. */
+function uniquePdfs(pdfs: Pdf[], picked: string[] = []) {
+  const byName = new Map<string, Pdf>();
+  for (const pdf of pdfs) {
+    const seen = byName.get(pdf.name);
+    if (!seen || (!picked.includes(seen.key) && picked.includes(pdf.key)))
+      byName.set(pdf.name, pdf);
+  }
+  return [...byName.values()];
+}
+
+/** A row that is a switch, drawn like Settings (.knot-switch). */
+function SwitchRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className="study-switch-row"
+      onClick={() => onChange(!checked)}
+    >
+      <span>{label}</span>
+      <span className="knot-switch" aria-hidden="true">
+        <span />
+      </span>
+    </button>
+  );
+}
+
 /** New course: which files, what it's for, how fast (design Course 1). */
 function StudySetup({
-  pdfs,
+  pdfs: allPdfs,
   picked,
   busy,
   readonly,
@@ -870,87 +908,103 @@ function StudySetup({
     sources: Pdf[];
   }) => void;
 }) {
-  const [keys, setKeys] = useState<string[]>(() =>
-    (picked?.length ? picked : pdfs.map((p) => p.key)).slice(0, MAX_COURSE_SOURCES),
-  );
+  const pdfs = uniquePdfs(allPdfs, picked);
+  const [keys, setKeys] = useState<string[]>(() => {
+    const preferred = pdfs.filter((p) => picked?.includes(p.key)).map((p) => p.key);
+    return (preferred.length ? preferred : pdfs.map((p) => p.key)).slice(
+      0,
+      MAX_COURSE_SOURCES,
+    );
+  });
   const chosen = pdfs.filter((p) => keys.includes(p.key));
-  const [name, setName] = useState(() => (chosen[0] ? shortPdfName(chosen[0].name) : "Study course"));
+  const [name, setName] = useState(() =>
+    chosen.length === 1 ? shortPdfName(chosen[0].name) : "",
+  );
   const [goal, setGoal] = useState<StudyGoal>("mcq");
   const [pace, setPace] = useState<StudyPace>("fast");
   const [harder, setHarder] = useState(true);
   const [finalExam, setFinalExam] = useState(true);
-  const choice = <T extends string>(
-    legend: string,
-    value: T,
-    set: (v: T) => void,
-    options: [T, string, string?][],
-  ) => (
-    <fieldset className="study-choice">
-      <legend>{legend}</legend>
-      <div>
-        {options.map(([id, label, hint]) => (
-          <label key={id} data-checked={value === id}>
-            <input type="radio" name={legend} checked={value === id} onChange={() => set(id)} />
-            <strong>{label}</strong>
-            {hint && <span>{hint}</span>}
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
+  const title = name.trim() || (chosen.length ? shortPdfName(chosen[0].name) : "");
   return (
     <form
       className="study-panel study-setup"
       onSubmit={(event) => {
         event.preventDefault();
-        if (chosen.length && name.trim())
-          onCreate({ name: name.trim(), goal, pace, options: { harder, finalExam }, sources: chosen });
+        if (chosen.length && title)
+          onCreate({ name: title, goal, pace, options: { harder, finalExam }, sources: chosen });
       }}
     >
-      <h2>New study course</h2>
+      <div>
+        <div className="study-kicker">Study</div>
+        <h2>New study course</h2>
+      </div>
+
       <label className="study-field">
         <span>Name</span>
-        <input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+        <input
+          value={name}
+          maxLength={80}
+          placeholder={chosen.length ? shortPdfName(chosen[0].name) : "Course name"}
+          onChange={(e) => setName(e.target.value)}
+        />
       </label>
+
       <fieldset className="study-files">
-        <legend>From (up to {MAX_COURSE_SOURCES})</legend>
+        <legend>
+          Files
+          <span className="study-muted">
+            {" "}
+            · {chosen.length} of up to {MAX_COURSE_SOURCES}
+          </span>
+        </legend>
         {pdfs.length ? (
-          pdfs.map((pdf) => (
-            <label key={pdf.key}>
-              <input
-                type="checkbox"
-                checked={keys.includes(pdf.key)}
-                disabled={!keys.includes(pdf.key) && keys.length >= MAX_COURSE_SOURCES}
-                onChange={(e) =>
-                  setKeys(e.target.checked ? [...keys, pdf.key] : keys.filter((k) => k !== pdf.key))
-                }
-              />
-              <ShellIcon name="pdf" />
-              <span>{shortPdfName(pdf.name)}</span>
-            </label>
-          ))
+          pdfs.map((pdf) => {
+            const on = keys.includes(pdf.key);
+            return (
+              <label key={pdf.key}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={!on && keys.length >= MAX_COURSE_SOURCES}
+                  onChange={(e) =>
+                    setKeys(
+                      e.target.checked
+                        ? [...keys, pdf.key]
+                        : keys.filter((k) => k !== pdf.key),
+                    )
+                  }
+                />
+                <ShellIcon name="pdf" />
+                <span>{shortPdfName(pdf.name)}</span>
+              </label>
+            );
+          })
         ) : (
-          <p className="study-muted">Add PDFs or slide decks to this notebook's canvas first.</p>
+          <p className="study-muted">Add PDFs or slide decks to this notebook first.</p>
         )}
       </fieldset>
-      {choice("Getting ready for", goal, setGoal, [
-        ["mcq", "MCQ test"],
-        ["written", "Written exam"],
-        ["understanding", "Understanding"],
-      ])}
-      {choice("Pace", pace, setPace, [
-        ["fast", "Fast", "short lessons"],
-        ["balanced", "Balanced", "more examples"],
-        ["thorough", "Thorough", "every detail"],
-      ])}
-      <label className="study-check">
-        <input type="checkbox" checked={harder} onChange={(e) => setHarder(e.target.checked)} />
-        Questions get harder as I go
-      </label>
-      <label className="study-check">
-        <input type="checkbox" checked={finalExam} onChange={(e) => setFinalExam(e.target.checked)} />
-        End with a mixed final exam
-      </label>
+
+      <div className="study-rows">
+        <label className="study-row">
+          <span>Getting ready for</span>
+          <select value={goal} onChange={(e) => setGoal(e.target.value as StudyGoal)}>
+            <option value="mcq">MCQ test</option>
+            <option value="written">Written exam</option>
+            <option value="understanding">Understanding</option>
+          </select>
+        </label>
+        <label className="study-row">
+          <span>Pace</span>
+          <select value={pace} onChange={(e) => setPace(e.target.value as StudyPace)}>
+            <option value="fast">Fast · short lessons</option>
+            <option value="balanced">Balanced · more examples</option>
+            <option value="thorough">Thorough · every detail</option>
+          </select>
+        </label>
+        <SwitchRow label="Questions get harder as I go" checked={harder} onChange={setHarder} />
+        <SwitchRow label="End with a mixed final exam" checked={finalExam} onChange={setFinalExam} />
+      </div>
+
       <p className="study-muted">
         Knot reads the files once to plan the checkpoints. Lessons and questions come only from
         these slides, and each lesson sends only its own slides.
@@ -962,7 +1016,7 @@ function StudySetup({
         <button
           type="submit"
           className="study-primary"
-          disabled={busy || readonly || !chosen.length || !name.trim()}
+          disabled={busy || readonly || !chosen.length || !title}
         >
           Create the plan
         </button>
