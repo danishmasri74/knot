@@ -7,3 +7,4 @@
 - New Study tab (column + menu): turn up to three PDFs or slide decks into a study course with a progress tracker, short lessons, MCQ checkpoints graded after you submit, a final mixed exam, readiness per topic and a revision sheet you can save to the canvas. Progress is saved in the notebook.
 - Make a study course straight from the canvas toolbar when PDFs or slide decks are selected, or from the suggestion under an Ask Knot answer.
 - Switch between Ask Knot and Study from the top of either panel; the other tab opens in the same column if it was closed. Ask Knot suggests Study when a chat keeps coming back to the same slides or asks about exam prep, and you can dismiss it for that chat.
+- Ctrl+click chats in Ask Knot's chat history to select several and delete them together. Press Esc or × to clear the selection.

@@ -708,11 +708,9 @@
   flex-direction: column;
 }
 .study-tab-header {
-  flex: none;
+  /* Size and padding: shared with Ask Knot's header (app.css). */
   display: flex;
   align-items: center;
-  min-height: 36px;
-  padding: 4px 12px;
   border-bottom: 1px solid var(--shell-border);
 }
 .study-tab > .study-panel {

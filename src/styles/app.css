@@ -3914,10 +3914,19 @@ main:has(.settings-modal) > .editor-area {
   overflow-y: auto;
   padding: 20px 14px;
 }
-.ask-history-heading {
+/* The heading and the selection bar that replaces it are the same size,
+   so the list doesn't move when you start picking chats. */
+.ask-history-heading,
+.ask-history-selection {
+  box-sizing: border-box;
   display: flex;
+  align-items: center;
+  height: 34px;
+  margin-bottom: 4px;
+}
+.ask-history-heading {
   justify-content: space-between;
-  padding: 4px 8px 10px;
+  padding: 0 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--ask-muted);
@@ -3964,6 +3973,46 @@ main:has(.settings-modal) > .editor-area {
   flex-shrink: 0;
   width: 16px;
   color: var(--ask-muted);
+}
+/* Chats picked with Ctrl+click: a bar replaces the heading. */
+.ask-history-selection {
+  gap: 6px;
+  padding: 0 4px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ask-history-selection > span {
+  flex: 1;
+}
+.ask-knot .ask-history-selection .ask-icon-button {
+  width: 26px;
+  height: 26px;
+}
+.ask-knot .ask-history-select-all,
+.ask-knot .ask-history-delete-picked {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.ask-knot .ask-history-select-all {
+  color: var(--ask-muted);
+}
+.ask-knot .ask-history-delete-picked {
+  border: 1px solid var(--shell-border);
+}
+.ask-history-delete-picked .shell-icon {
+  width: 13px;
+  height: 13px;
+}
+.ask-knot .ask-history-row[data-picked] .ask-history-item {
+  background: var(--shell-selected);
+}
+.ask-history-row[data-picked] .ask-history-item .shell-icon {
+  color: var(--shell-text);
 }
 .ask-delete-confirm {
   width: 100%;
@@ -6182,10 +6231,15 @@ details[open] > .diagnostics-disclosure > .shell-icon {
 .pane-content [data-panel-close] {
   display: none;
 }
-.pane-content .ask-header {
+/* Ask Knot's and Study's headers (study.css) share one size, so the
+   Ask ⇄ Study switch stays put when you move between them. */
+.pane-content .ask-header,
+.study-tab-header {
+  box-sizing: border-box;
   flex: none;
-  min-height: 36px;
-  padding: 4px 12px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 12px;
 }
 .pane-content .ask-header-actions {
   margin-left: auto;

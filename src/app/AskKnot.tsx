@@ -511,6 +511,46 @@ function AskKnotPanel({
   const [editing, setEditing] = useState<number | null>(null);
   const [editedText, setEditedText] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Chat history: chats picked with Ctrl+click, to delete together.
+  const [picked, setPicked] = useState<string[]>([]);
+  const [deletingPicked, setDeletingPicked] = useState(false);
+  useEffect(() => {
+    if (!historyOpen) {
+      setPicked([]);
+      setDeletingPicked(false);
+    }
+  }, [historyOpen]);
+  function clearPicked() {
+    setPicked([]);
+    setDeletingPicked(false);
+  }
+  function togglePicked(id: string) {
+    setDeleting(null);
+    setDeletingPicked(false);
+    setPicked((current) =>
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
+    );
+  }
+  async function deletePicked() {
+    const ids = picked.filter((id) => chats.some((c) => c.id === id));
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteChatRecord(workspace, id)),
+    );
+    if (!mounted.current) return;
+    const gone = ids.filter((_, i) => results[i].status === "fulfilled");
+    setChats((previous) => previous.filter((c) => !gone.includes(c.id)));
+    if (gone.includes(chatIdRef.current)) {
+      openChat();
+      setHistoryOpen(true);
+    }
+    const failed = ids.length - gone.length;
+    setPicked(ids.filter((id) => !gone.includes(id)));
+    setDeletingPicked(false);
+    if (failed)
+      setSaveError(
+        `Could not delete ${failed} ${failed === 1 ? "chat" : "chats"}. Please try again.`,
+      );
+  }
   const [copied, setCopied] = useState<number | null>(null);
   /** The reply last saved with "Add reply as one card", and that card. */
   const [cardAdded, setCardAdded] = useState<{
@@ -2666,20 +2706,95 @@ function AskKnotPanel({
         </div>
       </header>
       {historyOpen && (
-        <div className="ask-history" aria-label="Saved chats">
-          <div className="ask-history-heading">
-            Chat history <span>{chats.length}</span>
-          </div>
+        <div
+          className="ask-history"
+          aria-label="Saved chats"
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && picked.length) {
+              e.stopPropagation();
+              clearPicked();
+            }
+          }}
+        >
+          {picked.length ? (
+            <div
+              className="ask-history-selection"
+              role="toolbar"
+              aria-label="Selected chats"
+            >
+              <button
+                className="ask-icon-button"
+                aria-label="Clear selection"
+                data-tooltip="Clear selection (Esc)"
+                onClick={clearPicked}
+              >
+                <ShellIcon name="close" />
+              </button>
+              <span aria-live="polite">{picked.length} selected</span>
+              {picked.length < chats.length && (
+                <button
+                  className="ask-history-select-all"
+                  disabled={busy}
+                  onClick={() => {
+                    setDeletingPicked(false);
+                    setPicked(chats.map((c) => c.id));
+                  }}
+                >
+                  Select all
+                </button>
+              )}
+              <button
+                className="ask-history-delete-picked"
+                disabled={busy}
+                aria-expanded={deletingPicked}
+                onClick={() => setDeletingPicked(true)}
+              >
+                <ShellIcon name="trash" />
+                Delete
+              </button>
+            </div>
+          ) : (
+            <div className="ask-history-heading">
+              Chat history <span>{chats.length}</span>
+            </div>
+          )}
+          {deletingPicked && picked.length > 0 && (
+            <div className="ask-delete-confirm">
+              <span>
+                Delete {picked.length} {picked.length === 1 ? "chat" : "chats"}{" "}
+                permanently?
+              </span>
+              <button disabled={busy} onClick={() => void deletePicked()}>
+                Delete
+              </button>
+              <button onClick={() => setDeletingPicked(false)}>Cancel</button>
+            </div>
+          )}
           {!chats.length && <p>Your conversations will appear here.</p>}
           {chats.map((chat) => (
-            <div className="ask-history-row" key={chat.id}>
+            <div
+              className="ask-history-row"
+              key={chat.id}
+              data-picked={picked.includes(chat.id) || undefined}
+            >
               <button
                 className="ask-history-item"
                 disabled={busy}
                 aria-current={chat.id === chatId ? "true" : undefined}
-                onClick={() => openChat(chat)}
+                aria-pressed={
+                  picked.length ? picked.includes(chat.id) : undefined
+                }
+                onClick={(e) => {
+                  // Ctrl+click picks chats; while any are picked, a click
+                  // adds or removes one instead of opening it.
+                  if (e.ctrlKey || e.metaKey || picked.length)
+                    togglePicked(chat.id);
+                  else openChat(chat);
+                }}
               >
-                <ShellIcon name="history" />
+                <ShellIcon
+                  name={picked.includes(chat.id) ? "check" : "history"}
+                />
                 <span>
                   <strong>{chat.title}</strong>
                   <small>
@@ -2690,14 +2805,16 @@ function AskKnotPanel({
                   </small>
                 </span>
               </button>
-              <button
-                className="ask-icon-button"
-                aria-label={`Delete chat: ${chat.title}`}
-                disabled={busy}
-                onClick={() => setDeleting(chat.id)}
-              >
-                <ShellIcon name="trash" />
-              </button>
+              {!picked.length && (
+                <button
+                  className="ask-icon-button"
+                  aria-label={`Delete chat: ${chat.title}`}
+                  disabled={busy}
+                  onClick={() => setDeleting(chat.id)}
+                >
+                  <ShellIcon name="trash" />
+                </button>
+              )}
               {deleting === chat.id && (
                 <div className="ask-delete-confirm">
                   <span>Delete this chat permanently?</span>
