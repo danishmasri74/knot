@@ -2,6 +2,12 @@ import { AiProposalPreview } from "./AiProposalPreview";
 import { Mascot } from "./Mascot";
 import { AskSuggestion } from "./AskSuggestion";
 import { AiStarters } from "./AiStarters";
+import { AnswerFollowUps } from "./AnswerFollowUps";
+import {
+  followUpActions,
+  followUpMessage,
+  type FollowUp,
+} from "../services/ai-followups";
 import { useCallback } from "react";
 import { topicIndex } from "../services/workspace-topic";
 import {
@@ -24,6 +30,7 @@ import {
   automaticAiTools,
   getAiAbilities,
   getAiEnabled,
+  getAiSuggestionsEnabled,
   getWorkspaceSearchEnabled,
   WORKSPACE_SEARCH_CHANGED,
   type AiAbilities,
@@ -172,6 +179,8 @@ type Turn = {
   status?: "applied" | "dismissed";
   undo?: () => void;
   cost?: AiCost;
+  /** Next steps the model suggested for this answer (see ai-followups.ts). */
+  followUps?: FollowUp[];
 };
 /** What OpenAI reported for one request, priced by Rust (`diagnostics.rs`). */
 type AiCost = {
@@ -1624,6 +1633,23 @@ function AskKnotPanel({
       },
     );
   }
+  /** Runs a next step offered under an answer; its proposal is previewed. */
+  function chooseFollowUp(turn: Turn, followUp: FollowUp) {
+    const message = followUpMessage(followUp, turn.content);
+    if (followUp.action === "cards" || followUp.action === "mindmap")
+      void send(undefined, followUp.label, undefined, undefined, "canvas", {
+        message,
+      });
+    else if (followUp.action === "insert")
+      void send(undefined, followUp.label, undefined, undefined, "insert", {
+        message,
+      });
+    else
+      void send(undefined, followUp.label, undefined, undefined, undefined, {
+        message,
+        onlyTool: followUp.action === "quiz" ? "create_quiz" : "create_note",
+      });
+  }
   async function send(
     retryIndex?: number,
     edited?: string,
@@ -1638,6 +1664,8 @@ function AskKnotPanel({
       message?: string;
       /** Answer only: Knot may still search, but not propose an edit. */
       answerOnly?: boolean;
+      /** A next step: offer only this write tool, so it proposes that edit. */
+      onlyTool?: AiTool;
     },
   ) {
     const retry =
@@ -2101,8 +2129,10 @@ function AskKnotPanel({
                 images: !!pictures.length,
                 notebook: true,
               },
-            )
+            ).filter((tool) => !options?.onlyTool || tool === options.onlyTool)
           : [];
+      if (action === "auto" && options?.onlyTool && !tools.length)
+        throw new Error("Open a note or notebook Knot can edit, then retry.");
       const chosenModel =
         model === "auto"
           ? automaticAiModel(
@@ -3140,6 +3170,42 @@ function AskKnotPanel({
                     </button>
                   </div>
                 )}
+                {turn.role === "assistant" &&
+                  i === turns.length - 1 &&
+                  !busy &&
+                  editing === null &&
+                  !turn.proposal &&
+                  !turn.failed &&
+                  !!turn.content &&
+                  connected &&
+                  !!models.length && (
+                    <AnswerFollowUps
+                      answer={turn.content}
+                      available={followUpActions(abilities, {
+                        canvas: !!context?.canvas,
+                        note: !!context?.note,
+                        editable:
+                          !!getSession() &&
+                          !getSession()?.doc.readonly &&
+                          !context?.pdf,
+                      })}
+                      saved={turn.followUps}
+                      model={
+                        getAiSuggestionsEnabled()
+                          ? automaticAiModel(models, "ask", "", false, 0)
+                          : ""
+                      }
+                      disabled={busy}
+                      onChoose={(followUp) => chooseFollowUp(turn, followUp)}
+                      onResult={(items) => {
+                        turn.followUps = items;
+                        update([...turnsRef.current]);
+                      }}
+                      onCost={(cost) =>
+                        recordCost(turn, cost as AiCost, chatIdRef.current)
+                      }
+                    />
+                  )}
               </article>
             ))}
             {(spent.priced > 0 || spent.unpriced > 0) && (

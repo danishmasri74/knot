@@ -7902,3 +7902,37 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   height: auto;
   margin: 3px 0 0;
 }
+
+/* Next steps under the latest Ask Knot answer. */
+.ask-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ask-followups button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid light-dark(#e3e2df, #3a3a38);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12.5px;
+  text-align: left;
+}
+.ask-followups button:hover:not(:disabled),
+.ask-followups button:focus-visible {
+  background: var(--ask-hover);
+}
+.ask-followups button span {
+  overflow-wrap: anywhere;
+}
+.ask-followups .shell-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--ask-muted);
+}

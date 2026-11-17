@@ -66,8 +66,9 @@ export function AiSettings({
         <div>
           <strong id="ai-suggestions-label">AI suggestions</strong>
           <p>
-            Suggest useful questions and actions when you open Ask Knot. Uses
-            text from your current note with your connected AI provider.
+            Suggest useful questions and actions when you open Ask Knot, and
+            next steps under answers that suit one. Uses text from your current
+            note and the answer with your connected AI provider.
           </p>
         </div>
         <button
