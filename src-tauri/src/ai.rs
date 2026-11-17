@@ -261,8 +261,10 @@ pub async fn ai_respond(
     viewed: Option<Vec<ImageResult>>,
     image: Option<String>,
     pdf_input: Option<String>,
+    pdf_files: Option<Vec<PdfFile>>,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
+    let pdf_files = pdf_files.unwrap_or_default();
     // Background OCR waits while an answer streams.
     let _ocr_busy = ocr.busy();
     let tools = tools.unwrap_or_default();
@@ -278,9 +280,10 @@ pub async fn ai_respond(
     composition.prompt_bytes = messages.last().map_or(0, |m| m.content.len());
     composition.history_bytes = composition.message_bytes - composition.prompt_bytes;
     composition.image_bytes = image.as_ref().map_or(0, String::len);
-    composition.pdf_bytes = pdf_input.as_ref().map_or(0, String::len);
+    composition.pdf_bytes = pdf_input.as_ref().map_or(0, String::len)
+        + pdf_files.iter().map(|f| f.data.len()).sum::<usize>();
     composition.image |= image.is_some();
-    composition.pdf |= pdf_input.is_some();
+    composition.pdf |= pdf_input.is_some() || !pdf_files.is_empty();
     let mut measurement =
         crate::diagnostics::Measurement::new(&diagnostics, &id, &model, &mode, link, composition);
     measurement.save(&diagnostics);
@@ -331,6 +334,15 @@ pub async fn ai_respond(
     if image.as_ref().is_some_and(|data| data.len() > 8_000_000 || !(data.starts_with("data:image/jpeg;base64,") || data.starts_with("data:image/png;base64,"))) {
         return Err("Unsupported image or image too large.".into());
     }
+    if !pdf_files.is_empty()
+        && (pdf_input.is_some()
+            || !["ask", "auto", "insert", "canvas"].contains(&mode.as_str())
+            || pdf_files.len() > MAX_PDF_FILES
+            || pdf_files.iter().any(|f| f.name.len() > 300 || !f.data.starts_with("data:application/pdf;base64,"))
+            || pdf_files.iter().map(|f| f.data.len()).sum::<usize>() > MAX_PDF_FILES_BYTES)
+    {
+        return Err("These files are too large to send together. Select fewer or smaller files.".into());
+    }
     if pdf_input.as_ref().is_some_and(|data| data.len() > 15_000_000 || !(data.starts_with("data:application/pdf;base64,") || data.starts_with("data:image/jpeg;base64,"))) {
         return Err("PDF visual input is invalid or too large.".into());
     }
@@ -360,7 +372,7 @@ pub async fn ai_respond(
     let result = tokio::select! {
         biased;
         _ = cancel.notified() => Err("Request stopped".into()),
-        result = respond(&model, &messages, &context, &mode, &tools, &searches, &viewed, image.as_deref(), pdf_input.as_deref(), on_event, &mut measurement) => result,
+        result = respond(&model, &messages, &context, &mode, &tools, &searches, &viewed, image.as_deref(), pdf_input.as_deref(), &pdf_files, on_event, &mut measurement) => result,
     };
     if let Ok(mut requests) = state.0.lock() {
         requests.remove(&id);
@@ -589,6 +601,44 @@ const WEB_RULES: &str = "web_search searches the public web through OpenAI. Use 
 pub(crate) const IMAGES_TOOL: &str = "view_images";
 pub(crate) const MAX_IMAGES: usize = 3;
 const IMAGES_RULES: &str = "view_images shows you up to three images from the open note or canvas. Call it when the question is about pictures, diagrams, charts or screenshots there that the supplied text does not describe. Text already read from those images may be in citationSources (kind image): use it for questions about their words, and call view_images only for what text can't show, such as layout, shapes or colours. Do not call it otherwise, and call it at most once.";
+/// Several selected PDFs (or converted slide decks) sent together, each
+/// under its own name so answers can say which file they came from.
+#[derive(Deserialize)]
+pub struct PdfFile {
+    name: String,
+    /// A PDF data URL, prepared on the device.
+    data: String,
+}
+pub(crate) const MAX_PDF_FILES: usize = 3;
+/// Combined size of the PDFs one request may carry (base64 characters).
+const MAX_PDF_FILES_BYTES: usize = 30_000_000;
+/// A safe file name for the provider: the user's name, ending in .pdf.
+fn pdf_file_name(name: &str) -> String {
+    let base: String = name
+        .chars()
+        .filter(|c| !c.is_control() && !['/', '\\', '"'].contains(c))
+        .take(120)
+        .collect();
+    let base = base.trim();
+    let base = base.strip_suffix(".pdf").unwrap_or(base);
+    format!("{}.pdf", if base.is_empty() { "document" } else { base })
+}
+/// Adds the files to the user's latest message, after its text.
+fn attach_pdf_files(body: &mut Value, files: &[PdfFile]) {
+    if files.is_empty() {
+        return;
+    }
+    let Some(input) = body["input"].as_array_mut() else { return };
+    let Some(message) = input.iter_mut().rev().find(|m| m["role"] == "user") else { return };
+    if let Some(text) = message["content"].as_str().map(str::to_owned) {
+        message["content"] = json!([{"type":"input_text","text":text}]);
+    }
+    if let Some(content) = message["content"].as_array_mut() {
+        for file in files {
+            content.push(json!({"type":"input_file","filename":pdf_file_name(&file.name),"file_data":file.data,"detail":"high"}));
+        }
+    }
+}
 /// Images the app sent for a view_images or view_canvas call.
 #[derive(Deserialize)]
 pub struct ImageResult {
@@ -905,14 +955,16 @@ async fn respond(
     viewed: &[ImageResult],
     image: Option<&str>,
     pdf_input: Option<&str>,
+    pdf_files: &[PdfFile],
     channel: Channel<StreamEvent>,
     measurement: &mut crate::diagnostics::Measurement,
 ) -> Result<(), String> {
-    let body = if mode == "auto" {
+    let mut body = if mode == "auto" {
         tool_request_body(model, messages, context, tools, searches, viewed, image, pdf_input)
     } else {
         request_body(model, messages, context, mode, image, pdf_input)
     };
+    attach_pdf_files(&mut body, pdf_files);
     if measurement.collecting() {
         // Count serialized bytes without retaining a second copy of attachments.
         struct Counter(usize);
@@ -1546,6 +1598,31 @@ mod tests {
         let general = status_error(reqwest::StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(reply(r#"{"error":{"code":"rate_limit_exceeded"}}"#), general);
         assert_eq!(reply("busy"), general);
+    }
+    #[test]
+    fn several_pdfs_are_sent_by_name_with_the_latest_message() {
+        let messages = vec![
+            Message { role: "user".into(), content: "Earlier".into() },
+            Message { role: "assistant".into(), content: "Answer".into() },
+            Message { role: "user".into(), content: "Compare the decks".into() },
+        ];
+        let context = r#"{"sourceType":"pdf","text":""}"#;
+        let mut body = request_body(MODELS[0], &messages, context, "ask", None, None);
+        let files = vec![
+            PdfFile { name: "12-Test+Levels.pptx".into(), data: "data:application/pdf;base64,QQ==".into() },
+            PdfFile { name: "notes/a\"b.pdf".into(), data: "data:application/pdf;base64,Qg==".into() },
+        ];
+        attach_pdf_files(&mut body, &files);
+        let input = body["input"].as_array().unwrap();
+        let last = &input[input.len() - 1]["content"];
+        assert_eq!(last[0]["type"], "input_text");
+        assert_eq!(last[0]["text"], "Compare the decks");
+        assert_eq!(last[1]["filename"], "12-Test+Levels.pptx.pdf");
+        assert_eq!(last[1]["file_data"], "data:application/pdf;base64,QQ==");
+        assert_eq!(last[2]["filename"], "notesab.pdf");
+        // Earlier messages are untouched.
+        assert_eq!(input[input.len() - 3]["content"], "Earlier");
+        assert_eq!(pdf_file_name("  "), "document.pdf");
     }
     #[test]
     fn followups_use_a_small_strict_payload() {

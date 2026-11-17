@@ -7,3 +7,4 @@
 - When an Ask Knot answer suits it, buttons under the answer offer next steps such as canvas cards, a mind map, a quiz or a new note. Each one shows a preview before anything changes.
 - Cards Ask Knot adds to a canvas leave room for their arrow labels, so labels no longer sit on top of the cards, and comparisons ("A vs. B") are no longer laid out as a step-by-step flow.
 - Cards added to a canvas by Ask Knot or Add note no longer land on top of PDFs, images or drawings and hide them.
+- Select up to three PDFs or slide decks on a canvas and Ask Knot reads all of them, not just the first. The chip shows how many files are included.

@@ -79,7 +79,7 @@ import { AiBlocksPreview } from "./AiBlockPreview";
 import { aiBlockText } from "../features/editor/blocksuite/ai-content";
 import { usesNoteSources } from "../services/ai-source-scope";
 import { type Passage } from "./PassagePicker";
-import type { AiPdfSource } from "../services/pdf-input";
+import type { AiPdfFile, AiPdfSource } from "../services/pdf-input";
 import {
   linkCitations,
   readCitationSources,
@@ -151,6 +151,8 @@ type Turn = {
     canvasViewed?: boolean;
     sourceMode?: SourceMode;
     pdfSource?: AiPdfSource;
+    /** Several selected PDFs sent together, by name (pdfSource is the first). */
+    pdfFiles?: AiPdfFile[];
     image?: { key: string; name: string };
     /** What the user sent with the message, shown as chips above it. */
     attachments?: SentAttachment[];
@@ -1370,6 +1372,7 @@ function AskKnotPanel({
       context: string;
       image?: string;
       pdfInput?: string;
+      pdfFiles?: { name: string; data: string }[];
       link?: { parent: string; kind: string };
     };
     sentFrom: string;
@@ -1995,10 +1998,25 @@ function AskKnotPanel({
         : !useSources
           ? undefined
           : (inherit?.pdfSource ?? current.pdfSource);
-      const pdfInput = pdfSource
-        ? await (
-            await import("../services/pdf-input")
-          ).preparePdfInput(pdfSource)
+      // Several selected PDFs go together, each by name; one goes as before.
+      const pdfFiles = retry
+        ? retry.request?.pdfFiles
+        : !useSources
+          ? undefined
+          : inherit?.pdfSource
+            ? inherit.pdfFiles
+            : current.pdfFiles;
+      const severalPdfs =
+        pdfSource && pdfFiles && pdfFiles.length > 1 ? pdfFiles : undefined;
+      const pdfReader = pdfSource
+        ? await import("../services/pdf-input")
+        : undefined;
+      const pdfInput =
+        pdfSource && !severalPdfs
+          ? await pdfReader!.preparePdfInput(pdfSource)
+          : undefined;
+      const preparedPdfs = severalPdfs
+        ? await pdfReader!.preparePdfFiles(severalPdfs)
         : undefined;
       if (request.current !== id || !mounted.current) return;
       // A retried or edited message keeps the chips it was first sent with.
@@ -2020,6 +2038,7 @@ function AskKnotPanel({
                   document: current.document,
                   first: current.structure[0],
                   pdf: current.pdf ? pdfSource : undefined,
+                  pdfFiles: current.pdf ? severalPdfs : undefined,
                   selectionKind: current.selectionKind,
                   canvas: current.canvas,
                   blocks: current.selectedBlocks,
@@ -2073,6 +2092,7 @@ function AskKnotPanel({
           message: outgoing === input ? undefined : outgoing,
           image: selectedImage,
           pdfSource,
+          ...(severalPdfs && { pdfFiles: severalPdfs }),
           attachments,
         },
       };
@@ -2183,6 +2203,7 @@ function AskKnotPanel({
           context: requestContext,
           image: preparedImage?.pixels,
           pdfInput,
+          pdfFiles: preparedPdfs,
           link: retry?.attemptId
             ? {
                 parent: retry.attemptId,
@@ -3309,7 +3330,12 @@ function AskKnotPanel({
                                   : "note"
                         }
                       />
-                      <span className="ask-chip-label">
+                      <span
+                        className="ask-chip-label"
+                        title={context?.pdfFiles
+                          ?.map((file) => file.name)
+                          .join(", ")}
+                      >
                         {context?.selectionLabel ?? context?.label ?? "Page"}
                       </span>
                       <ShellIcon name="close" />

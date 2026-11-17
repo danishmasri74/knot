@@ -1,5 +1,5 @@
 import { readCitationSources } from "./ai-citations";
-import type { AiPdfSource } from "./pdf-input";
+import type { AiPdfFile, AiPdfSource } from "./pdf-input";
 import type { VideoLocation } from "./youtube-transcript";
 import { pageLabel } from "./office";
 
@@ -59,6 +59,8 @@ export type SentContext = {
   document?: string;
   first?: Block;
   pdf?: AiPdfSource;
+  /** Several PDFs sent together: one chip each. */
+  pdfFiles?: AiPdfFile[];
   selectionKind?: "website" | "file";
   canvas?: boolean;
   /** Blocks selected as whole objects. */
@@ -82,7 +84,15 @@ export function sentAttachments(parts: {
     )
       ? undefined
       : parts.context;
-  if (context) {
+  if (context?.pdfFiles && context.pdfFiles.length > 1) {
+    for (const file of context.pdfFiles)
+      result.push({
+        kind: "pdf",
+        label: short(file.name, 80),
+        ...(context.document && { document: context.document }),
+        pdf: { key: file.key },
+      });
+  } else if (context) {
     const generic = ["Page", "Focused note", "Selection", "Canvas text"];
     const label =
       generic.includes(context.label) && context.title

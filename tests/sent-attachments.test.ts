@@ -133,3 +133,24 @@ test("a selected YouTube card shows once, as its video", () => {
   });
   expect(chips.map((c) => c.kind)).toEqual(["video"]);
 });
+
+test("lists each of several PDFs sent together", () => {
+  const files = [
+    { key: "a", name: "12-Test+Levels.pptx" },
+    { key: "b", name: "13-Maintenance+Testing.pptx" },
+  ];
+  expect(
+    sentAttachments({
+      context: {
+        label: "2 files",
+        document: "doc",
+        pdf: { key: "a" },
+        pdfFiles: files,
+        canvas: true,
+      },
+    }),
+  ).toEqual([
+    { kind: "pdf", label: "12-Test+Levels.pptx", document: "doc", pdf: { key: "a" } },
+    { kind: "pdf", label: "13-Maintenance+Testing.pptx", document: "doc", pdf: { key: "b" } },
+  ]);
+});

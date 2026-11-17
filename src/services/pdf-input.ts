@@ -4,6 +4,34 @@ import { attachments } from "./workspace";
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 export type AiPdfSource = { key: string; page?: number };
+/** One of several selected PDFs sent together (see PdfFile in ai.rs). */
+export type AiPdfFile = { key: string; name: string };
+/** Files one message may send together; matches MAX_PDF_FILES in ai.rs. */
+export const MAX_PDF_FILES = 3;
+/** Combined data URL size; matches MAX_PDF_FILES_BYTES in ai.rs. */
+export const MAX_PDF_FILES_BYTES = 30_000_000;
+
+/** Reads several selected PDFs whole, checking the combined limits. */
+export async function preparePdfFiles(
+  files: AiPdfFile[],
+): Promise<{ name: string; data: string }[]> {
+  if (files.length > MAX_PDF_FILES)
+    throw new Error(
+      `Select at most ${MAX_PDF_FILES} PDFs or slide decks to ask about together.`,
+    );
+  const prepared: { name: string; data: string }[] = [];
+  let total = 0;
+  for (const file of files) {
+    const data = await preparePdfInput({ key: file.key });
+    total += data.length;
+    if (total > MAX_PDF_FILES_BYTES)
+      throw new Error(
+        "These files are too large to send together. Select fewer or smaller files.",
+      );
+    prepared.push({ name: file.name, data });
+  }
+  return prepared;
+}
 export function openPdfBytes(bytes: Uint8Array) {
   const base = import.meta.env.DEV ? "/node_modules/pdfjs-dist/" : "/pdfjs/";
   return getDocument({

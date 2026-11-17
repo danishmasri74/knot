@@ -38,7 +38,7 @@ import {
 import { youtubeVideoId } from "../../../services/youtube-transcript";
 import { aiConnectorPorts, layoutCards, type LayoutKind } from "./ai-layout";
 import { dissolveDotsAmong, isRerouteDot } from "./reroute";
-import type { AiPdfSource } from "../../../services/pdf-input";
+import type { AiPdfFile, AiPdfSource } from "../../../services/pdf-input";
 import type { BlockModel, Doc } from "@blocksuite/store";
 import type { AffineEditorContainer } from "@blocksuite/presets";
 import type {
@@ -124,6 +124,9 @@ export type AiContext = {
   selectedBlocks?: string[];
   pdf?: boolean;
   pdfSource?: AiPdfSource;
+  /** Two or more selected PDFs (or converted slide decks): all are sent,
+   * by name. pdfSource is the first of them. */
+  pdfFiles?: AiPdfFile[];
   workspace: string;
   document: string;
   instance: Doc;
@@ -313,11 +316,17 @@ export function captureAiContext(
         imageKeys.add(attachment.sourceId);
     }
   }
-  const selectedPdf = selectedBlocks.find(
+  const selectedPdfs = selectedBlocks.filter(
     (block) =>
       block.flavour === "affine:attachment" &&
-      (block as AttachmentBlockModel).type === "application/pdf",
-  ) as AttachmentBlockModel | undefined;
+      (block as AttachmentBlockModel).type === "application/pdf" &&
+      !!(block as AttachmentBlockModel).sourceId,
+  ) as AttachmentBlockModel[];
+  const selectedPdf = selectedPdfs[0];
+  const pdfFiles = selectedPdfs.map((block) => ({
+    key: block.sourceId!,
+    name: block.name || "Untitled PDF",
+  }));
   const selected = selectedBlocks.length === 1 ? selectedBlocks[0] : undefined;
   const selectedFile =
     selected?.flavour === "affine:attachment"
@@ -460,6 +469,7 @@ export function captureAiContext(
       selectedBlocks: selectedBlocks.map((block) => block.id),
     }),
     selectionLabel:
+      (pdfFiles.length > 1 ? `${pdfFiles.length} files` : undefined) ||
       selectedPdf?.name ||
       selectedFile?.name ||
       websiteLabel ||
@@ -472,6 +482,7 @@ export function captureAiContext(
           pdfSource: {
             key: selectedPdf.sourceId,
           },
+          ...(pdfFiles.length > 1 && { pdfFiles }),
         }
       : {}),
     selectedImageKey: imageKeys.size === 1 ? [...imageKeys][0] : undefined,
