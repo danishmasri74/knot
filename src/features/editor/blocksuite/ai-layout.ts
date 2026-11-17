@@ -1,5 +1,30 @@
-type Connection = { from: number; to: number };
+type Connection = { from: number; to: number; label?: string };
 export type CardBounds = [number, number, number, number];
+
+/** Horizontal gap between cards when no arrow label needs more. */
+const BASE_GAP_X = 140;
+/** Widest gap a label may claim; under SKIP_DISTANCE so neighbours stay
+ * neighbours in aiConnectorPorts. */
+const MAX_GAP_X = 340;
+/** How far past a card a same-row (or same-column) card must be before an
+ * arrow between them is treated as skipping over a card in between. */
+const SKIP_DISTANCE = 360;
+/**
+ * Gap that keeps an arrow's label (16 px, drawn at the arrow's middle) in
+ * the space between two cards instead of over them.
+ */
+export function labelGap(labels: (string | undefined)[], base = BASE_GAP_X) {
+  const widest = Math.max(
+    0,
+    ...labels.map((label) =>
+      Array.from(label?.trim() ?? "").reduce(
+        (width, char) => width + (char.charCodeAt(0) > 255 ? 16 : 8.5),
+        0,
+      ),
+    ),
+  );
+  return Math.min(MAX_GAP_X, Math.max(base, Math.ceil(widest + 56)));
+}
 
 /** Keep connected topics together without allowing a large proposal to become a strip. */
 export function layoutAiCards(
@@ -54,6 +79,11 @@ export function layoutAiCards(
           26,
     ),
   );
+  // Rows sit side by side, so the widest label sets the column gap.
+  const gapX = labelGap(
+    connections.map((c) => c.label),
+    160,
+  );
   const columnWidths = Array.from({ length: columns }, (_, column) =>
     Math.max(
       360,
@@ -71,7 +101,7 @@ export function layoutAiCards(
         left +
           columnWidths
             .slice(0, column)
-            .reduce((sum, width) => sum + width + 160, 0),
+            .reduce((sum, width) => sum + width + gapX, 0),
         y,
         sizes[id]?.width ?? 360,
         Math.max(heights[id], sizes[id]?.height ?? 0),
@@ -85,13 +115,13 @@ export function layoutAiCards(
 export function aiConnectorPorts(a: CardBounds, b: CardBounds) {
   if (a[1] === b[1]) {
     // Skip-over links leave via the top instead of cutting through intervening cards.
-    if (Math.abs(a[0] - b[0]) > (a[0] < b[0] ? a[2] : b[2]) + 160)
+    if (Math.abs(a[0] - b[0]) > (a[0] < b[0] ? a[2] : b[2]) + SKIP_DISTANCE)
       return { source: [0.5, 0], target: [0.5, 0] };
     return a[0] < b[0]
       ? { source: [1, 0.5], target: [0, 0.5] }
       : { source: [0, 0.5], target: [1, 0.5] };
   }
-  if (a[0] === b[0] && Math.abs(a[1] - b[1]) > Math.min(a[3], b[3]) + 160)
+  if (a[0] === b[0] && Math.abs(a[1] - b[1]) > Math.min(a[3], b[3]) + SKIP_DISTANCE)
     return { source: [1, 0.5], target: [1, 0.5] };
   // Mostly side by side (a flow's columns): join the facing sides.
   const gapX = Math.max(b[0] - (a[0] + a[2]), a[0] - (b[0] + b[2]));
@@ -110,7 +140,13 @@ export type LayoutKind = "flow" | "tree" | "hub" | "grid";
 export type LayoutEdge = { from: number; to: number; label?: string };
 type Size = { width: number; height: number };
 
-const relation = (label = "") => label.trim().toLowerCase().replace(/\s+/g, " ");
+const relation = (label = "") => {
+  const r = label.trim().toLowerCase().replace(/\s+/g, " ");
+  // "A vs. B", "versus", "compared with": a comparison, not a step.
+  return /(^|\s)(vs\.?|versus|compared (to|with)|contrasts?( with)?)(\s|$)/.test(r)
+    ? "contrasts with"
+    : r;
+};
 /** "A part of B" and "A example of B" make B the parent of A in a tree. */
 const hierarchical = (e: LayoutEdge) =>
   ["part of", "example of"].includes(relation(e.label));
@@ -289,8 +325,14 @@ function flowLayout(sizes: Size[], edges: LayoutEdge[]): CardBounds[] {
       bounds[i] = [x, y, sizes[i].width, sizes[i].height];
       y += sizes[i].height + GAP * 0.6;
     });
-    // Under the 160 px a same-row arrow treats as skipping over a card.
-    x += Math.max(...ids.map((i) => sizes[i].width)) + 140;
+    // Wide enough for the labels of arrows crossing to the next column.
+    const next = new Set(columns[l + 1] ?? []);
+    const crossing = edges.filter(
+      (e) =>
+        (ids.includes(e.from) && next.has(e.to)) ||
+        (ids.includes(e.to) && next.has(e.from)),
+    );
+    x += Math.max(...ids.map((i) => sizes[i].width)) + labelGap(crossing.map((e) => e.label));
   });
   rowBelow(
     bounds,

@@ -1,6 +1,8 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  aiConnectorPorts,
   chooseLayout,
+  labelGap,
   layoutCards,
   type CardBounds,
 } from "../src/features/editor/blocksuite/ai-layout";
@@ -171,4 +173,52 @@ it("falls back to the grid when a hub, tree or flow column would sprawl", () => 
   expect(chooseLayout(20, star).kind).toBe("grid");
   const wide = Array.from({ length: 9 }, (_, i) => ({ from: i + 1, to: 0, label: "part of" }));
   expect(chooseLayout(10, wide).kind).not.toBe("tree");
+});
+
+describe("arrow labels", () => {
+  // Nine revision cards with three "X vs. Y" comparison arrows (Ask Knot
+  // follow-up); the labels used to sit over both cards.
+  const texts = Array.from({ length: 9 }, (_, i) => `Card ${i + 1}\nShort body.`);
+  const edges = [
+    { from: 1, to: 3, label: "Components vs. external systems" },
+    { from: 2, to: 4, label: "System behavior vs. readiness" },
+    { from: 7, to: 8, label: "External documentation vs. internal structure" },
+  ];
+
+  it("treats comparisons as contrasts, not a flow", () => {
+    expect(chooseLayout(9, edges).kind).toBe("grid");
+    expect(
+      chooseLayout(3, [
+        { from: 0, to: 1, label: "leads to" },
+        { from: 1, to: 2, label: "Unit versus integration" },
+      ]).kind,
+    ).not.toBe("flow");
+  });
+
+  it("leaves room between linked cards for their labels", () => {
+    const { bounds } = layoutCards(texts, edges);
+    for (const e of edges.slice(0, 2)) {
+      const [a, b] = [bounds[e.from], bounds[e.to]];
+      if (a[1] !== b[1]) continue;
+      const gap = Math.max(b[0] - (a[0] + a[2]), a[0] - (b[0] + b[2]));
+      expect(gap).toBeGreaterThanOrEqual(labelGap([e.label]));
+      expect(gap).toBeGreaterThan(e.label.length * 8);
+    }
+  });
+
+  it("widens a flow's columns for long labels but keeps neighbours joined", () => {
+    const flow = [
+      { from: 0, to: 1, label: "is a prerequisite that leads into" },
+      { from: 1, to: 2, label: "leads to" },
+      { from: 2, to: 3, label: "leads to" },
+    ];
+    const { bounds, kind } = layoutCards(["A", "B", "C", "D"], flow);
+    expect(kind).toBe("flow");
+    const gap = (i: number) => bounds[i + 1][0] - (bounds[i][0] + bounds[i][2]);
+    expect(gap(0)).toBeGreaterThan(gap(1));
+    expect(gap(1)).toBe(140);
+    // Neighbouring columns still join facing sides, not over the top.
+    expect(aiConnectorPorts(bounds[0], bounds[1]).source).not.toEqual([0.5, 0]);
+    expect(labelGap(["x".repeat(200)])).toBe(340);
+  });
 });
