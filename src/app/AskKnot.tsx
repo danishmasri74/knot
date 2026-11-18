@@ -2640,9 +2640,10 @@ function AskKnotPanel({
                 canvas: !!editContext.canvas,
                 map: !!editContext.canvasMap,
                 editable:
-                  !s.doc.readonly &&
-                  !editContext.pdf &&
-                  editContext.instance === s.doc,
+                  !s.doc.readonly && editContext.instance === s.doc,
+                // Slides can't be rewritten, but canvas content, notes and
+                // quizzes can be made from them.
+                pdf: !!editContext.pdf,
                 search: searchAvailable(),
                 // Captured websites have their own evidence rules, and the
                 // tool is offered only when the message seems to need it.

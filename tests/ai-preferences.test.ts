@@ -179,3 +179,17 @@ it("offers view_canvas with a canvas map when images are allowed", async () => {
     automaticAiTools({ ...all, viewImages: false }, { ...open, map: true }),
   ).not.toContain("view_canvas");
 });
+
+it("offers canvas, note and quiz tools for slides, but never rewriting them", async () => {
+  const { automaticAiTools, normalizeAiAbilities } = await import(
+    "../src/services/ai-preferences"
+  );
+  const all = { ...normalizeAiAbilities(null), createNotes: true };
+  const tools = automaticAiTools(all, {
+    selection: true, note: true, canvas: true, editable: true, notebook: true, pdf: true,
+  });
+  expect(tools).toContain("create_on_canvas");
+  expect(tools).toContain("create_quiz");
+  expect(tools).not.toContain("rewrite_selection");
+  expect(tools).not.toContain("insert_blocks");
+});

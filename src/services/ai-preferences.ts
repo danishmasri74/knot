@@ -282,6 +282,9 @@ export function automaticAiTools(
     notebook?: boolean;
     /** The request describes the open canvas (a canvas map). */
     map?: boolean;
+    /** The request is about a PDF (or slide deck): its text can't be
+     * edited, but canvas content, notes and quizzes can be made from it. */
+    pdf?: boolean;
   },
 ): AiTool[] {
   const tools: AiTool[] = [];
@@ -292,8 +295,8 @@ export function automaticAiTools(
   // An image of the visible canvas, for questions about how it looks.
   if (abilities.viewImages && target.map) tools.push("view_canvas");
   if (!target.editable) return tools;
-  if (abilities.editNote && target.selection) tools.push("rewrite_selection");
-  if (abilities.editNote && target.note) tools.push("insert_blocks");
+  if (abilities.editNote && target.selection && !target.pdf) tools.push("rewrite_selection");
+  if (abilities.editNote && target.note && !target.pdf) tools.push("insert_blocks");
   // Creating on the canvas, and arranging or connecting what is there.
   if (abilities.canvasCards && target.canvas) tools.push("create_on_canvas");
   if (abilities.createNotes && target.notebook) tools.push("create_note");

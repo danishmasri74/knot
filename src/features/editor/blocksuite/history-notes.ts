@@ -17,22 +17,24 @@ export function watchHistoryNotes(
   const blocks = doc.spaceDoc.getMap("blocks");
   const popped = ({ type, changedParentTypes }: Popped) => {
     const ids = new Set<string>();
-    for (const [changed, events] of changedParentTypes) {
-      // Blocks added or removed: their ids are the changed keys.
-      if (changed === (blocks as unknown)) {
-        for (const event of events)
-          for (const key of (event as Y.YMapEvent<unknown>).keysChanged)
-            ids.add(key);
-        continue;
-      }
-      // Anything else lives inside one block's map; climb to it.
-      let item = changed._item;
-      while (item) {
-        if (item.parent === (blocks as unknown)) {
-          if (item.parentSub) ids.add(item.parentSub);
-          break;
+    // Each changed type lists the events of everything nested in it too, and
+    // those may be array or text events, so go by each event's own target.
+    for (const events of changedParentTypes.values()) {
+      for (const event of events) {
+        // Blocks added or removed: their ids are the changed keys.
+        if (event.target === (blocks as unknown)) {
+          for (const key of (event as Y.YMapEvent<unknown>).keysChanged) ids.add(key);
+          continue;
         }
-        item = (item.parent as Y.AbstractType<unknown>)._item;
+        // Anything else lives inside one block's map; climb to it.
+        let item = event.target._item;
+        while (item) {
+          if (item.parent === (blocks as unknown)) {
+            if (item.parentSub) ids.add(item.parentSub);
+            break;
+          }
+          item = (item.parent as Y.AbstractType<unknown>)._item;
+        }
       }
     }
     const notes = new Set<string>();
