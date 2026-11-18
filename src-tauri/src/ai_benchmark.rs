@@ -22,6 +22,9 @@ fn live_quality_benchmark() {
     let routing = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("routing");
     // KNOT_BENCHMARK_SUITE=canvas runs the canvas awareness cases (16 November 2026).
     let canvas = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("canvas");
+    // KNOT_BENCHMARK_SUITE=scenes compares canvas creation on the old path and
+    // as composed scenes (17 November 2026).
+    let scenes = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("scenes");
     // Per-case input reservation. The largest v1 case used 1,219 input tokens
     // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
     // more stops the run. Maximum output is capped by the request (6,000).
@@ -29,15 +32,25 @@ fn live_quality_benchmark() {
     // web_search reserves 80,000 input tokens plus three searches.
     // Reserve the input bound at the highest cache-write rate and maximum output.
     // User must configure STANDARD service and a matching provider project cap.
+    // A case that may compose a scene reserves the scene's larger output cap.
+    // The scenes suite (approved at US$1.20) reserves less: its prompts use
+    // about 5,000 input tokens, and scene requests are capped at 12,000 output
+    // tokens here so spending can't exceed what is reserved.
+    let scene_output: u64 = if scenes { 12_000 } else { SCENE_MAX_OUTPUT };
+    let input_reserve: u64 = if scenes { 10_000 } else { 20_000 };
+    let output_cap = |case: &Value| -> u64 {
+        if case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "create_on_canvas")) { scene_output } else { 6000 }
+    };
     let limits = |case: &Value| -> (u64, u64, f64) {
         let web = case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "web_search"));
-        let (input, searches) = if web { (80_000, 3) } else { (20_000, 0) };
+        let (input, searches) = if web { (80_000, 3) } else { (input_reserve, 0) };
+        let output = output_cap(case);
         let usd = estimate(
             &model,
             &Usage {
                 input: Some(input),
                 cached: Some(0),
-                output: Some(6000),
+                output: Some(output),
                 cache_write: Some(input),
                 cache_write_30m: Some(0),
                 cache_write_12h: Some(input),
@@ -49,7 +62,9 @@ fn live_quality_benchmark() {
             + searches as f64 * crate::diagnostics::WEB_SEARCH_USD;
         (input, searches, usd)
     };
-    let suite: Value = serde_json::from_str(if canvas {
+    let suite: Value = serde_json::from_str(if scenes {
+        include_str!("../../tests/benchmarks/scenes.v1.json")
+    } else if canvas {
         include_str!("../../tests/benchmarks/canvas.v1.json")
     } else if routing {
         include_str!("../../tests/benchmarks/routing.v1.json")
@@ -58,7 +73,7 @@ fn live_quality_benchmark() {
     })
     .unwrap();
     let all = suite["cases"].as_array().unwrap();
-    assert_eq!(all.len(), if canvas { 16 } else if routing { 34 } else { 60 });
+    assert_eq!(all.len(), if scenes || canvas { 16 } else if routing { 34 } else { 60 });
     // KNOT_BENCHMARK_CASES (comma-separated IDs) repeats a few cases cheaply.
     let only = std::env::var("KNOT_BENCHMARK_CASES").ok();
     let cases: &Vec<Value> = &match &only {
@@ -72,6 +87,7 @@ fn live_quality_benchmark() {
     };
     let reserved = cases.iter().map(|case| limits(case).2).sum::<f64>();
     let largest = cases.iter().map(|case| limits(case).2).fold(0.0, f64::max);
+    println!("Conservative reservation for {} cases: US${reserved:.4}", cases.len());
     assert!(
         reserved <= budget,
         "Budget is below the conservative full-suite reservation; no calls made"
@@ -125,7 +141,7 @@ fn live_quality_benchmark() {
         .open(&result_path)
         .unwrap();
     if resume.is_none() {
-        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserved,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"cases":only,"input_reserve_tokens":20_000,"web_input_reserve_tokens":80_000})).unwrap();
+        writeln!(file,"{}",json!({"run":run_id,"suite":suite["version"],"model":model,"budget_usd":budget,"reserved_usd":reserved,"kind":"live","quality_status":"ungraded","pricing_version":crate::diagnostics::PRICING_VERSION,"label":std::env::var("KNOT_BENCHMARK_LABEL").ok(),"cases":only,"input_reserve_tokens":input_reserve,"scene_output_cap":scene_output,"web_input_reserve_tokens":80_000})).unwrap();
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -151,7 +167,10 @@ fn live_quality_benchmark() {
             // A completed search, to check results are accepted and used.
             let searches: Vec<SearchResult> = serde_json::from_value(case["searches"].clone()).unwrap_or_default();
             let viewed: Vec<ImageResult> = serde_json::from_value(case["viewed"].clone()).unwrap_or_default();
-            let body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,&searches,&viewed,image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
+            let mut body = if mode == "auto" { tool_request_body(&model,&messages,&context,&tools,&searches,&viewed,image.as_deref(),pdf.as_deref()) } else { request_body(&model,&messages,&context,mode,image.as_deref(),pdf.as_deref()) };
+            // Never let a request produce more output than its reservation.
+            let cap = output_cap(case).min(body["max_output_tokens"].as_u64().unwrap_or(u64::MAX));
+            body["max_output_tokens"] = json!(cap);
             assert!(context.len() + messages.iter().map(|m|m.content.len()).sum::<usize>() < 100_000);
             let output = Arc::new(Mutex::new(String::new())); let copy = output.clone();
             let route = Arc::new(Mutex::new(String::from("answer"))); let called = route.clone();
@@ -186,7 +205,7 @@ fn live_quality_benchmark() {
             let bounded = matches!(measurement.attempt.service_tier.as_deref(), Some("default" | "standard"))
                 && measurement.attempt.usage.input.is_some_and(|n| n <= input_reserve)
                 && searches <= search_limit
-                && measurement.attempt.usage.output.is_some_and(|n| n <= 6000);
+                && measurement.attempt.usage.output.is_some_and(|n| n <= output_cap(case));
             assert!(result.is_ok() && bounded && cost.is_none_or(|n| n <= reserve), "Request failed or reservation cannot be verified; stopped, results are partial and ungraded");
         }
     });

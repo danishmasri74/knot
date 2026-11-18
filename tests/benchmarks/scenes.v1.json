@@ -1,0 +1,1412 @@
+{
+ "version": "knot-scenes-v1",
+ "created": "2026-11-17",
+ "cases": [
+  {
+   "id": "scenes-01-old",
+   "prompt": "atomic-decks",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "d1-0",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Maintenance testing: testing changes to a system that is already in operation, to keep it reliable and performing over time.",
+      "document": "deck-maintenance",
+      "citation": "[S1]"
+     },
+     {
+      "id": "d1-1",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Corrective maintenance fixes defects found in operation. Adaptive maintenance adapts the system to a changed environment, such as a new operating system or database. Perfective maintenance improves performance or maintainability.",
+      "document": "deck-maintenance",
+      "citation": "[S2]"
+     },
+     {
+      "id": "d1-2",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Triggers for maintenance testing: planned enhancements and releases, emergency fixes, upgrades or migrations of the operational environment, and retirement of the system, which may need data archiving tests.",
+      "document": "deck-maintenance",
+      "citation": "[S3]"
+     },
+     {
+      "id": "d1-3",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Impact analysis identifies which parts of the system a change affects and how much regression testing is needed. It is harder when specifications are out of date or test cases are missing.",
+      "document": "deck-maintenance",
+      "citation": "[S4]"
+     },
+     {
+      "id": "d1-4",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Maintenance releases may be planned or hot fixes. Regression tests should be automated where possible because they are repeated for every release.",
+      "document": "deck-maintenance",
+      "citation": "[S5]"
+     },
+     {
+      "id": "d2-0",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Testing must fit the software development lifecycle: every development activity has a corresponding test activity, and test analysis and design start during the matching development activity.",
+      "document": "deck-sdlc",
+      "citation": "[S6]"
+     },
+     {
+      "id": "d2-1",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In sequential models such as waterfall and the V-model, testing happens in phases; the V-model pairs each development level with a test level, for example requirements with acceptance testing.",
+      "document": "deck-sdlc",
+      "citation": "[S7]"
+     },
+     {
+      "id": "d2-2",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In iterative and incremental models, each iteration delivers working software and includes static and dynamic testing at several levels; regression testing grows in importance with each increment.",
+      "document": "deck-sdlc",
+      "citation": "[S8]"
+     },
+     {
+      "id": "d2-3",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Shift left means testing earlier: reviewing requirements, writing tests before code, running static analysis and continuous integration. It costs effort early but saves more later because early defects are cheaper to fix.",
+      "document": "deck-sdlc",
+      "citation": "[S9]"
+     },
+     {
+      "id": "d2-4",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Retrospectives after an iteration or release capture what went well and what to improve, including test process improvements, and feed into the next cycle.",
+      "document": "deck-sdlc",
+      "citation": "[S10]"
+     },
+     {
+      "id": "d2-5",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "DevOps uses continuous integration and delivery pipelines; automated tests give fast feedback on every change, but manual exploratory testing is still needed.",
+      "document": "deck-sdlc",
+      "citation": "[S11]"
+     },
+     {
+      "id": "d3-0",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test levels are groups of test activities organised together: component testing, component integration testing, system testing, system integration testing and acceptance testing.",
+      "document": "deck-levels",
+      "citation": "[S12]"
+     },
+     {
+      "id": "d3-1",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Component testing tests components in isolation, usually by developers, often with stubs and drivers. Component integration testing tests the interfaces and interactions between components.",
+      "document": "deck-levels",
+      "citation": "[S13]"
+     },
+     {
+      "id": "d3-2",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "System testing tests the whole system's behaviour and capabilities, including non-functional characteristics, often by an independent test team. System integration testing tests interfaces with other systems and external services.",
+      "document": "deck-levels",
+      "citation": "[S14]"
+     },
+     {
+      "id": "d3-3",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Acceptance testing validates readiness for deployment and that the system meets users' business needs; forms include user acceptance, operational acceptance, contractual and regulatory acceptance, alpha and beta testing.",
+      "document": "deck-levels",
+      "citation": "[S15]"
+     },
+     {
+      "id": "d3-4",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test types: functional testing checks what the system does; non-functional testing checks how well it does it, such as performance, usability and security; black-box testing derives tests from the specification and white-box testing from the internal structure.",
+      "document": "deck-levels",
+      "citation": "[S16]"
+     },
+     {
+      "id": "d3-5",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Confirmation testing checks that a reported defect has been fixed; regression testing checks that a change has not broken anything else.",
+      "document": "deck-levels",
+      "citation": "[S17]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Put atomic notes for these three decks on the canvas."
+    }
+   ],
+   "rubric": [
+    "One idea per card, every deck covered; content grouped by deck; related ideas connected, including across decks; readable order; no rectangle of unrelated cards."
+   ]
+  },
+  {
+   "id": "scenes-01-new",
+   "prompt": "atomic-decks",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "d1-0",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Maintenance testing: testing changes to a system that is already in operation, to keep it reliable and performing over time.",
+      "document": "deck-maintenance",
+      "citation": "[S1]"
+     },
+     {
+      "id": "d1-1",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Corrective maintenance fixes defects found in operation. Adaptive maintenance adapts the system to a changed environment, such as a new operating system or database. Perfective maintenance improves performance or maintainability.",
+      "document": "deck-maintenance",
+      "citation": "[S2]"
+     },
+     {
+      "id": "d1-2",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Triggers for maintenance testing: planned enhancements and releases, emergency fixes, upgrades or migrations of the operational environment, and retirement of the system, which may need data archiving tests.",
+      "document": "deck-maintenance",
+      "citation": "[S3]"
+     },
+     {
+      "id": "d1-3",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Impact analysis identifies which parts of the system a change affects and how much regression testing is needed. It is harder when specifications are out of date or test cases are missing.",
+      "document": "deck-maintenance",
+      "citation": "[S4]"
+     },
+     {
+      "id": "d1-4",
+      "parent": "d1",
+      "note": "d1",
+      "type": "paragraph",
+      "text": "Maintenance releases may be planned or hot fixes. Regression tests should be automated where possible because they are repeated for every release.",
+      "document": "deck-maintenance",
+      "citation": "[S5]"
+     },
+     {
+      "id": "d2-0",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Testing must fit the software development lifecycle: every development activity has a corresponding test activity, and test analysis and design start during the matching development activity.",
+      "document": "deck-sdlc",
+      "citation": "[S6]"
+     },
+     {
+      "id": "d2-1",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In sequential models such as waterfall and the V-model, testing happens in phases; the V-model pairs each development level with a test level, for example requirements with acceptance testing.",
+      "document": "deck-sdlc",
+      "citation": "[S7]"
+     },
+     {
+      "id": "d2-2",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In iterative and incremental models, each iteration delivers working software and includes static and dynamic testing at several levels; regression testing grows in importance with each increment.",
+      "document": "deck-sdlc",
+      "citation": "[S8]"
+     },
+     {
+      "id": "d2-3",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Shift left means testing earlier: reviewing requirements, writing tests before code, running static analysis and continuous integration. It costs effort early but saves more later because early defects are cheaper to fix.",
+      "document": "deck-sdlc",
+      "citation": "[S9]"
+     },
+     {
+      "id": "d2-4",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Retrospectives after an iteration or release capture what went well and what to improve, including test process improvements, and feed into the next cycle.",
+      "document": "deck-sdlc",
+      "citation": "[S10]"
+     },
+     {
+      "id": "d2-5",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "DevOps uses continuous integration and delivery pipelines; automated tests give fast feedback on every change, but manual exploratory testing is still needed.",
+      "document": "deck-sdlc",
+      "citation": "[S11]"
+     },
+     {
+      "id": "d3-0",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test levels are groups of test activities organised together: component testing, component integration testing, system testing, system integration testing and acceptance testing.",
+      "document": "deck-levels",
+      "citation": "[S12]"
+     },
+     {
+      "id": "d3-1",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Component testing tests components in isolation, usually by developers, often with stubs and drivers. Component integration testing tests the interfaces and interactions between components.",
+      "document": "deck-levels",
+      "citation": "[S13]"
+     },
+     {
+      "id": "d3-2",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "System testing tests the whole system's behaviour and capabilities, including non-functional characteristics, often by an independent test team. System integration testing tests interfaces with other systems and external services.",
+      "document": "deck-levels",
+      "citation": "[S14]"
+     },
+     {
+      "id": "d3-3",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Acceptance testing validates readiness for deployment and that the system meets users' business needs; forms include user acceptance, operational acceptance, contractual and regulatory acceptance, alpha and beta testing.",
+      "document": "deck-levels",
+      "citation": "[S15]"
+     },
+     {
+      "id": "d3-4",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test types: functional testing checks what the system does; non-functional testing checks how well it does it, such as performance, usability and security; black-box testing derives tests from the specification and white-box testing from the internal structure.",
+      "document": "deck-levels",
+      "citation": "[S16]"
+     },
+     {
+      "id": "d3-5",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Confirmation testing checks that a reported defect has been fixed; regression testing checks that a change has not broken anything else.",
+      "document": "deck-levels",
+      "citation": "[S17]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Put atomic notes for these three decks on the canvas."
+    }
+   ],
+   "rubric": [
+    "One idea per card, every deck covered; content grouped by deck; related ideas connected, including across decks; readable order; no rectangle of unrelated cards."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-02-old",
+   "prompt": "long-process",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "df-0",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "A defect report moves through a lifecycle. A tester finds a failure and logs a new defect report with steps to reproduce, expected and actual results, severity and environment.",
+      "document": "defect-lifecycle",
+      "citation": "[S1]"
+     },
+     {
+      "id": "df-1",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "The test lead reviews the new report. If it is a duplicate, it is closed as duplicate. If it cannot be reproduced, it goes back to the tester for more information.",
+      "document": "defect-lifecycle",
+      "citation": "[S2]"
+     },
+     {
+      "id": "df-2",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "A valid report is assigned to a developer, who analyses it. If the behaviour is intended, the report is rejected as not a defect, and the tester may reopen it with evidence.",
+      "document": "defect-lifecycle",
+      "citation": "[S3]"
+     },
+     {
+      "id": "df-3",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "Otherwise the developer fixes the defect and marks it fixed. The fix is deployed to the test environment.",
+      "document": "defect-lifecycle",
+      "citation": "[S4]"
+     },
+     {
+      "id": "df-4",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "The tester runs a confirmation test. If the defect still occurs, the report is reopened and goes back to the developer. If it passes, regression tests run on the affected area.",
+      "document": "defect-lifecycle",
+      "citation": "[S5]"
+     },
+     {
+      "id": "df-5",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "When confirmation and regression testing pass, the report is closed. Metrics such as defect age and reopen rate are collected for the retrospective.",
+      "document": "defect-lifecycle",
+      "citation": "[S6]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Show the defect lifecycle as a flowchart on the canvas."
+    }
+   ],
+   "rubric": [
+    "Every state and decision in order; decision points visible with labelled branches (duplicate, cannot reproduce, rejected, reopened); loops shown; reads in one direction."
+   ]
+  },
+  {
+   "id": "scenes-02-new",
+   "prompt": "long-process",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "df-0",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "A defect report moves through a lifecycle. A tester finds a failure and logs a new defect report with steps to reproduce, expected and actual results, severity and environment.",
+      "document": "defect-lifecycle",
+      "citation": "[S1]"
+     },
+     {
+      "id": "df-1",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "The test lead reviews the new report. If it is a duplicate, it is closed as duplicate. If it cannot be reproduced, it goes back to the tester for more information.",
+      "document": "defect-lifecycle",
+      "citation": "[S2]"
+     },
+     {
+      "id": "df-2",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "A valid report is assigned to a developer, who analyses it. If the behaviour is intended, the report is rejected as not a defect, and the tester may reopen it with evidence.",
+      "document": "defect-lifecycle",
+      "citation": "[S3]"
+     },
+     {
+      "id": "df-3",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "Otherwise the developer fixes the defect and marks it fixed. The fix is deployed to the test environment.",
+      "document": "defect-lifecycle",
+      "citation": "[S4]"
+     },
+     {
+      "id": "df-4",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "The tester runs a confirmation test. If the defect still occurs, the report is reopened and goes back to the developer. If it passes, regression tests run on the affected area.",
+      "document": "defect-lifecycle",
+      "citation": "[S5]"
+     },
+     {
+      "id": "df-5",
+      "parent": "df",
+      "note": "df",
+      "type": "paragraph",
+      "text": "When confirmation and regression testing pass, the report is closed. Metrics such as defect age and reopen rate are collected for the retrospective.",
+      "document": "defect-lifecycle",
+      "citation": "[S6]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Show the defect lifecycle as a flowchart on the canvas."
+    }
+   ],
+   "rubric": [
+    "Every state and decision in order; decision points visible with labelled branches (duplicate, cannot reproduce, rejected, reopened); loops shown; reads in one direction."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-03-old",
+   "prompt": "cycle",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "pd-0",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Test process improvement often follows the Plan-Do-Check-Act cycle.",
+      "document": "process-improvement",
+      "citation": "[S1]"
+     },
+     {
+      "id": "pd-1",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Plan: set improvement goals from retrospectives and metrics, for example reducing escaped defects by a third, and choose the changes to try.",
+      "document": "process-improvement",
+      "citation": "[S2]"
+     },
+     {
+      "id": "pd-2",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Do: apply the changes on a small scale, such as one team adopting test-first development for one release.",
+      "document": "process-improvement",
+      "citation": "[S3]"
+     },
+     {
+      "id": "pd-3",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Check: measure the results against the goals using defect data and team feedback.",
+      "document": "process-improvement",
+      "citation": "[S4]"
+     },
+     {
+      "id": "pd-4",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Act: adopt successful changes across teams, adjust or drop the rest, and feed the lessons into the next Plan step, so the cycle repeats.",
+      "document": "process-improvement",
+      "citation": "[S5]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Make a diagram of this improvement cycle."
+    }
+   ],
+   "rubric": [
+    "Four steps arranged as a cycle with arrows returning from Act to Plan; goal example kept; not a straight line or grid."
+   ]
+  },
+  {
+   "id": "scenes-03-new",
+   "prompt": "cycle",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "pd-0",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Test process improvement often follows the Plan-Do-Check-Act cycle.",
+      "document": "process-improvement",
+      "citation": "[S1]"
+     },
+     {
+      "id": "pd-1",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Plan: set improvement goals from retrospectives and metrics, for example reducing escaped defects by a third, and choose the changes to try.",
+      "document": "process-improvement",
+      "citation": "[S2]"
+     },
+     {
+      "id": "pd-2",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Do: apply the changes on a small scale, such as one team adopting test-first development for one release.",
+      "document": "process-improvement",
+      "citation": "[S3]"
+     },
+     {
+      "id": "pd-3",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Check: measure the results against the goals using defect data and team feedback.",
+      "document": "process-improvement",
+      "citation": "[S4]"
+     },
+     {
+      "id": "pd-4",
+      "parent": "pd",
+      "note": "pd",
+      "type": "paragraph",
+      "text": "Act: adopt successful changes across teams, adjust or drop the rest, and feed the lessons into the next Plan step, so the cycle repeats.",
+      "document": "process-improvement",
+      "citation": "[S5]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Make a diagram of this improvement cycle."
+    }
+   ],
+   "rubric": [
+    "Four steps arranged as a cycle with arrows returning from Act to Plan; goal example kept; not a straight line or grid."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-04-old",
+   "prompt": "comparison",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "lm-0",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "Waterfall: phases run in sequence, requirements are fixed early, testing happens after implementation, so defects in requirements are found late and are expensive to fix. Suits stable, well-understood projects.",
+      "document": "lifecycle-models",
+      "citation": "[S1]"
+     },
+     {
+      "id": "lm-1",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "V-model: sequential like waterfall, but each development level has a matching test level planned in parallel, so test design starts early. Still poor at handling changing requirements.",
+      "document": "lifecycle-models",
+      "citation": "[S2]"
+     },
+     {
+      "id": "lm-2",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "Agile (iterative): short iterations deliver working software, testing is continuous within each iteration, requirements may change, and the whole team shares responsibility for quality. Needs strong automation for regression.",
+      "document": "lifecycle-models",
+      "citation": "[S3]"
+     },
+     {
+      "id": "lm-3",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "Choosing a model depends on how stable requirements are, regulatory needs, team size and how quickly feedback is needed.",
+      "document": "lifecycle-models",
+      "citation": "[S4]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Compare these lifecycle models on the canvas."
+    }
+   ],
+   "rubric": [
+    "The three models side by side with comparable points; differences easy to scan; the choosing factors kept; no invented criteria."
+   ]
+  },
+  {
+   "id": "scenes-04-new",
+   "prompt": "comparison",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "lm-0",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "Waterfall: phases run in sequence, requirements are fixed early, testing happens after implementation, so defects in requirements are found late and are expensive to fix. Suits stable, well-understood projects.",
+      "document": "lifecycle-models",
+      "citation": "[S1]"
+     },
+     {
+      "id": "lm-1",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "V-model: sequential like waterfall, but each development level has a matching test level planned in parallel, so test design starts early. Still poor at handling changing requirements.",
+      "document": "lifecycle-models",
+      "citation": "[S2]"
+     },
+     {
+      "id": "lm-2",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "Agile (iterative): short iterations deliver working software, testing is continuous within each iteration, requirements may change, and the whole team shares responsibility for quality. Needs strong automation for regression.",
+      "document": "lifecycle-models",
+      "citation": "[S3]"
+     },
+     {
+      "id": "lm-3",
+      "parent": "lm",
+      "note": "lm",
+      "type": "paragraph",
+      "text": "Choosing a model depends on how stable requirements are, regulatory needs, team size and how quickly feedback is needed.",
+      "document": "lifecycle-models",
+      "citation": "[S4]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Compare these lifecycle models on the canvas."
+    }
+   ],
+   "rubric": [
+    "The three models side by side with comparable points; differences easy to scan; the choosing factors kept; no invented criteria."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-05-old",
+   "prompt": "hierarchy",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "d3-0",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test levels are groups of test activities organised together: component testing, component integration testing, system testing, system integration testing and acceptance testing.",
+      "document": "deck-levels",
+      "citation": "[S1]"
+     },
+     {
+      "id": "d3-1",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Component testing tests components in isolation, usually by developers, often with stubs and drivers. Component integration testing tests the interfaces and interactions between components.",
+      "document": "deck-levels",
+      "citation": "[S2]"
+     },
+     {
+      "id": "d3-2",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "System testing tests the whole system's behaviour and capabilities, including non-functional characteristics, often by an independent test team. System integration testing tests interfaces with other systems and external services.",
+      "document": "deck-levels",
+      "citation": "[S3]"
+     },
+     {
+      "id": "d3-3",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Acceptance testing validates readiness for deployment and that the system meets users' business needs; forms include user acceptance, operational acceptance, contractual and regulatory acceptance, alpha and beta testing.",
+      "document": "deck-levels",
+      "citation": "[S4]"
+     },
+     {
+      "id": "d3-4",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test types: functional testing checks what the system does; non-functional testing checks how well it does it, such as performance, usability and security; black-box testing derives tests from the specification and white-box testing from the internal structure.",
+      "document": "deck-levels",
+      "citation": "[S5]"
+     },
+     {
+      "id": "d3-5",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Confirmation testing checks that a reported defect has been fixed; regression testing checks that a change has not broken anything else.",
+      "document": "deck-levels",
+      "citation": "[S6]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Map out the test levels and test types with explanations."
+    }
+   ],
+   "rubric": [
+    "Levels and types as two groups with their members; explanations kept; hierarchy clear; confirmation vs regression kept."
+   ]
+  },
+  {
+   "id": "scenes-05-new",
+   "prompt": "hierarchy",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "d3-0",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test levels are groups of test activities organised together: component testing, component integration testing, system testing, system integration testing and acceptance testing.",
+      "document": "deck-levels",
+      "citation": "[S1]"
+     },
+     {
+      "id": "d3-1",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Component testing tests components in isolation, usually by developers, often with stubs and drivers. Component integration testing tests the interfaces and interactions between components.",
+      "document": "deck-levels",
+      "citation": "[S2]"
+     },
+     {
+      "id": "d3-2",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "System testing tests the whole system's behaviour and capabilities, including non-functional characteristics, often by an independent test team. System integration testing tests interfaces with other systems and external services.",
+      "document": "deck-levels",
+      "citation": "[S3]"
+     },
+     {
+      "id": "d3-3",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Acceptance testing validates readiness for deployment and that the system meets users' business needs; forms include user acceptance, operational acceptance, contractual and regulatory acceptance, alpha and beta testing.",
+      "document": "deck-levels",
+      "citation": "[S4]"
+     },
+     {
+      "id": "d3-4",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Test types: functional testing checks what the system does; non-functional testing checks how well it does it, such as performance, usability and security; black-box testing derives tests from the specification and white-box testing from the internal structure.",
+      "document": "deck-levels",
+      "citation": "[S5]"
+     },
+     {
+      "id": "d3-5",
+      "parent": "d3",
+      "note": "d3",
+      "type": "paragraph",
+      "text": "Confirmation testing checks that a reported defect has been fixed; regression testing checks that a change has not broken anything else.",
+      "document": "deck-levels",
+      "citation": "[S6]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Map out the test levels and test types with explanations."
+    }
+   ],
+   "rubric": [
+    "Levels and types as two groups with their members; explanations kept; hierarchy clear; confirmation vs regression kept."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-06-old",
+   "prompt": "beside-source",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "d2-0",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Testing must fit the software development lifecycle: every development activity has a corresponding test activity, and test analysis and design start during the matching development activity.",
+      "document": "deck-sdlc",
+      "citation": "[S1]"
+     },
+     {
+      "id": "d2-1",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In sequential models such as waterfall and the V-model, testing happens in phases; the V-model pairs each development level with a test level, for example requirements with acceptance testing.",
+      "document": "deck-sdlc",
+      "citation": "[S2]"
+     },
+     {
+      "id": "d2-2",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In iterative and incremental models, each iteration delivers working software and includes static and dynamic testing at several levels; regression testing grows in importance with each increment.",
+      "document": "deck-sdlc",
+      "citation": "[S3]"
+     },
+     {
+      "id": "d2-3",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Shift left means testing earlier: reviewing requirements, writing tests before code, running static analysis and continuous integration. It costs effort early but saves more later because early defects are cheaper to fix.",
+      "document": "deck-sdlc",
+      "citation": "[S4]"
+     },
+     {
+      "id": "d2-4",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Retrospectives after an iteration or release capture what went well and what to improve, including test process improvements, and feed into the next cycle.",
+      "document": "deck-sdlc",
+      "citation": "[S5]"
+     },
+     {
+      "id": "d2-5",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "DevOps uses continuous integration and delivery pipelines; automated tests give fast feedback on every change, but manual exploratory testing is still needed.",
+      "document": "deck-sdlc",
+      "citation": "[S6]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": [],
+    "canvasMap": "K1 \"Testing in the software development lifecycle\" short, top-right\nK2 \"Exam dates\" short, bottom-left"
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Summarise this chapter into cards next to it."
+    }
+   ],
+   "rubric": [
+    "Cards placed next to the existing chapter card (anchored), not far away; every key point kept; connections where the chapter relates ideas."
+   ]
+  },
+  {
+   "id": "scenes-06-new",
+   "prompt": "beside-source",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "d2-0",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Testing must fit the software development lifecycle: every development activity has a corresponding test activity, and test analysis and design start during the matching development activity.",
+      "document": "deck-sdlc",
+      "citation": "[S1]"
+     },
+     {
+      "id": "d2-1",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In sequential models such as waterfall and the V-model, testing happens in phases; the V-model pairs each development level with a test level, for example requirements with acceptance testing.",
+      "document": "deck-sdlc",
+      "citation": "[S2]"
+     },
+     {
+      "id": "d2-2",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "In iterative and incremental models, each iteration delivers working software and includes static and dynamic testing at several levels; regression testing grows in importance with each increment.",
+      "document": "deck-sdlc",
+      "citation": "[S3]"
+     },
+     {
+      "id": "d2-3",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Shift left means testing earlier: reviewing requirements, writing tests before code, running static analysis and continuous integration. It costs effort early but saves more later because early defects are cheaper to fix.",
+      "document": "deck-sdlc",
+      "citation": "[S4]"
+     },
+     {
+      "id": "d2-4",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "Retrospectives after an iteration or release capture what went well and what to improve, including test process improvements, and feed into the next cycle.",
+      "document": "deck-sdlc",
+      "citation": "[S5]"
+     },
+     {
+      "id": "d2-5",
+      "parent": "d2",
+      "note": "d2",
+      "type": "paragraph",
+      "text": "DevOps uses continuous integration and delivery pipelines; automated tests give fast feedback on every change, but manual exploratory testing is still needed.",
+      "document": "deck-sdlc",
+      "citation": "[S6]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": [],
+    "canvasMap": "K1 \"Testing in the software development lifecycle\" short, top-right\nK2 \"Exam dates\" short, bottom-left"
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Summarise this chapter into cards next to it."
+    }
+   ],
+   "rubric": [
+    "Cards placed next to the existing chapter card (anchored), not far away; every key point kept; connections where the chapter relates ideas."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-07-old",
+   "prompt": "study-map",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "rk-0",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk is the combination of the likelihood of a problem and its impact. Product risks concern the quality of the product; project risks concern the project's ability to deliver.",
+      "document": "risk-based-testing",
+      "citation": "[S1]"
+     },
+     {
+      "id": "rk-1",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk-based testing uses risk analysis to decide what to test first, how deeply, and which techniques to use. Higher risk areas get more and earlier testing.",
+      "document": "risk-based-testing",
+      "citation": "[S2]"
+     },
+     {
+      "id": "rk-2",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk analysis identifies risks, then assesses each by likelihood and impact, often on a matrix from low to high.",
+      "document": "risk-based-testing",
+      "citation": "[S3]"
+     },
+     {
+      "id": "rk-3",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Mitigation reduces risk: testing reduces product risk by finding defects early. Some risks are accepted, transferred, or handled with contingency plans.",
+      "document": "risk-based-testing",
+      "citation": "[S4]"
+     },
+     {
+      "id": "rk-4",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risks are monitored throughout the project and the test plan is updated when they change.",
+      "document": "risk-based-testing",
+      "citation": "[S5]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "I have an exam on risk-based testing tomorrow. Lay this out so I can revise it quickly."
+    }
+   ],
+   "rubric": [
+    "A structure that reads quickly (overview then details); likelihood and impact relation shown; mitigation options kept; nothing invented."
+   ]
+  },
+  {
+   "id": "scenes-07-new",
+   "prompt": "study-map",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "rk-0",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk is the combination of the likelihood of a problem and its impact. Product risks concern the quality of the product; project risks concern the project's ability to deliver.",
+      "document": "risk-based-testing",
+      "citation": "[S1]"
+     },
+     {
+      "id": "rk-1",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk-based testing uses risk analysis to decide what to test first, how deeply, and which techniques to use. Higher risk areas get more and earlier testing.",
+      "document": "risk-based-testing",
+      "citation": "[S2]"
+     },
+     {
+      "id": "rk-2",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk analysis identifies risks, then assesses each by likelihood and impact, often on a matrix from low to high.",
+      "document": "risk-based-testing",
+      "citation": "[S3]"
+     },
+     {
+      "id": "rk-3",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Mitigation reduces risk: testing reduces product risk by finding defects early. Some risks are accepted, transferred, or handled with contingency plans.",
+      "document": "risk-based-testing",
+      "citation": "[S4]"
+     },
+     {
+      "id": "rk-4",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risks are monitored throughout the project and the test plan is updated when they change.",
+      "document": "risk-based-testing",
+      "citation": "[S5]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "I have an exam on risk-based testing tomorrow. Lay this out so I can revise it quickly."
+    }
+   ],
+   "rubric": [
+    "A structure that reads quickly (overview then details); likelihood and impact relation shown; mitigation options kept; nothing invented."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  },
+  {
+   "id": "scenes-08-old",
+   "prompt": "open-ended",
+   "path": "old",
+   "category": "canvas_scene",
+   "mode": "canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "rk-0",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk is the combination of the likelihood of a problem and its impact. Product risks concern the quality of the product; project risks concern the project's ability to deliver.",
+      "document": "risk-based-testing",
+      "citation": "[S1]"
+     },
+     {
+      "id": "rk-1",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk-based testing uses risk analysis to decide what to test first, how deeply, and which techniques to use. Higher risk areas get more and earlier testing.",
+      "document": "risk-based-testing",
+      "citation": "[S2]"
+     },
+     {
+      "id": "rk-2",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk analysis identifies risks, then assesses each by likelihood and impact, often on a matrix from low to high.",
+      "document": "risk-based-testing",
+      "citation": "[S3]"
+     },
+     {
+      "id": "rk-3",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Mitigation reduces risk: testing reduces product risk by finding defects early. Some risks are accepted, transferred, or handled with contingency plans.",
+      "document": "risk-based-testing",
+      "citation": "[S4]"
+     },
+     {
+      "id": "rk-4",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risks are monitored throughout the project and the test plan is updated when they change.",
+      "document": "risk-based-testing",
+      "citation": "[S5]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Visualise how risk drives testing decisions."
+    }
+   ],
+   "rubric": [
+    "Causal structure from risk analysis to test priority, depth and technique; matrix or flow as the content suggests; monitoring loop kept."
+   ]
+  },
+  {
+   "id": "scenes-08-new",
+   "prompt": "open-ended",
+   "path": "new",
+   "category": "canvas_scene",
+   "mode": "auto",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "rk-0",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk is the combination of the likelihood of a problem and its impact. Product risks concern the quality of the product; project risks concern the project's ability to deliver.",
+      "document": "risk-based-testing",
+      "citation": "[S1]"
+     },
+     {
+      "id": "rk-1",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk-based testing uses risk analysis to decide what to test first, how deeply, and which techniques to use. Higher risk areas get more and earlier testing.",
+      "document": "risk-based-testing",
+      "citation": "[S2]"
+     },
+     {
+      "id": "rk-2",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risk analysis identifies risks, then assesses each by likelihood and impact, often on a matrix from low to high.",
+      "document": "risk-based-testing",
+      "citation": "[S3]"
+     },
+     {
+      "id": "rk-3",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Mitigation reduces risk: testing reduces product risk by finding defects early. Some risks are accepted, transferred, or handled with contingency plans.",
+      "document": "risk-based-testing",
+      "citation": "[S4]"
+     },
+     {
+      "id": "rk-4",
+      "parent": "rk",
+      "note": "rk",
+      "type": "paragraph",
+      "text": "Risks are monitored throughout the project and the test plan is updated when they change.",
+      "document": "risk-based-testing",
+      "citation": "[S5]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Visualise how risk drives testing decisions."
+    }
+   ],
+   "rubric": [
+    "Causal structure from risk analysis to test priority, depth and technique; matrix or flow as the content suggests; monitoring loop kept."
+   ],
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas"
+  }
+ ]
+}
