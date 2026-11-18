@@ -64,3 +64,38 @@ atomic-notes case that started this work, and once dropped content.
 Fix 1–4 (instructions for connections and coverage, a default table title, one neutral
 arrow colour unless chosen, guidance on wrapping long sections) and rerun these 16 cases
 (about US$0.10). Phase 2 (look and fix) would catch overlapping labels and crossings.
+
+## Rerun after fixes (18 November 2026)
+
+Fixes: the scene instructions now ask for an arrow wherever the source relates two ideas
+(including across sections, and especially between atomic notes), the same aspects for every
+item in a comparison, compact grids for long sections, a title for every table, and a final
+coverage check. Untitled tables take their card's title, and arrows without a chosen colour
+use one neutral theme-aware grey. Only the 8 new-path cases were rerun (the old path is
+unchanged): run `7f076c64-3b19-4965-974d-6516acffbe7c`, Terra, **about US$0.055**
+(running total about US$0.146 of the approved US$1.20).
+
+| # | Prompt | First run | Rerun |
+|---|---|---|---|
+| 1 | Atomic notes, three decks | 23 cards, 3 frames as long columns, 0 arrows | 28 cards, 3 frames as two-column grids, 15 arrows within and across decks; 11 arrows cross cards |
+| 2 | Flowchart | 15 shapes, 17 arrows, 1 crossing | 15 shapes, 17 arrows, 3 crossings, 1 passage left out |
+| 3 | Cycle | Ring of 4 cards, 4 arrows | Ring of 4 coloured shapes, 4 arrows; two arrows overlap in the middle |
+| 4 | Comparison | 3 cards with differing "Untitled" tables | One shared table, "Lifecycle model comparison", same aspects for all three |
+| 5 | Levels and types | 3 frames, 11 cards, 0 arrows | One mind map with explanations under its branches |
+| 6 | Beside the chapter | 6 cards, 0 arrows | 6 cards in a grid beside the chapter, 3 arrows |
+| 7 | Exam revision | 5 numbered cards, 0 arrows | 5 cards in a row, 5 arrows |
+| 8 | Risk drives testing | 3 passages left out | 1 passage left out, 8 arrows |
+
+| | Old path | First run | Rerun |
+|---|---|---|---|
+| Arrows | 36 in 6 cases | 26 in 3 cases | 52 in 6 cases (none only for the table and the mind map) |
+| Arrows crossing objects | 8 | 1 | 19 (11 of them in case 1) |
+| Passages left out | 0 | 3 | 2 |
+| Overlaps | 0 | 0 | 0 |
+
+**Verdict:** the rerun keeps the structural gains and fixes the missing connections, the
+"Untitled" tables and the uncomparable comparison. On the 8 prompts it now matches or beats
+the old path on layout, grouping, placement and connections. Two things keep it short of a
+clean win: arrows that cross cards (mostly long arrows between frames) and one passage left
+out in two cases. Crossings are what phase 2's look-and-fix loop measures and repairs; the
+coverage check could also become part of that loop's report.

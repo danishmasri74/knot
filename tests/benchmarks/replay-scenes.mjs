@@ -202,7 +202,10 @@ try {
         const nearChapter = existing.chapter ? Math.round(gap(extent, box(d.getBlock(existing.chapter).model))) : null;
         // Fit everything in view for the screenshot.
         const root = editor.querySelector("affine-edgeless-root");
-        const everything = [...all.map((o) => o.box), ...fresh.map((o) => o.box)];
+        // Only real boxes: one bad bound (NaN) would leave the view where it was.
+        const everything = [...all.map((o) => o.box), ...fresh.map((o) => o.box)].filter(
+          (b) => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite),
+        );
         const x = Math.min(...everything.map((b) => b[0])) - 60;
         const y = Math.min(...everything.map((b) => b[1])) - 60;
         const w = Math.max(...everything.map((b) => b[0] + b[2])) - x + 60;

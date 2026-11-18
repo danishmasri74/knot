@@ -104,6 +104,16 @@ describe("validateScene", () => {
     ]);
   });
 
+  it("gives an untitled table its card's title", () => {
+    const s = scene([
+      card("waterfall", {
+        text: "Waterfall",
+        content: [{ type: "table", text: "", columns: ["Aspect", "Value"], rows: [["Flow", "Sequential"]] }],
+      }),
+    ]);
+    expect(s.objects[0].content[0].text).toBe("Waterfall");
+  });
+
   it("rejects responses with nothing to create", () => {
     expect(() => validateScene({ objects: [] })).toThrow();
     expect(() => validateScene({ objects: [{ kind: "card", text: "", content: [] }] })).toThrow();

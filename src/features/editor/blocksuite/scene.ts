@@ -225,6 +225,9 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
       o.cell.every((n) => Number.isInteger(n) && n >= 0 && n < 200)
         ? o.cell
         : [];
+    // A table or board without a title would show "Untitled": it takes the card's.
+    for (const c of body)
+      if ((c.type === "table" || c.type === "kanban") && !c.text.trim()) c.text = text;
     objects.push({
       id,
       kind,

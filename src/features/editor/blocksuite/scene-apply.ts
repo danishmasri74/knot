@@ -15,7 +15,6 @@ import { aiBlockSize, appendAiBlock } from "./ai-content";
 import { appendWebProvenance } from "./web-source";
 import {
   ARROW_LABEL_COLOR,
-  aiConnectorStroke,
   canvasObstacles,
   connectorLabel,
   parseBox,
@@ -36,6 +35,8 @@ type SceneUndo = (() => void) & {
 };
 
 const LAYOUT = { right: 0, left: 1, balance: 2 } as const;
+/** Arrows without a chosen colour: readable on light and dark canvases. */
+const NEUTRAL_ARROW = { light: "#7a7a76", dark: "#9b9b97" };
 /** Frames the editor gets to measure new cards before final placement. */
 const MEASURE_FRAMES = 40;
 /** Frames to wait before trusting that sizes have stopped changing. */
@@ -311,7 +312,7 @@ export function applyScene(
       if (node) return mindmapNodes.get(node[1])?.[Number(node[2])] ?? ids.get(node[1]);
       return undefined;
     };
-    for (const [index, c] of scene.connectors.entries()) {
+    for (const c of scene.connectors) {
       const from = endpoint(c.from);
       const to = endpoint(c.to);
       if (!from || !to) {
@@ -321,7 +322,8 @@ export function applyScene(
       surface.addElement({
         type: "connector",
         mode: connectorMode,
-        stroke: c.color ? `--affine-palette-line-${c.color}` : aiConnectorStroke(index),
+        // One quiet colour unless the scene gives arrows meaning by colour.
+        stroke: c.color ? `--affine-palette-line-${c.color}` : NEUTRAL_ARROW,
         strokeStyle: c.style === "dashed" ? "dash" : "solid",
         source: { id: from },
         target: { id: to },
