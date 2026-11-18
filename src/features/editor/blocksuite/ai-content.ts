@@ -1,5 +1,6 @@
 import { Text, type Doc } from "@blocksuite/store";
 import type { DatabaseBlockModel } from "@blocksuite/blocks";
+import { PDF_CITATION } from "../../../services/pdf-citations";
 
 export type AiContent = {
   sourceRefs?: string[];
@@ -19,9 +20,23 @@ export type AiContent = {
 };
 export type AiBlock = AiContent & { children?: AiContent[] };
 
-export function aiInlineRuns(
-  text: string,
-): { insert: string; attributes?: { bold?: true; italic?: true } }[] {
+/**
+ * Turns a page or slide citation the model wrote, such as "(12-Test+Levels.pptx,
+ * slide 3)", into a link label and the address that opens the reader there;
+ * undefined leaves the text as it is.
+ */
+export type AiCite = (citation: string) => { label: string; url: string } | undefined;
+type InlineRun = { insert: string; attributes?: { bold?: true; italic?: true; link?: string } };
+
+export function aiInlineRuns(text: string, cite?: AiCite): InlineRun[] {
+  if (cite) {
+    // Citations become links; the text around them keeps its formatting.
+    return text.split(new RegExp(`(${PDF_CITATION})`, "g")).flatMap((part, i): InlineRun[] => {
+      const link = i % 2 ? cite(part) : undefined;
+      if (link) return [{ insert: "(" }, { insert: link.label, attributes: { link: link.url } }, { insert: ")" }];
+      return part ? aiInlineRuns(part) : [];
+    });
+  }
   return text
     .split(/(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*\n]+\*)/g)
     .filter(Boolean)
@@ -95,7 +110,7 @@ export function aiBlockText(b: AiBlock): string {
     .filter(Boolean)
     .join("\n");
 }
-export function appendAiContent(doc: Doc, parent: string, b: AiContent) {
+export function appendAiContent(doc: Doc, parent: string, b: AiContent, cite?: AiCite) {
   if (b.type === "table" || b.type === "kanban") {
     const title = { id: "title", name: "Title", type: "title", data: {} };
     const status = { id: "status", name: "Status", type: "select", data: {} };
@@ -137,12 +152,12 @@ export function appendAiContent(doc: Doc, parent: string, b: AiContent) {
                 .slice(1)
                 .map((c, i) => [
                   c.id,
-                  { columnId: c.id, value: new Text(aiInlineRuns(row[i + 1])) },
+                  { columnId: c.id, value: new Text(aiInlineRuns(row[i + 1], cite)) },
                 ]),
             );
     }
     const props = {
-      title: new Text(aiInlineRuns(b.text)),
+      title: new Text(aiInlineRuns(b.text, cite)),
       columns,
       cells,
       views: [
@@ -179,7 +194,7 @@ export function appendAiContent(doc: Doc, parent: string, b: AiContent) {
     };
     const id = doc.addBlock("affine:database", props, parent);
     for (const { row, rowId } of rows) {
-      const rowProps = { id: rowId, text: new Text(aiInlineRuns(row[0])) };
+      const rowProps = { id: rowId, text: new Text(aiInlineRuns(row[0], cite)) };
       doc.addBlock("affine:paragraph", rowProps, id);
     }
   } else if (["bulleted", "numbered", "todo"].includes(b.type)) {
@@ -187,7 +202,7 @@ export function appendAiContent(doc: Doc, parent: string, b: AiContent) {
       "affine:list",
       {
         type: b.type as "bulleted" | "numbered" | "todo",
-        text: new Text(aiInlineRuns(b.text)),
+        text: new Text(aiInlineRuns(b.text, cite)),
         checked: false,
       },
       parent,
@@ -197,19 +212,20 @@ export function appendAiContent(doc: Doc, parent: string, b: AiContent) {
       "affine:paragraph",
       {
         type: b.type === "paragraph" ? "text" : (b.type as "h1" | "h2" | "h3"),
-        text: new Text(aiInlineRuns(b.text)),
+        text: new Text(aiInlineRuns(b.text, cite)),
       },
       parent,
     );
   }
 }
-export function appendAiBlock(doc: Doc, parent: string, b: AiBlock) {
+export function appendAiBlock(doc: Doc, parent: string, b: AiBlock, cite?: AiCite) {
   appendAiContent(
     doc,
     parent,
     b.children?.length ? { type: "h2", text: b.text } : b,
+    cite,
   );
-  for (const child of b.children ?? []) appendAiContent(doc, parent, child);
+  for (const child of b.children ?? []) appendAiContent(doc, parent, child, cite);
 }
 
 export function aiBlockSize(b: AiBlock) {

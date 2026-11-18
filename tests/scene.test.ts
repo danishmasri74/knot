@@ -185,6 +185,32 @@ describe("solveScene", () => {
     expect(Math.min(...g.map((b) => b[1]))).toBeGreaterThan(Math.max(...ring.map(bottom)));
   });
 
+  it("leaves room for arrow labels between grid neighbours and grid cells", () => {
+    const label = "supports early defect detection";
+    const arrow = (from: string, to: string) => ({ from, to, label, heads: "to", style: "", color: "" });
+    const s = scene(["g1", "g2", "g3", "g4"].map((id) => card(id)), {
+      arrangements: [{ id: "grid", kind: "grid", members: ["g1", "g2", "g3", "g4"], center: "", columns: 2, in: "", place: { rel: "", of: "", align: "", gap: 0 }, gap: 0, align: "" }],
+      connectors: [arrow("g1", "g2")],
+    });
+    const { boxes } = solveScene(s, { sizes: sizes(s) });
+    const [g1, g2, g3, g4] = ["g1", "g2", "g3", "g4"].map((id) => boxes.get(id)!);
+    expect(g2[0] - right(g1)).toBeGreaterThanOrEqual(label.length * 8.5);
+    // The column gap holds for the whole column, so the grid stays a grid.
+    expect(g4[0]).toBe(g2[0]);
+    expect(g3[1] - bottom(g1)).toBeLessThan(100);
+
+    const cells = scene([card("a", { cell: [0, 0] }), card("b", { cell: [1, 0] })], { connectors: [arrow("a", "b")] });
+    const placed = solveScene(cells, { sizes: sizes(cells) }).boxes;
+    expect(placed.get("b")![0] - right(placed.get("a")!)).toBeGreaterThanOrEqual(label.length * 8.5);
+  });
+
+  it("widens a card the model made too narrow for its table", () => {
+    const table = { type: "table", text: "Maintenance categories", columns: ["Category", "Purpose"], rows: [["Corrective", "Fix defects"]] };
+    const s = scene([card("t", { width: 400, content: [table] }), card("p", { width: 400 })]);
+    expect(s.objects[0].width).toBe(600);
+    expect(s.objects[1].width).toBe(400);
+  });
+
   it("moves the scene clear of existing content beside its anchor", () => {
     const s = scene([card("a"), card("b", { place: { rel: "rightOf", of: "a", align: "", gap: 0 } })], {
       anchor: { near: "", side: "right" },

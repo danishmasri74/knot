@@ -179,11 +179,19 @@ export function solveScene(scene: Scene, input: SolveInput): SolveResult {
       const heights = Array.from({ length: rows }, (_, r) =>
         Math.max(0, ...sizes.filter((_, i) => Math.floor(i / columns) === r).map((s) => s.height)),
       );
+      // Neighbours joined by a labelled arrow get the room the label needs.
+      const at = (r: number, c: number) => ids[r * columns + c] ?? new Set<string>();
+      const gapX = Array.from({ length: columns - 1 }, (_, c) =>
+        Math.max(base, ...Array.from({ length: rows }, (_, r) => labelled(at(r, c), at(r, c + 1), true, base))),
+      );
+      const gapY = Array.from({ length: rows - 1 }, (_, r) =>
+        Math.max(base, ...Array.from({ length: columns }, (_, c) => labelled(at(r, c), at(r + 1, c), false, base))),
+      );
       a.members.forEach((m, i) => {
         const c = i % columns;
         const r = Math.floor(i / columns);
-        const x = widths.slice(0, c).reduce((s, w) => s + w + base, 0);
-        const y = heights.slice(0, r).reduce((s, h) => s + h + base, 0);
+        const x = widths.slice(0, c).reduce((s, w, k) => s + w + gapX[k], 0);
+        const y = heights.slice(0, r).reduce((s, h, k) => s + h + gapY[k], 0);
         members.set(m, [
           along(a.align, x, widths[c], sizes[i].width),
           y,
@@ -320,10 +328,23 @@ export function solveScene(scene: Scene, input: SolveInput): SolveResult {
       const heights = Array.from({ length: rows }, (_, r) =>
         Math.max(0, ...cells.filter((u) => u.cell[1] === r).map((u) => u.h)),
       );
+      // Neighbouring cells joined by a labelled arrow get the room the label needs.
+      const idsAt = (c: number, r: number) =>
+        new Set(
+          cells
+            .filter((u) => u.cell[0] === c && u.cell[1] === r)
+            .flatMap((u) => [...u.members.keys()].flatMap((m) => [...within(m)])),
+        );
+      const gapX = Array.from({ length: cols }, (_, c) =>
+        Math.max(NORMAL_GAP, ...Array.from({ length: rows }, (_, r) => labelled(idsAt(c, r), idsAt(c + 1, r), true, NORMAL_GAP))),
+      );
+      const gapY = Array.from({ length: rows }, (_, r) =>
+        Math.max(NORMAL_GAP, ...Array.from({ length: cols }, (_, c) => labelled(idsAt(c, r), idsAt(c, r + 1), false, NORMAL_GAP))),
+      );
       for (const u of cells) {
         u.at = [
-          widths.slice(0, u.cell[0]).reduce((s, w) => s + w + (w ? NORMAL_GAP : 0), 0),
-          heights.slice(0, u.cell[1]).reduce((s, h) => s + h + (h ? NORMAL_GAP : 0), 0),
+          widths.slice(0, u.cell[0]).reduce((s, w, k) => s + w + (w ? gapX[k] : 0), 0),
+          heights.slice(0, u.cell[1]).reduce((s, h, k) => s + h + (h ? gapY[k] : 0), 0),
         ];
         placed.push(u);
       }

@@ -145,6 +145,20 @@ const firstSentence = (text: string) => {
 const oneOf = <T extends string>(list: readonly T[], v: unknown, fallback: T | "" = "") =>
   (list as readonly unknown[]).includes(v) ? (v as T) : fallback;
 
+/** Narrowest card that shows a table or board without squeezing its columns. */
+export function contentWidth(body: AiContent[]): number {
+  return Math.max(
+    0,
+    ...body.map((c) =>
+      c.type === "table"
+        ? Math.max(600, (c.columns?.length ?? 0) * 200 + 80)
+        : c.type === "kanban"
+          ? Math.max(760, (c.columns?.length ?? 0) * 280 + 80)
+          : 0,
+    ),
+  );
+}
+
 function content(value: unknown): AiContent | null {
   const c = value as AiContent;
   if (!c || !CONTENT_TYPES.has(c.type) || !isString(c.text)) return null;
@@ -274,9 +288,10 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
       in: !fixed && isString(o.in) ? o.in.trim() : "",
       place: fixed ? place(undefined) : place(o.place),
       cell: fixed ? [] : cell,
+      // A chosen width never squeezes a table's or board's columns.
       width:
         Number.isFinite(o.width) && Number(o.width) > 0
-          ? Math.max(120, Math.min(1600, Number(o.width)))
+          ? Math.max(120, contentWidth(kind === "card" ? body : []), Math.min(1600, Number(o.width)))
           : 0,
       color: oneOf(SCENE_COLORS, o.color),
       direction: oneOf(["right", "left", "balance"] as const, o.direction),

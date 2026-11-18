@@ -1,11 +1,12 @@
 /**
  * A schematic picture of a scene's draft for the model's review: frames as
  * titled outlines, cards and shapes as boxes with their titles, existing
- * canvas objects greyed, and arrows as straight lines between the objects
- * they join. It shows the layout, not the finished styling; nothing is
+ * canvas objects greyed, and arrows along the paths the editor will draw,
+ * labels at their real size. It shows the layout, not the finished styling; nothing is
  * drawn on the user's canvas.
  */
 import type { Scene } from "./scene";
+import { arrowRoute, labelBox, type ArrowShape } from "./scene-report";
 import type { Box } from "./scene-solver";
 
 const MAX_W = 1400;
@@ -36,6 +37,7 @@ export function sceneSchematic(
   scene: Scene,
   boxes: Map<string, Box>,
   existing: { box: Box; title: string }[] = [],
+  shape: ArrowShape = "elbowed",
 ): string {
   if (typeof document === "undefined") return "";
   const all = [...boxes.values(), ...existing.map((e) => e.box)];
@@ -126,30 +128,23 @@ export function sceneSchematic(
         : o.text || (o.content[0]?.text ?? "");
     title(text, b, o.kind === "text" ? 24 : 18, o.kind === "card" ? 3 : 4, o.kind === "shape" ? "center" : "left");
   }
-  // Arrows: straight lines between the objects' edges.
+  // Arrows: the path the editor draws between the sides that face each other.
   const endBox = (ref: string) => boxes.get(ref) ?? boxes.get(ref.split("#")[0]);
+  const point = (p: [number, number]): [number, number] => [(p[0] - x0) * scale, (p[1] - y0) * scale];
   for (const c of scene.connectors) {
     const a = endBox(c.from);
     const z = endBox(c.to);
     if (!a || !z) continue;
-    const p = at(a);
-    const q = at(z);
-    const pc: [number, number] = [p[0] + p[2] / 2, p[1] + p[3] / 2];
-    const qc: [number, number] = [q[0] + q[2] / 2, q[1] + q[3] / 2];
-    const edge = (b: Box, from: [number, number], to: [number, number]): [number, number] => {
-      const dx = to[0] - from[0];
-      const dy = to[1] - from[1];
-      const t = Math.min(dx ? b[2] / 2 / Math.abs(dx) : Infinity, dy ? b[3] / 2 / Math.abs(dy) : Infinity, 1);
-      return [from[0] + dx * t, from[1] + dy * t];
-    };
-    const s = edge(p, pc, qc);
-    const e = edge(q, qc, pc);
+    const world = arrowRoute(a, z, shape).points;
+    const path = world.map(point);
+    const s = path[0];
+    const e = path[path.length - 1];
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 1.5;
     ctx.setLineDash(c.style === "dashed" ? [7, 5] : []);
     ctx.beginPath();
     ctx.moveTo(s[0], s[1]);
-    ctx.lineTo(e[0], e[1]);
+    for (const p of path.slice(1)) ctx.lineTo(p[0], p[1]);
     ctx.stroke();
     ctx.setLineDash([]);
     const head = (tip: [number, number], tail: [number, number]) => {
@@ -163,17 +158,20 @@ export function sceneSchematic(
       ctx.fillStyle = LINE;
       ctx.fill();
     };
-    if (c.heads === "to" || c.heads === "both") head(e, s);
-    if (c.heads === "from" || c.heads === "both") head(s, e);
+    if (c.heads === "to" || c.heads === "both") head(e, path[path.length - 2]);
+    if (c.heads === "from" || c.heads === "both") head(s, path[1]);
     if (c.label) {
-      font(14);
-      const mx = (s[0] + e[0]) / 2;
-      const my = (s[1] + e[1]) / 2;
-      const tw = ctx.measureText(c.label).width;
+      // Its real size, so a label that covers a card shows covering it.
+      const b = at(labelBox(c.label, world));
+      font(16);
       ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.fillRect(mx - tw / 2 - 3, my - 8, tw + 6, 16);
+      ctx.fillRect(b[0], b[1], b[2], b[3]);
       ctx.fillStyle = "#3d5a91";
-      ctx.fillText(c.label, mx - tw / 2, my - 7);
+      wrap(ctx, c.label, b[2], 3).forEach((row, i, rows) => {
+        const tw = ctx.measureText(row).width;
+        const lh = b[3] / rows.length;
+        ctx.fillText(row, b[0] + b[2] / 2 - tw / 2, b[1] + lh * i + lh * 0.7);
+      });
     }
   }
   return canvas.toDataURL("image/png");

@@ -14,7 +14,9 @@ import { mcqDecks } from "./mcq-block";
 import { dissolveDotsAmong } from "./reroute";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
 import { canvasHandles } from "../../../services/canvas-map-format";
-import { aiBlockSize, appendAiBlock } from "./ai-content";
+import { aiBlockSize, appendAiBlock, type AiCite } from "./ai-content";
+import { resolvePdfCitation } from "../../../services/pdf-citations";
+import { pdfSourceUrl } from "./pdf-highlights";
 import { appendWebProvenance } from "./web-source";
 import {
   ARROW_LABEL_COLOR,
@@ -28,6 +30,7 @@ import {
 } from "./ai";
 import { sceneCardBlock, sceneTexts, wrapForReplacement, type Scene, type SceneObject } from "./scene";
 import { FRAME_PAD, FRAME_TOP, solveScene, type Box, type Size } from "./scene-solver";
+import { arrowRoute } from "./scene-report";
 
 type SceneUndo = (() => void) & {
   noteId?: string;
@@ -43,11 +46,33 @@ const LAYOUT = { right: 0, left: 1, balance: 2 } as const;
 const SHAPE_LABEL_COLOR = { light: "#2b2b2b", dark: "#1f1f1f" };
 /** Arrows without a chosen colour: readable on light and dark canvases. */
 const NEUTRAL_ARROW = { light: "#7a7a76", dark: "#9b9b97" };
-/** Frames the editor gets to measure new cards before final placement. */
-const MEASURE_FRAMES = 40;
+/** Frames the editor gets to measure new cards before final placement (about 3 s). */
+const MEASURE_FRAMES = 180;
 /** Frames to wait before trusting that sizes have stopped changing. */
 const MIN_MEASURE_FRAMES = 8;
+/** Unchanged frames, with every new card drawn, that count as settled. */
+const STILL_FRAMES = 6;
 
+type LazyNote = HTMLElement & { _knotRich?: boolean; _knotMount?: (force?: boolean) => void };
+/**
+ * Knot draws a canvas card's content only once it's on screen, one card per
+ * frame and never while the view moves (see the BlockSuite patch). Until
+ * then a card keeps its estimated size, so the second solve would place it
+ * by a guess and it would grow over its neighbours later. This draws the new
+ * cards now and returns how many of them the editor shows.
+ */
+function drawCards(ids: string[]): number {
+  if (typeof document === "undefined") return 0;
+  let shown = 0;
+  for (const id of ids)
+    for (const view of document.querySelectorAll<LazyNote>(
+      `affine-edgeless-note[data-block-id="${CSS.escape(id)}"]`,
+    )) {
+      shown++;
+      if (view._knotRich === false) view._knotMount?.(false);
+    }
+  return shown;
+}
 /**
  * A card's height from its text, calibrated against cards the editor
  * measured (360 px wide: title and padding about 206 px, a body line about
@@ -62,7 +87,14 @@ export function cardHeight(o: SceneObject, width: number): number {
       .reduce((n, line) => n + Math.max(1, Math.ceil(Array.from(line).length / perLine(px))), 0);
   let height = 176 + lines(o.text || " ", 12.5) * 30;
   for (const c of o.content) {
-    if (c.type === "table") height += 48 + ((c.rows?.length ?? 0) + 1) * 38;
+    if (c.type === "table") {
+      // Cells wrap: a row is as tall as its longest cell.
+      const columns = Math.max(1, c.columns?.length ?? 0, ...(c.rows ?? []).map((r) => r.length));
+      const perCell = Math.max(6, Math.floor((width - 84) / columns / 7.5));
+      const rowHeight = (cells: string[]) =>
+        16 + 22 * Math.max(1, ...cells.map((cell) => Math.ceil(Array.from(cell || " ").length / perCell)));
+      height += 48 + rowHeight(c.columns ?? []) + (c.rows ?? []).reduce((h, r) => h + rowHeight(r), 0);
+    }
     else if (c.type === "kanban") height += 120 + (c.rows?.length ?? 0) * 70;
     else if (c.type === "h1" || c.type === "h2" || c.type === "h3")
       height += lines(c.text, 10) * 28 + 10;
@@ -267,6 +299,30 @@ export function prepareReplacement(doc: Doc, scene: Scene, noteId: string) {
   };
 }
 
+/**
+ * Links for the page and slide citations the model writes into cards, such
+ * as "(12-Test+Levels.pptx, slide 3)": each becomes a readable link that
+ * opens the PDF reader at that page, like citations in Ask Knot answers.
+ */
+export function sceneCitations(context: AiContext): AiCite | undefined {
+  const pdfs = context.pdfFiles?.length
+    ? context.pdfFiles
+    : context.pdfSource
+      ? [{ key: context.pdfSource.key, name: context.selectionLabel || context.label || "PDF" }]
+      : [];
+  if (!pdfs.length) return undefined;
+  return (text) => {
+    const cited = resolvePdfCitation(text, pdfs);
+    if (!cited) return undefined;
+    try {
+      const url = pdfSourceUrl({ key: cited.pdf.key, name: cited.pdf.name, documentId: context.document, page: cited.page, rects: [] });
+      return { label: cited.label, url };
+    } catch {
+      return undefined;
+    }
+  };
+}
+
 export function applyScene(
   doc: Doc,
   context: AiContext,
@@ -321,12 +377,31 @@ export function applyScene(
   let report = [...scene.notes, ...planned.report];
 
   const ids = new Map<string, string>();
+  const cite = sceneCitations(context);
   const mindmapNodes = new Map<string, string[]>();
+  const shape = getAiConnectorShape();
   const connectorMode = {
     curve: ConnectorMode.Curve,
     elbowed: ConnectorMode.Orthogonal,
     straight: ConnectorMode.Straight,
-  }[getAiConnectorShape()];
+  }[shape];
+  /** Arrows made here, with the scene connector each one draws. */
+  const arrows: { id: string; c: Scene["connectors"][number] }[] = [];
+  /**
+   * The sides an arrow attaches to, facing each other, so the editor draws
+   * the path the layout check measured (see arrowRoute). Mind map branches
+   * keep the editor's own choice.
+   */
+  const sides = (c: Scene["connectors"][number], at: Map<string, Box>) => {
+    const box = (ref: string) => {
+      if (ref.includes("#")) return undefined;
+      if (replaced && handleIds.get(ref) === replaced.note.id) return at.get(replaced.frame);
+      return at.get(ref) ?? planned.handles.get(ref);
+    };
+    const a = box(c.from);
+    const b = box(c.to);
+    return a && b ? arrowRoute(a, b, shape) : undefined;
+  };
   const xywh = (b: Box) => `[${b.map((n) => Math.round(n)).join(",")}]`;
 
   const history = doc.history as unknown as { captureTimeout: number };
@@ -355,7 +430,7 @@ export function applyScene(
           } as never,
           doc.root!,
         );
-        appendAiBlock(doc, id, sceneCardBlock(o));
+        appendAiBlock(doc, id, sceneCardBlock(o), cite);
         const refs = [
           ...(o.sourceRefs ?? []),
           ...o.content.flatMap((c) => c.sourceRefs ?? []),
@@ -515,18 +590,20 @@ export function applyScene(
         report.push(`Left out the arrow from "${c.from}" to "${c.to}".`);
         continue;
       }
-      surface.addElement({
+      const route = sides(c, boxes);
+      const arrow = surface.addElement({
         type: "connector",
         mode: connectorMode,
         // One quiet colour unless the scene gives arrows meaning by colour.
         stroke: c.color ? `--affine-palette-line-${c.color}` : NEUTRAL_ARROW,
         strokeStyle: c.style === "dashed" ? "dash" : "solid",
-        source: { id: from },
-        target: { id: to },
+        source: { id: from, ...(route && { position: route.from }) },
+        target: { id: to, ...(route && { position: route.to }) },
         frontEndpointStyle: c.heads === "from" || c.heads === "both" ? "Arrow" : "None",
         rearEndpointStyle: c.heads === "to" || c.heads === "both" ? "Arrow" : "None",
         ...(c.label && { text: new Y.Text(c.label), ...connectorLabel(c.label) }),
-      } as never);
+      } as never) as unknown as string;
+      arrows.push({ id: arrow, c });
       // An arrow's web evidence is kept on the new card it starts from.
       if (c.sourceRefs?.length && doc.getBlock(from)?.model.flavour === "affine:note")
         appendWebProvenance(doc, from, context.webContext, c.sourceRefs, `Connection: ${c.label}`);
@@ -596,12 +673,16 @@ export function applyScene(
         [...ids.values()].every((id) => !doc.getBlock(id) && !surface.getElementById(id));
       let last = "";
       let still = 0;
+      const cardIds = cards.map((o) => ids.get(o.id)!).filter(Boolean);
       for (let frame = 0; frame < MEASURE_FRAMES; frame++) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        const key = JSON.stringify([...measured()].map(([, s]) => [Math.round(s.width), Math.round(s.height)]));
+        // Cards come into view as the reveal moves the canvas; the count
+        // keeps sizes from looking settled before they've been drawn.
+        const shown = drawCards(cardIds);
+        const key = JSON.stringify([shown, ...[...measured()].map(([, s]) => [Math.round(s.width), Math.round(s.height)])]);
         still = key === last ? still + 1 : 0;
         last = key;
-        if (frame >= MIN_MEASURE_FRAMES && still >= 3) break;
+        if (frame >= MIN_MEASURE_FRAMES && still >= STILL_FRAMES) break;
       }
       if (gone()) return;
       const real = measured();
@@ -630,6 +711,20 @@ export function applyScene(
               } | null;
               element?.moveTo?.(box);
             } else surface.updateElement(id, { xywh: xywh(box) } as never);
+          }
+          // Objects moved, so the sides that face each other may have changed.
+          for (const { id, c } of arrows) {
+            const route = sides(c, next.boxes);
+            const arrow = surface.getElementById(id) as unknown as {
+              source?: { id?: string; position?: number[] };
+              target?: { id?: string; position?: number[] };
+            } | null;
+            if (!route || !arrow?.source?.id || !arrow.target?.id) continue;
+            if (`${arrow.source.position}` === `${route.from}` && `${arrow.target.position}` === `${route.to}`) continue;
+            surface.updateElement(id, {
+              source: { id: arrow.source.id, position: route.from },
+              target: { id: arrow.target.id, position: route.to },
+            } as never);
           }
           refit();
         });

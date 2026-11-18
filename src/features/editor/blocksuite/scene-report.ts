@@ -48,6 +48,72 @@ function clip(p: Point, q: Point, b: Box, inset = 4): [number, number] | undefin
   return t0 < t1 ? [t0, t1] : undefined;
 }
 
+export type ArrowShape = "curve" | "elbowed" | "straight";
+export type ArrowRoute = {
+  /** Where the arrow leaves and enters its objects, relative to each box (0-1). */
+  from: [number, number];
+  to: [number, number];
+  /** The drawn path on the canvas. */
+  points: Point[];
+};
+
+/**
+ * The path an arrow between two boxes takes. Knot attaches arrows to the
+ * sides that face each other (left and right when the boxes sit side by
+ * side, bottom and top when stacked), so the editor's route is predictable:
+ * an elbowed arrow runs out to the middle of the gap, across, and in; a
+ * straight or curved one goes from side to side. The layout check measures
+ * this path, not a line between centres.
+ */
+export function arrowRoute(a: Box, b: Box, shape: ArrowShape = "elbowed"): ArrowRoute {
+  const gapX = Math.max(b[0] - (a[0] + a[2]), a[0] - (b[0] + b[2]));
+  const gapY = Math.max(b[1] - (a[1] + a[3]), a[1] - (b[1] + b[3]));
+  const [ac, bc] = [centre(a), centre(b)];
+  let from: [number, number];
+  let to: [number, number];
+  if (gapX >= gapY) {
+    const forward = bc[0] >= ac[0];
+    from = [forward ? 1 : 0, 0.5];
+    to = [forward ? 0 : 1, 0.5];
+  } else {
+    const down = bc[1] >= ac[1];
+    from = [0.5, down ? 1 : 0];
+    to = [0.5, down ? 0 : 1];
+  }
+  const p: Point = [a[0] + a[2] * from[0], a[1] + a[3] * from[1]];
+  const q: Point = [b[0] + b[2] * to[0], b[1] + b[3] * to[1]];
+  if (shape !== "elbowed" || p[0] === q[0] || p[1] === q[1]) return { from, to, points: [p, q] };
+  if (gapX >= gapY) {
+    const mx = (p[0] + q[0]) / 2;
+    return { from, to, points: [p, [mx, p[1]], [mx, q[1]], q] };
+  }
+  const my = (p[1] + q[1]) / 2;
+  return { from, to, points: [p, [p[0], my], [q[0], my], q] };
+}
+
+/** The point halfway along a path, where the editor draws an arrow's label. */
+export function routeMiddle(points: Point[]): Point {
+  const lengths = points.slice(1).map((q, i) => Math.hypot(q[0] - points[i][0], q[1] - points[i][1]));
+  let left = lengths.reduce((s, l) => s + l, 0) / 2;
+  for (let i = 0; i < lengths.length; i++) {
+    if (left <= lengths[i] && lengths[i] > 0) {
+      const t = left / lengths[i];
+      return [points[i][0] + (points[i + 1][0] - points[i][0]) * t, points[i][1] + (points[i + 1][1] - points[i][1]) * t];
+    }
+    left -= lengths[i];
+  }
+  return points[points.length - 1];
+}
+
+/** The box of an arrow's label, drawn centred on the middle of its path. */
+export function labelBox(label: string, points: Point[]): Box {
+  const chars = Array.from(label.trim()).length;
+  const width = Math.min(320, Math.max(36, chars * 9 + 20));
+  const height = Math.ceil((chars * 9 + 20) / 320) * 26;
+  const [mx, my] = routeMiddle(points);
+  return [mx - width / 2, my - height / 2, width, height];
+}
+
 /** Whether two segments properly cross. */
 function cross(a: Point, b: Point, c: Point, d: Point): boolean {
   const o = (p: Point, q: Point, r: Point) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
@@ -58,7 +124,7 @@ export function sceneReport(
   scene: Scene,
   boxes: Map<string, Box>,
   solverReport: string[],
-  options: { sources?: string[]; view?: Box; handles?: Map<string, Box> } = {},
+  options: { sources?: string[]; view?: Box; handles?: Map<string, Box>; shape?: ArrowShape } = {},
 ): SceneReport {
   const objects = new Map(scene.objects.map((o) => [o.id, o]));
   const name = (id: string) => {
@@ -79,37 +145,42 @@ export function sceneReport(
     boxes.get(ref) ?? boxes.get(ref.split("#")[0]) ?? options.handles?.get(ref);
   const solid = scene.objects.filter((o) => o.kind !== "frame" && boxes.has(o.id));
 
-  const segments = scene.connectors.flatMap((c) => {
+  // Each arrow as the path the editor draws, and its label's box.
+  const routes = scene.connectors.flatMap((c) => {
     const a = endBox(c.from);
     const b = endBox(c.to);
     if (!a || !b) return [];
-    const p = centre(a);
-    const q = centre(b);
-    // Only the part between the two objects: from leaving one to entering the other.
-    const leave = clip(p, q, a, 0)?.[1] ?? 0;
-    const enter = clip(p, q, b, 0)?.[0] ?? 1;
-    if (enter <= leave) return [];
-    const at = (t: number): Point => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
-    return [{ c, p: at(leave), q: at(enter) }];
+    const { points } = arrowRoute(a, b, options.shape);
+    return [{ c, points, label: c.label ? labelBox(c.label, points) : undefined }];
   });
+  const pieces = (points: Point[]) => points.slice(1).map((q, i) => [points[i], q] as const);
+  const meets = (a: Box, b: Box) =>
+    a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
 
   const crossings: string[] = [];
-  for (const { c, p, q } of segments) {
+  for (const { c, points, label } of routes) {
     const ends = new Set([c.from.split("#")[0], c.to.split("#")[0]]);
     const containers = new Set([...ends].flatMap((e) => [...ancestors(e)]));
+    const arrow = `the arrow from ${name(c.from)} to ${name(c.to)}${c.label ? ` ("${c.label}")` : ""}`;
+    const under: string[] = [];
     for (const o of solid) {
-      if (ends.has(o.id) || containers.has(o.id)) continue;
-      if (clip(p, q, boxes.get(o.id)!))
-        crossings.push(`The arrow from ${name(c.from)} to ${name(c.to)}${c.label ? ` ("${c.label}")` : ""} passes over ${name(o.id)}.`);
+      if (containers.has(o.id)) continue;
+      const box = boxes.get(o.id)!;
+      if (!ends.has(o.id) && pieces(points).some(([p, q]) => clip(p, q, box)))
+        crossings.push(`${arrow[0].toUpperCase()}${arrow.slice(1)} passes over ${name(o.id)}.`);
+      // A label is drawn on top of whatever is under it, its own ends included.
+      else if (label && meets(label, [box[0] + 4, box[1] + 4, box[2] - 8, box[3] - 8])) under.push(name(o.id));
     }
+    if (under.length)
+      crossings.push(`The label of ${arrow} sits over ${under.join(" and ")}: leave more room between them or shorten the label.`);
   }
   const arrowCrossings: string[] = [];
-  for (let i = 0; i < segments.length; i++)
-    for (let j = i + 1; j < segments.length; j++) {
-      const a = segments[i];
-      const b = segments[j];
+  for (let i = 0; i < routes.length; i++)
+    for (let j = i + 1; j < routes.length; j++) {
+      const a = routes[i];
+      const b = routes[j];
       const shared = [a.c.from, a.c.to].some((e) => e === b.c.from || e === b.c.to);
-      if (!shared && cross(a.p, a.q, b.p, b.q))
+      if (!shared && pieces(a.points).some(([p, q]) => pieces(b.points).some(([r, s]) => cross(p, q, r, s))))
         arrowCrossings.push(`The arrows ${name(a.c.from)} → ${name(a.c.to)} and ${name(b.c.from)} → ${name(b.c.to)} cross.`);
     }
 

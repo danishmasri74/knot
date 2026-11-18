@@ -37,6 +37,38 @@ describe("sceneReport", () => {
     expect(r.issues).toBe(2);
   });
 
+  it("measures an elbowed arrow along its drawn path, not a line between centres", () => {
+    // "a" top left, "c" lower right: the straight line passes clear of "b",
+    // but the elbow turns down through the middle of the gap, right over it.
+    const s = scene([card("a"), card("b"), card("c")], [arrow("a", "c")]);
+    const boxes = new Map<string, Box>([
+      ["a", [0, 0, 100, 100]],
+      ["b", [230, 60, 40, 40]],
+      ["c", [400, 200, 100, 100]],
+    ]);
+    expect(sceneReport(s, boxes, [], { shape: "straight" }).crossings).toEqual([]);
+    const elbowed = sceneReport(s, boxes, [], { shape: "elbowed" });
+    expect(elbowed.crossings).toHaveLength(1);
+    expect(elbowed.crossings[0]).toContain('passes over "b"');
+  });
+
+  it("flags a label too long for the gap it sits in", () => {
+    const s = scene([card("a"), card("b")], [arrow("a", "b", "supports early defect detection")]);
+    const close = new Map<string, Box>([
+      ["a", [0, 0, 360, 200]],
+      ["b", [410, 0, 360, 200]],
+    ]);
+    const r = sceneReport(s, close, []);
+    expect(r.crossings).toHaveLength(1);
+    expect(r.crossings[0]).toContain("label");
+    expect(r.crossings[0]).toContain('"a" (a) and "b" (b)');
+    const roomy = new Map<string, Box>([
+      ["a", [0, 0, 360, 200]],
+      ["b", [720, 0, 360, 200]],
+    ]);
+    expect(sceneReport(s, roomy, []).issues).toBe(0);
+  });
+
   it("ignores the frame an arrow's ends sit in", () => {
     const s = scene(
       [card("f", { kind: "frame", text: "Section" }), card("a", { in: "f" }), card("b", { in: "f" })],

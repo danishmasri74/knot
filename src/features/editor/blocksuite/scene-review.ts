@@ -8,6 +8,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Doc } from "@blocksuite/store";
 import type { AiContext } from "./ai";
 import { canvasHandles } from "../../../services/canvas-map-format";
+import { getAiConnectorShape } from "../../../services/ai-preferences";
 import { mergeScene, revisionChanges, type Scene, type SceneRevision } from "./scene";
 import { planScene, prepareReplacement } from "./scene-apply";
 import { sceneReport, type SceneReport } from "./scene-report";
@@ -80,6 +81,7 @@ export function measureScene(
     const report = sceneReport(prepared.scene, planned.boxes, planned.report, {
       view: options.view,
       handles: planned.handles,
+      shape: getAiConnectorShape(),
     });
     const missing = prepared.uncovered.map((p) => (p.length > 300 ? `${p.slice(0, 299)}…` : p)).slice(0, 30);
     return {
@@ -93,6 +95,7 @@ export function measureScene(
     sources: options.sources,
     view: options.view,
     handles: planned.handles,
+    shape: getAiConnectorShape(),
   });
   return { planned, report, measured: scene };
 }
@@ -184,7 +187,7 @@ export async function reviewScene(input: {
     // The count is Knot's stopping rule, not something to review.
     const report: Partial<SceneReport> = { ...measured.report };
     delete report.issues;
-    const image = sceneSchematic(measured.measured, measured.planned.boxes, existing);
+    const image = sceneSchematic(measured.measured, measured.planned.boxes, existing, getAiConnectorShape());
     let revision: SceneRevision;
     try {
       revision = await requestReview(
