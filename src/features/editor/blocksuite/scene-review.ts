@@ -9,7 +9,7 @@ import type { Doc } from "@blocksuite/store";
 import type { AiContext } from "./ai";
 import { canvasHandles } from "../../../services/canvas-map-format";
 import { mergeScene, revisionChanges, type Scene, type SceneRevision } from "./scene";
-import { planScene } from "./scene-apply";
+import { planScene, prepareReplacement } from "./scene-apply";
 import { sceneReport, type SceneReport } from "./scene-report";
 import { sceneSchematic } from "./scene-schematic";
 import type { Box } from "./scene-solver";
@@ -67,15 +67,73 @@ export function measureScene(
   doc: Doc,
   context: AiContext,
   scene: Scene,
-  options: { view?: Box; sources?: string[] },
+  options: { view?: Box; sources?: string[]; replaces?: string },
 ) {
+  if (options.replaces) {
+    // Measured exactly as Apply places it: in the card's frame, where the card
+    // was. Passages it misses are the card's, not kept-aside details.
+    const prepared = prepareReplacement(doc, scene, options.replaces);
+    const planned = planScene(doc, context, prepared.scene, {
+      view: options.view,
+      replaces: { id: prepared.replaced.note.id, box: prepared.replaced.box },
+    });
+    const report = sceneReport(prepared.scene, planned.boxes, planned.report, {
+      view: options.view,
+      handles: planned.handles,
+    });
+    const missing = prepared.uncovered.map((p) => (p.length > 300 ? `${p.slice(0, 299)}…` : p)).slice(0, 30);
+    return {
+      planned,
+      report: { ...report, missing, issues: report.issues + missing.length },
+      measured: prepared.scene,
+    };
+  }
   const planned = planScene(doc, context, scene, { view: options.view });
   const report = sceneReport(scene, planned.boxes, planned.report, {
     sources: options.sources,
     view: options.view,
     handles: planned.handles,
   });
-  return { planned, report };
+  return { planned, report, measured: scene };
+}
+
+/**
+ * A review's changes on a scene built from captured web pages: what a change
+ * replaces keeps its source references (the object's, a block with the same
+ * text, an arrow between the same ends), and anything new is marked as not
+ * from web evidence, so every source stays traceable.
+ */
+export function inheritSourceRefs(before: Scene, after: Scene): Scene {
+  const old = new Map(before.objects.map((o) => [o.id, o]));
+  const refsOf = (o: Scene["objects"][number]) => [
+    ...new Set([...(o.sourceRefs ?? []), ...o.content.flatMap((c) => c.sourceRefs ?? []), ...o.nodes.flatMap((n) => n.sourceRefs ?? [])]),
+  ];
+  return {
+    ...after,
+    objects: after.objects.map((o) => {
+      const was = old.get(o.id);
+      const all = was ? refsOf(was) : [];
+      return {
+        ...o,
+        sourceRefs: o.sourceRefs ?? was?.sourceRefs ?? [],
+        content: o.content.map((c) => ({
+          ...c,
+          sourceRefs: c.sourceRefs ?? was?.content.find((x) => x.text === c.text)?.sourceRefs ?? all,
+        })),
+        nodes: o.nodes.map((n) => ({
+          ...n,
+          sourceRefs: n.sourceRefs ?? was?.nodes.find((x) => x.text === n.text)?.sourceRefs ?? all,
+        })),
+      };
+    }),
+    connectors: after.connectors.map((c) => ({
+      ...c,
+      sourceRefs:
+        c.sourceRefs ??
+        before.connectors.find((x) => x.from === c.from && x.to === c.to)?.sourceRefs ??
+        [],
+    })),
+  };
 }
 
 /** The scene for the review request: without Knot's own notes. */
@@ -97,6 +155,10 @@ export async function reviewScene(input: {
   view?: Box;
   /** Source passages the scene should cover (note and card text). */
   sources?: string[];
+  /** Break this into ideas: the card the scene will replace. */
+  replaces?: string;
+  /** Built from captured web pages: changes keep source references. */
+  web?: boolean;
   onCost: (cost: Cost) => void;
   /** Called before each review request. */
   onRound?: (round: number, report: SceneReport) => void;
@@ -122,7 +184,7 @@ export async function reviewScene(input: {
     // The count is Knot's stopping rule, not something to review.
     const report: Partial<SceneReport> = { ...measured.report };
     delete report.issues;
-    const image = sceneSchematic(best, measured.planned.boxes, existing);
+    const image = sceneSchematic(measured.measured, measured.planned.boxes, existing);
     let revision: SceneRevision;
     try {
       revision = await requestReview(
@@ -140,6 +202,7 @@ export async function reviewScene(input: {
     let next: Scene;
     try {
       next = mergeScene(best, revision, handles);
+      if (input.web) next = inheritSourceRefs(best, next);
     } catch {
       break;
     }

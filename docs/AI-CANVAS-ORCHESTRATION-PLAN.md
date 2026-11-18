@@ -94,9 +94,22 @@ Phase 5 as built (18 November 2026):
   (`chooseLayout`, `layoutCards` and their fixed limits) and the old canvas
   path in `applyAiProposal` (cards, connections, links and the old
   Break this into ideas). Proposals saved from older Knot still show as
-  read-only previews but can't be applied. The forced `canvas` mode and
-  its rules remain in `ai.rs` for the benchmark fixtures only; the app
-  sends `scene` instead.
+  read-only previews but can't be applied. The forced `canvas` mode is
+  gone from `ai.rs` too; card actions send `scene`, and the benchmark
+  runner sends old `canvas` cases as scenes and skips the scenes suite's
+  old-path cases (their recorded results stay).
+
+Follow-ups before release (18 November 2026):
+
+- The layout check now runs on Break this into ideas, measured exactly as
+  it will replace the card (`prepareReplacement`), with the card's
+  uncovered passages as what's missing; and on scenes built from captured
+  web pages, where changed objects keep their source references and new
+  ones are marked as not from web evidence (`inheritSourceRefs`).
+- The reading-order check follows arrows: an object joined by an arrow to
+  something earlier (a side branch, a loop back) isn't out of order.
+- Dark theme: shape labels stay dark on the light shape fills
+  (`tests/ai-scene-themes.browser.mjs` screenshots both themes).
 
 Ask Knot can read the canvas (the canvas map, `view_canvas`) but it can't
 compose on it. This plan hands composition to the model: it decides what goes

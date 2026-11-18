@@ -114,14 +114,24 @@ export function sceneReport(
     }
 
   // Reading order: later objects sit to the right on the same band, or below.
+  // An object an arrow joins to something earlier in the order is read by
+  // following that arrow (a flowchart's side branch, a loop back), so its
+  // position doesn't count against the order.
   const order: string[] = [];
   const ordered = scene.objects
     .filter((o) => o.order > 0 && boxes.has(o.id))
     .sort((a, b) => a.order - b.order);
+  const base = (ref: string) => ref.split("#")[0];
+  const joinedEarlier = (o: SceneObject) =>
+    scene.connectors.some((c) => {
+      const other = base(c.from) === o.id ? base(c.to) : base(c.to) === o.id ? base(c.from) : "";
+      const earlier = objects.get(other);
+      return !!earlier && earlier.order > 0 && earlier.order < o.order;
+    });
   for (let i = 1; i < ordered.length; i++) {
     const a: SceneObject = ordered[i - 1];
     const b: SceneObject = ordered[i];
-    if (a.in !== b.in) continue;
+    if (a.in !== b.in || joinedEarlier(b)) continue;
     const [ax, ay, aw, ah] = boxes.get(a.id)!;
     const [bx, by, , bh] = boxes.get(b.id)!;
     const above = by + bh <= ay;

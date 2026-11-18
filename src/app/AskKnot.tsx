@@ -1117,6 +1117,7 @@ function AskKnotPanel({
             model: chosen,
             view: visibleCanvas(session.editor),
             sources: citationTexts(req.context),
+            web: hasWebEvidence(req.context),
             onCost: (cost) => recordCost(turn, cost as AiCost, sentFrom),
             signal: abort.signal,
           });
@@ -2778,7 +2779,7 @@ function AskKnotPanel({
         // A scene's draft is checked and fixed before it's previewed.
         const scene = draft.proposal.scene;
         const session = getSession();
-        if (proposed === "canvas" && scene && session && draft.context && !cardContext && !hasWebEvidence(requestContext)) {
+        if (proposed === "canvas" && scene && session && draft.context) {
           const checking = draft;
           const abort = new AbortController();
           reviewAbort.current = abort;
@@ -2793,6 +2794,9 @@ function AskKnotPanel({
             model: chosenModel,
             view: visibleCanvas(session.editor),
             sources: citationTexts(requestContext),
+            // Break this into ideas is checked as it will replace the card.
+            ...(cardContext?.note && { replaces: cardContext.note }),
+            web: hasWebEvidence(requestContext),
             onCost: (cost) => recordCost(checking, cost as AiCost, sentFrom),
             onRound: (round) => {
               checking.steps = beginStep(

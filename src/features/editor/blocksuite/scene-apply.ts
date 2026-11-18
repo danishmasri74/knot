@@ -39,6 +39,8 @@ type SceneUndo = (() => void) & {
 };
 
 const LAYOUT = { right: 0, left: 1, balance: 2 } as const;
+/** Shape fills stay light in both themes, so their labels stay dark. */
+const SHAPE_LABEL_COLOR = { light: "#2b2b2b", dark: "#1f1f1f" };
 /** Arrows without a chosen colour: readable on light and dark canvases. */
 const NEUTRAL_ARROW = { light: "#7a7a76", dark: "#9b9b97" };
 /** Frames the editor gets to measure new cards before final placement. */
@@ -244,6 +246,27 @@ export function planScene(
   return { surface, handles, handleIds, existingIds, moved, regrouped, homeFrames, sizes, solve, boxes, report };
 }
 
+/**
+ * Break this into ideas: the scene takes the card's place in a frame with
+ * its title, and whatever it doesn't cover is kept on "Other details".
+ */
+export function prepareReplacement(doc: Doc, scene: Scene, noteId: string) {
+  const found = doc.getBlock(noteId)?.model;
+  const note = found?.flavour === "affine:note" ? (found as NoteBlockModel) : undefined;
+  const box = note ? parseBox(note.xywh) : undefined;
+  if (!note || !box || note.isLocked())
+    throw new Error("The original card is unavailable. Select it again and retry.");
+  const source = structuredAiBlocks(note).map((b) => b.text);
+  const title = source.find((t) => t.trim())?.split("\n")[0].trim().slice(0, 120) || "Ideas";
+  const uncovered = uncoveredPassages(source, sceneTexts(scene));
+  const wrapped = wrapForReplacement(scene, title, uncovered);
+  return {
+    scene: wrapped.scene,
+    replaced: { note, box: box as Box, frame: wrapped.frame },
+    uncovered,
+  };
+}
+
 export function applyScene(
   doc: Doc,
   context: AiContext,
@@ -257,20 +280,11 @@ export function applyScene(
   } = {},
 ): SceneUndo {
   let scene = input;
-  // Break this into ideas: the scene takes the card's place in a frame with
-  // its title, and whatever it doesn't cover is kept on "Other details".
   let replaced: { note: NoteBlockModel; box: Box; frame: string } | undefined;
   if (options.replaces) {
-    const found = doc.getBlock(options.replaces)?.model;
-    const note = found?.flavour === "affine:note" ? (found as NoteBlockModel) : undefined;
-    const box = note ? parseBox(note.xywh) : undefined;
-    if (!note || !box || note.isLocked())
-      throw new Error("The original card is unavailable. Select it again and retry.");
-    const source = structuredAiBlocks(note).map((b) => b.text);
-    const title = source.find((t) => t.trim())?.split("\n")[0].trim().slice(0, 120) || "Ideas";
-    const wrapped = wrapForReplacement(scene, title, uncoveredPassages(source, sceneTexts(scene)));
-    scene = wrapped.scene;
-    replaced = { note, box: box as Box, frame: wrapped.frame };
+    const prepared = prepareReplacement(doc, scene, options.replaces);
+    scene = prepared.scene;
+    replaced = prepared.replaced;
   }
   const planned = planScene(doc, context, scene, {
     view: options.view,
@@ -375,7 +389,7 @@ export function applyScene(
             strokeWidth: 2,
             shapeStyle: "General",
             text: new Y.Text(o.text),
-            color: ARROW_LABEL_COLOR,
+            color: SHAPE_LABEL_COLOR,
             fontSize: 18,
             fontFamily: "blocksuite:surface:Inter",
             textAlign: "center",

@@ -187,7 +187,14 @@ fn live_quality_benchmark() {
                 case["image_data"].as_str().filter(|d| d.starts_with("data:image/png;base64,")).map(str::to_owned)
             });
             let pdf = asset("pdf_asset");
-            let mode = case["mode"].as_str().unwrap();
+            // The old canvas path was removed in orchestration phase 5: its
+            // cases are sent as scenes, and the scenes suite's old-path cases
+            // (kept for their recorded results) are skipped.
+            if case["path"] == "old" {
+                println!("{}: skipped, the old canvas path no longer exists", case["id"]);
+                continue;
+            }
+            let mode = match case["mode"].as_str().unwrap() { "canvas" => "scene", other => other };
             let tools: Vec<String> = serde_json::from_value(case["tools"].clone()).unwrap_or_default();
             // A completed search, to check results are accepted and used.
             let searches: Vec<SearchResult> = serde_json::from_value(case["searches"].clone()).unwrap_or_default();

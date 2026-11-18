@@ -61,6 +61,22 @@ describe("sceneReport", () => {
     expect(r.order[0]).toContain("above");
   });
 
+  it("reads a side branch by its arrow, not its position", () => {
+    const s = scene(
+      [card("decide", { order: 1 }), card("branch", { order: 2 }), card("next", { order: 3 })],
+      [arrow("decide", "branch", "no"), arrow("decide", "next", "yes")],
+    );
+    const boxes = new Map<string, Box>([
+      ["decide", [400, 0, 100, 100]],
+      ["branch", [0, 0, 100, 100]],
+      ["next", [400, 300, 100, 100]],
+    ]);
+    expect(sceneReport(s, boxes, []).order).toEqual([]);
+    // Without the arrow the same position is out of order.
+    const loose = scene([card("decide", { order: 1 }), card("branch", { order: 2 })]);
+    expect(sceneReport(loose, boxes, []).order).toHaveLength(1);
+  });
+
   it("lists source passages the scene leaves out, and the size against the screen", () => {
     const s = scene([card("risk", { content: [{ type: "paragraph", text: "Risk combines likelihood and impact of problems." }] })]);
     const boxes = new Map<string, Box>([["risk", [0, 0, 3200, 500]]]);
@@ -103,4 +119,33 @@ describe("mergeScene", () => {
   it("treats an empty revision as no change", () => {
     expect(revisionChanges(revision({ done: true }))).toBe(false);
   });
+});
+
+describe("web evidence through a review", () => {
+  it("keeps source references on changed objects and marks new ones, so validation passes", async () => {
+    const { inheritSourceRefs } = await import("../src/features/editor/blocksuite/scene-review");
+    const { validateProposal } = await import("../src/features/editor/blocksuite/ai");
+    const web = JSON.stringify({ webOutcomes: [{ state: "ready" }], citationSources: [{ kind: "web", ref: "c/s1", text: "A fact.", document: "web", id: "w1", captureId: "c", sectionId: "s1" }] });
+    const cited = (id: string, extra: Record<string, unknown> = {}) =>
+      card(id, { sourceRefs: ["c/s1"], content: [{ type: "paragraph", text: `About ${id}`, sourceRefs: ["c/s1"] }], ...extra });
+    const before = validateProposal(
+      { plan: "", anchor: { near: "", side: "" }, objects: [cited("a"), cited("b")], arrangements: [],
+        connectors: [{ ...arrow("a", "b"), reason: "", sourceRefs: ["c/s1"] }] },
+      web,
+    ).scene!;
+    // The review moved "b" (no refs in its reply), added "c" and an arrow.
+    const merged = mergeScene(before, revision({
+      objects: [card("b", { content: [{ type: "paragraph", text: "About b" }], place: { rel: "below", of: "a", align: "", gap: 0 } }), card("c")],
+      connectors: [arrow("c", "a", "explains")],
+    }));
+    const kept = inheritSourceRefs(before, merged);
+    const b = kept.objects.find((o) => o.id === "b")!;
+    expect(b.sourceRefs).toEqual(["c/s1"]);
+    expect(b.content[0].sourceRefs).toEqual(["c/s1"]);
+    expect(kept.objects.find((o) => o.id === "c")!.sourceRefs).toEqual([]);
+    expect(kept.connectors.map((c) => c.sourceRefs)).toEqual([["c/s1"], []]);
+    expect(() => validateProposal({ scene: kept }, web)).not.toThrow();
+    expect(() => validateProposal({ scene: merged }, web)).toThrow();
+    // Loading the editor modules the first time is slow.
+  }, 60_000);
 });
