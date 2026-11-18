@@ -179,3 +179,12 @@ describe("phase 5", () => {
     expect(() => validateScene({ objects: [], connectors: [] })).toThrow();
   });
 });
+
+describe("build progress", () => {
+  it("counts the objects a section reply has begun while it streams", async () => {
+    const { objectsSoFar } = await import("../src/features/editor/blocksuite/scene-build");
+    expect(objectsSoFar("")).toBe(0);
+    expect(objectsSoFar('{"objects":[{"id":"a","kind":"card","content":[{"type":"paragraph"}]},{"id":"b","ki')).toBe(1);
+    expect(objectsSoFar('{"objects":[{"id":"a","kind": "card"},{"id":"f","kind":"frame"}],"connectors":[')).toBe(2);
+  });
+});

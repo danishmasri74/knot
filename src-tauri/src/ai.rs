@@ -784,12 +784,44 @@ fn pdf_file_name(name: &str) -> String {
 }
 /// How answers cite several files, so the app can open the right one.
 const PDF_FILES_RULES: &str = "Several PDF files are attached, each under its file name. Every page or slide citation must name its file: write (file name, slide 3) or (file name, p. 3), using the file name exactly as given but without the final .pdf. Never cite a page or slide without its file name.";
-/// Adds the files to the first message, before its text. The files then sit
-/// in the part of the request that repeats from one call to the next, so the
-/// provider's prompt cache can reuse them: a big canvas job's section calls
-/// (only the last message differs) and later chat turns about the same files
-/// read them from the cache instead of paying for them again. Attached after
-/// the latest message, every call re-sent and re-cached all of them.
+/// The section requests of a big canvas job share everything up to the end
+/// of the first message (instructions, files and context); only the section
+/// message after it differs. Implicit caching writes only at the end of the
+/// whole request, which the next section can't reuse (a probe on 18 November
+/// 2026 read just the instructions, with or without files). An explicit
+/// breakpoint at the end of the first message is written by the first section
+/// and read by the rest; explicit mode stops the unreusable tail from being
+/// written at the 1.25x rate.
+fn cache_shared_prefix(body: &mut Value, model: &str) {
+    let Some(input) = body["input"].as_array_mut() else { return };
+    // A single PDF rides with the latest message; it belongs to the shared part.
+    let mut moved = Vec::new();
+    if input.len() > 1 {
+        if let Some(content) = input.last_mut().and_then(|m| m["content"].as_array_mut()) {
+            let (files, rest): (Vec<Value>, Vec<Value>) =
+                content.drain(..).partition(|item| item["type"] == "input_file");
+            *content = rest;
+            moved = files;
+        }
+    }
+    let Some(first) = input.first_mut() else { return };
+    if let Some(text) = first["content"].as_str().map(str::to_owned) {
+        first["content"] = json!([{"type":"input_text","text":text}]);
+    }
+    if let Some(content) = first["content"].as_array_mut() {
+        content.splice(0..0, moved);
+    }
+    if !EXPLICIT_CACHE_MODELS.contains(&model) {
+        return;
+    }
+    let Some(last) = first["content"].as_array_mut().and_then(|content| content.last_mut()) else { return };
+    last["prompt_cache_breakpoint"] = json!({"mode": "explicit"});
+    body["prompt_cache_options"] = json!({"mode": "explicit"});
+}
+/// Adds the files to the first message, before its text, so they sit in the
+/// part of the request that repeats from one call to the next: later chat
+/// turns about the same files, and a big canvas job's sections (with the
+/// breakpoint cache_shared_prefix adds), read them from the prompt cache.
 fn attach_pdf_files(body: &mut Value, files: &[PdfFile]) {
     if files.is_empty() {
         return;
@@ -1165,6 +1197,9 @@ async fn respond(
         request_body(model, messages, context, mode, image, pdf_input)
     };
     attach_pdf_files(&mut body, pdf_files);
+    if mode == "scene_section" {
+        cache_shared_prefix(&mut body, model);
+    }
     if measurement.collecting() {
         // Count serialized bytes without retaining a second copy of attachments.
         struct Counter(usize);
@@ -1334,6 +1369,7 @@ mod tests {
     use super::*;
     include!("ai_payload_baseline.rs");
     include!("ai_benchmark.rs");
+    include!("ai_cache_probe.rs");
     #[test]
     fn forced_scene_requests_use_the_scene_rules_and_schema() {
         let messages = vec![Message { role: "user".into(), content: "Break this card into ideas.".into() }];
@@ -1822,6 +1858,33 @@ mod tests {
         assert_eq!(a["instructions"], b["instructions"]);
         let (a, b) = (a["input"].as_array().unwrap(), b["input"].as_array().unwrap());
         assert_eq!(a[..a.len() - 1], b[..b.len() - 1]);
+    }
+    #[test]
+    fn section_requests_mark_the_shared_prefix_for_the_cache() {
+        let messages = vec![
+            Message { role: "user".into(), content: "Make notes".into() },
+            Message { role: "user".into(), content: "Build section one".into() },
+        ];
+        let files = vec![PdfFile { name: "a.pptx".into(), data: "data:application/pdf;base64,QQ==".into() }];
+        let mut body = request_body("gpt-6.1-sol", &messages, "{}", "scene_section", None, None);
+        attach_pdf_files(&mut body, &files);
+        cache_shared_prefix(&mut body, "gpt-6.1-sol");
+        assert_eq!(body["prompt_cache_options"], json!({"mode": "explicit"}));
+        let first = body["input"][0]["content"].as_array().unwrap();
+        assert_eq!(first[0]["type"], "input_file");
+        assert_eq!(first.last().unwrap()["prompt_cache_breakpoint"], json!({"mode": "explicit"}));
+        // Only the end of the shared part carries a breakpoint.
+        assert_eq!(body.to_string().matches("prompt_cache_breakpoint").count(), 1);
+        // A single PDF sent with the latest message moves into the shared part.
+        let mut single = request_body("gpt-6.1-sol", &messages, "{}", "scene_section", None, Some("data:application/pdf;base64,QQ=="));
+        cache_shared_prefix(&mut single, "gpt-6.1-sol");
+        let input = single["input"].as_array().unwrap();
+        assert_eq!(input[0]["content"][0]["type"], "input_file");
+        assert!(!input.last().unwrap().to_string().contains("input_file"));
+        // Older models get no cache parameters.
+        let mut legacy = request_body("gpt-5.4", &messages, "{}", "scene_section", None, None);
+        cache_shared_prefix(&mut legacy, "gpt-5.4");
+        assert!(legacy.get("prompt_cache_options").is_none() && !legacy.to_string().contains("prompt_cache_breakpoint"));
     }
     #[test]
     fn course_requests_use_strict_schemas_and_files_only() {

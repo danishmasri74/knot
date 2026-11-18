@@ -26,13 +26,18 @@ async function request(
   payload: Record<string, unknown>,
   onCost: (cost: Cost) => void,
   signal?: AbortSignal,
+  /** The reply so far, as it streams in. */
+  onText?: (text: string) => void,
 ): Promise<string> {
   const id = crypto.randomUUID();
   let output = "";
   const channel = new Channel<{ delta: string; cost?: Cost }>();
   channel.onmessage = ({ delta, cost }) => {
     if (cost) onCost(cost);
-    else if (output.length < 2_000_000) output += delta;
+    else if (output.length < 2_000_000) {
+      output += delta;
+      onText?.(output);
+    }
   };
   const stop = () => void invoke("ai_cancel", { id }).catch(() => {});
   if (signal?.aborted) throw new Error("Stopped");
@@ -43,6 +48,11 @@ async function request(
     signal?.removeEventListener("abort", stop);
   }
   return output;
+}
+
+/** Objects a streaming scene reply has begun so far (each has a kind). */
+export function objectsSoFar(text: string): number {
+  return text.match(/"kind"\s*:/g)?.length ?? 0;
 }
 
 /** What the model is told about the section it builds. */
@@ -68,6 +78,8 @@ export async function buildSections(input: {
   files: BuildFiles;
   onSection: (index: number, total: number, section: SceneSection) => void;
   onBuilt: (section: SceneSection) => void;
+  /** How many objects the section being built has so far, as it streams. */
+  onProgress?: (section: SceneSection, objects: number) => void;
   onCost: (cost: Cost) => void;
   signal?: AbortSignal;
 }): Promise<{ complete: boolean; error?: string }> {
@@ -77,6 +89,7 @@ export async function buildSections(input: {
     if (section.id in built) continue;
     if (input.signal?.aborted) return { complete: false };
     input.onSection(i + 1, total, section);
+    let shown = 0;
     try {
       const output = await request(
         {
@@ -89,6 +102,10 @@ export async function buildSections(input: {
         },
         input.onCost,
         input.signal,
+        (text) => {
+          const objects = objectsSoFar(text);
+          if (objects !== shown) input.onProgress?.(section, (shown = objects));
+        },
       );
       const value = JSON.parse(output) as { objects?: unknown[] };
       if (!Array.isArray(value.objects) || !value.objects.length)

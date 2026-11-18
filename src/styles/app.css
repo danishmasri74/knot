@@ -8348,6 +8348,13 @@ html[data-pane-gesture] .workspace-content > .editor-area {
   color: inherit;
   font-weight: 500;
 }
+.ask-step-clock {
+  flex: none;
+  margin-left: auto;
+  color: var(--ask-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
 .ask-steps .shell-icon {
   width: 14px;
   height: 14px;

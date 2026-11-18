@@ -5,6 +5,36 @@ import {
   type SceneObject,
   type SceneOutline,
 } from "../features/editor/blocksuite/scene";
+import {
+  PDF_CITATION,
+  resolvePdfCitation,
+  type CitedPdf,
+  type PdfCitation,
+} from "../services/pdf-citations";
+import { PdfRef } from "./PdfPreview";
+
+/** "12-Test+Levels.pptx, slides 1–5" written without parentheses. */
+const NAMED_PAGES = String.raw`[^\s(),:][^()
+,:]{0,200}?\.(?:pptx?|pdf|docx?|key|odp),\s*(?:slides?|pp?\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?`;
+
+/**
+ * Splits a section's description into text and links to the pages it
+ * cites. A file named with its slides ("X.pptx, slides 1–5") also becomes
+ * the file for later citations without a name ("(slide 3)").
+ */
+export function citedParts(text: string, pdfs: CitedPdf[]): (string | PdfCitation)[] {
+  if (!pdfs.length) return [text];
+  let file: CitedPdf | undefined;
+  return text.split(new RegExp(`(${PDF_CITATION}|${NAMED_PAGES})`, "g")).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const bare = !part.startsWith("(");
+    const citation = bare ? `(${part})` : part;
+    const cited =
+      resolvePdfCitation(citation, pdfs) ?? (file ? resolvePdfCitation(citation, [file]) : undefined);
+    if (cited && bare) file = cited.pdf;
+    return cited ?? part;
+  });
+}
 
 const kindLabel: Record<SceneObject["kind"], string> = {
   card: "Card",
@@ -70,10 +100,15 @@ export function OutlinePreview({
   outline,
   estimate,
   build,
+  pdfs = [],
+  onPdf,
 }: {
   outline: SceneOutline;
   estimate?: { usd?: number; seconds: number };
   build?: { state: string; done: number; total: number; error?: string };
+  /** The files the request sent, so cited slides can open. */
+  pdfs?: CitedPdf[];
+  onPdf?: (pdf: CitedPdf, page: number) => void;
 }) {
   const time = (s: number) =>
     s < 90 ? `${Math.max(10, Math.round(s / 10) * 10)} seconds` : `${Math.round(s / 60)} minutes`;
@@ -104,7 +139,15 @@ export function OutlinePreview({
         {outline.sections.map((s) => (
           <li key={s.id}>
             <strong>{s.title}</strong>
-            {s.covers && <span>{s.covers}</span>}
+            {s.covers && (
+              <span>
+                {onPdf
+                  ? citedParts(s.covers, pdfs).map((part, i) =>
+                      typeof part === "string" ? part : <PdfRef key={i} cited={part} onOpen={onPdf} />,
+                    )
+                  : s.covers}
+              </span>
+            )}
           </li>
         ))}
       </ol>

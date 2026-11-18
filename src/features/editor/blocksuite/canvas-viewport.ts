@@ -24,14 +24,26 @@ export function revealInViewport(viewport: Viewport, box: Box, margin = 32) {
   if (dx || dy) viewport.setCenter(viewport.centerX + dx, viewport.centerY + dy);
 }
 
+/** BlockSuite's smallest zoom (ZOOM_MIN in block-std's viewport). */
+const ZOOM_FLOOR = 0.2;
+
 /**
  * Brings `box` into view: no change when it is already visible, else centred
- * on it, zooming out (never in) when it doesn't fit at the current zoom.
+ * on it, zooming out (never in) when it doesn't fit at the current zoom. A box
+ * too big for the screen even at the smallest zoom shows from its top left,
+ * where reading starts.
+ *
+ * The target zoom must never go below the editor's own minimum: its smooth
+ * zoom steps until the zoom equals the target, but each step is clamped to
+ * the minimum, so a lower target never arrives and the animation runs every
+ * frame for good, resetting whatever zoom or position the user picks
+ * (18 November 2026: a tall three-section scene asked for about 0.14).
  */
 export function fitInViewport(
   viewport: Viewport & {
     width: number;
     height: number;
+    ZOOM_MIN?: number;
     setViewport(zoom: number, center?: [number, number], smooth?: boolean): void;
   },
   box: Box,
@@ -45,15 +57,23 @@ export function fitInViewport(
     box.y + box.h <= view.y + view.h
   )
     return;
+  const floor = Math.max(ZOOM_FLOOR, viewport.ZOOM_MIN ?? 0);
   const zoom = Math.max(
-    0.1,
+    floor,
     Math.min(
       viewport.zoom,
       (viewport.width - 2 * margin) / Math.max(1, box.w),
       (viewport.height - 2 * margin) / Math.max(1, box.h),
     ),
   );
-  viewport.setViewport(zoom, [box.x + box.w / 2, box.y + box.h / 2], true);
+  const pad = margin / zoom;
+  const centre = (start: number, size: number, screen: number) =>
+    size + 2 * pad <= screen / zoom ? start + size / 2 : start - pad + screen / zoom / 2;
+  viewport.setViewport(
+    zoom,
+    [centre(box.x, box.w, viewport.width), centre(box.y, box.h, viewport.height)],
+    true,
+  );
 }
 
 /** Where a new note goes: centered in view, moved down past notes it would cover. */

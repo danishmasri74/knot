@@ -877,6 +877,8 @@ function AskKnotPanel({
   const reviewAbort = useRef<AbortController>();
   /** Stops building an outlined scene; built sections are kept. */
   const buildAbort = useRef<AbortController>();
+  /** The answer a build is running for, and when its time started. */
+  const buildClock = useRef<{ turn: Turn; startedAt: number }>();
   const automaticRequest = useRef(false);
   const lastRequest = turns.filter((t) => t.role === "user").at(-1)?.request;
   const lastScope = lastRequest?.sourceMode;
@@ -1052,6 +1054,11 @@ function AskKnotPanel({
       : new Set<string>();
     const total = outline.sections.length;
     const count = () => outline.sections.filter((x) => x.id in built).length;
+    // The answer's time keeps counting through the build (and a Continue).
+    buildClock.current = {
+      turn,
+      startedAt: performance.now() - (turn.elapsedSeconds ?? 0) * 1000,
+    };
     turn.build = { state: "building", done: count(), total };
     turn.steps = [];
     setBusy(true);
@@ -1079,6 +1086,16 @@ function AskKnotPanel({
             "section",
             `Building section ${index} of ${all}: ${section.title}`,
             `Built ${all} sections`,
+          );
+          update([...turnsRef.current]);
+        },
+        onProgress: (section, objects) => {
+          const index = outline.sections.indexOf(section) + 1;
+          turn.steps = beginStep(
+            turn.steps,
+            "section",
+            `Building section ${index} of ${total}: ${section.title} · ${objects} ${objects === 1 ? "object" : "objects"} so far`,
+            `Built ${total} sections`,
           );
           update([...turnsRef.current]);
         },
@@ -1145,6 +1162,10 @@ function AskKnotPanel({
       setError(String(e));
     } finally {
       if (buildAbort.current === abort) buildAbort.current = undefined;
+      if (buildClock.current?.turn === turn) {
+        turn.elapsedSeconds = responseElapsedSeconds(buildClock.current.startedAt);
+        buildClock.current = undefined;
+      }
       if (mounted.current) {
         setBusy(false);
         update([...turnsRef.current]);
@@ -3284,7 +3305,12 @@ function AskKnotPanel({
                       Knot
                       {turn.autoModel && ` · ${aiModelName(turn.autoModel)}`}
                     </span>
-                    {busy && turn.attemptId === request.current ? (
+                    {buildClock.current?.turn === turn ? (
+                      <ResponseTimer
+                        key="build"
+                        startedAt={buildClock.current.startedAt}
+                      />
+                    ) : busy && turn.attemptId === request.current ? (
                       <ResponseTimer
                         key={turn.attemptId}
                         startedAt={requestStartedAt.current}
@@ -3354,7 +3380,14 @@ function AskKnotPanel({
                   <div className="ask-message-text">
                     {turn.role === "assistant" && (
                       <>
-                        {turn.content && <AskStepSummary steps={turn.steps} />}
+                        {/* While a step runs (building sections, checking the
+                            layout), show it live; afterwards, one quiet line. */}
+                        {turn.content &&
+                          (turn.steps?.some((step) => step.state === "active") ? (
+                            <AskStepList steps={turn.steps} />
+                          ) : (
+                            <AskStepSummary steps={turn.steps} />
+                          ))}
                         <WebCoverage context={turn.request?.context} />
                         <WorkspaceCoverage
                           context={shownContext(turn.request)}
@@ -3481,6 +3514,15 @@ function AskKnotPanel({
                             outline={turn.proposal.outline}
                             estimate={outlineEstimate(turn)}
                             build={turn.build}
+                            pdfs={citedPdfs(turn.request)}
+                            onPdf={(pdf, page) =>
+                              openAttachment({
+                                kind: "pdf",
+                                label: pdf.name,
+                                document: pdf.document,
+                                pdf: { key: pdf.key, page },
+                              })
+                            }
                           />
                         )}
                         {turn.proposal.scene && (

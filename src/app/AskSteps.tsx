@@ -1,10 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShellIcon } from "./ShellIcon";
 import {
   stepSummary,
   visibleSteps,
   type AskStep,
 } from "../services/ask-steps";
+
+/**
+ * How long the running step has taken, ticking each second, so a long step
+ * (building a section, checking the layout) visibly keeps going. Shown from
+ * 3 s on; quick steps don't need it.
+ */
+function StepClock({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.floor((now - since) / 1000);
+  if (seconds < 3) return null;
+  return (
+    <span className="ask-step-clock">
+      {seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, "0")} s`}
+    </span>
+  );
+}
 
 /** What Knot is doing right now, one line per step. */
 export function AskStepList({ steps }: { steps: AskStep[] | undefined }) {
@@ -31,6 +51,7 @@ export function AskStepList({ steps }: { steps: AskStep[] | undefined }) {
                 ? `${step.label} (stopped)`
                 : step.done}
           </span>
+          {step.state === "active" && <StepClock since={step.at} />}
         </li>
       ))}
     </ol>

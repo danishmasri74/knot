@@ -81,4 +81,16 @@ describe("fitInViewport", () => {
     fitInViewport(wide, { x: 2000, y: 0, w: 2000, h: 1000 }, 0);
     expect(wide.calls[0][0]).toBeCloseTo(0.4);
   });
+
+  it("never asks for less than the editor's smallest zoom, and shows a huge box from its top", () => {
+    // Below 0.2 the editor's smooth zoom never arrives and keeps resetting the view.
+    const tall = viewport();
+    fitInViewport(tall, { x: 0, y: 0, w: 1200, h: 4400 });
+    const [zoom, centre] = tall.calls[0];
+    expect(zoom).toBe(0.2);
+    // 1,200 px wide fits at 0.2 (4,000 px of view), so it's centred across...
+    expect(centre![0]).toBe(600);
+    // ...but 4,400 px tall doesn't (3,000 px of view): its top sits a margin below the top.
+    expect(centre![1] - 3000 / 2).toBeCloseTo(-48 / 0.2);
+  });
 });
