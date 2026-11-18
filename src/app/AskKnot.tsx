@@ -143,6 +143,7 @@ import { renderVisibleCanvas } from "../features/editor/blocksuite/canvas-snapsh
 import { canvasHandles } from "../services/canvas-map-format";
 import { sceneBlocks } from "../features/editor/blocksuite/scene";
 import { ScenePreview } from "./ScenePreview";
+import { reviewScene } from "../features/editor/blocksuite/scene-review";
 import {
   chooseLayout,
   type LayoutKind,
@@ -190,6 +191,8 @@ type Turn = {
   mode?: "rewrite" | "insert" | "canvas" | "note" | "quiz" | "arrange" | "connect";
   /** What Knot adjusted while placing a scene (scene-solver.ts). */
   layoutReport?: string[];
+  /** The draft check before the preview (scene-review.ts). */
+  review?: { rounds: number; summaries: string[]; before: number; after: number };
   /** connect_cards: suggestions the user unticked (indexes). */
   skipped?: number[];
   /** What an applied proposal created (a note, quiz or the first canvas
@@ -873,6 +876,8 @@ function AskKnotPanel({
   );
   const [retrievalStatus, setRetrievalStatus] = useState("");
   const retrievalAbort = useRef<AbortController>();
+  /** Stops a scene's draft check (its review requests). */
+  const reviewAbort = useRef<AbortController>();
   const automaticRequest = useRef(false);
   const lastRequest = turns.filter((t) => t.role === "user").at(-1)?.request;
   const lastScope = lastRequest?.sourceMode;
@@ -2605,6 +2610,46 @@ function AskKnotPanel({
               ? retry.context
               : { ...current, webContext: requestContext };
         draft.mode = proposed;
+        // A scene's draft is checked and fixed before it's previewed.
+        const scene = draft.proposal.scene;
+        const session = getSession();
+        if (proposed === "canvas" && scene && session && draft.context && !hasWebEvidence(requestContext)) {
+          const checking = draft;
+          const abort = new AbortController();
+          reviewAbort.current = abort;
+          checking.steps = beginStep(checking.steps, "review", "Checking the layout", "Checked the layout");
+          update([...turnsRef.current]);
+          const sentFrom = chatIdRef.current;
+          const reviewed = await reviewScene({
+            doc: session.doc,
+            context: checking.context!,
+            scene,
+            request: outgoing,
+            model: chosenModel,
+            view: visibleCanvas(session.editor),
+            sources: citationTexts(requestContext),
+            onCost: (cost) => recordCost(checking, cost as AiCost, sentFrom),
+            onRound: (round) => {
+              checking.steps = beginStep(
+                checking.steps,
+                "review",
+                round === 1 ? "Fixing the layout" : "Checking the fixes",
+                "Checked the layout",
+              );
+              update([...turnsRef.current]);
+            },
+            signal: abort.signal,
+          });
+          if (request.current !== id || !mounted.current) return;
+          checking.proposal = { ...checking.proposal!, scene: reviewed.scene };
+          if (reviewed.rounds)
+            checking.review = {
+              rounds: reviewed.rounds,
+              summaries: reviewed.summaries,
+              before: reviewed.before.issues,
+              after: reviewed.after.issues,
+            };
+        }
         // A card suggestion replaces its card; a retry keeps doing so.
         draft.replaces =
           proposed === "canvas"
@@ -3260,7 +3305,7 @@ function AskKnotPanel({
                           </p>
                         )}
                         {turn.proposal.scene && (
-                          <ScenePreview scene={turn.proposal.scene} />
+                          <ScenePreview scene={turn.proposal.scene} review={turn.review} />
                         )}
                         {turn.proposal.mindmap?.map((node, i, nodes) => (
                           <p key={i}>
@@ -4218,6 +4263,7 @@ function AskKnotPanel({
                     aria-label="Stop"
                     onClick={() => {
                       retrievalAbort.current?.abort();
+                      reviewAbort.current?.abort();
                       clearStreamTimer();
                       sourceCoordinator.current.cancel();
                       const id = request.current;
@@ -4678,6 +4724,24 @@ function copyableHtml(prose: Element): string {
   return copy.innerHTML;
 }
 /** The PDFs a message sent, with full names, for its answer's citations. */
+/** Whether a request carried captured website evidence (its refs must hold). */
+function hasWebEvidence(requestContext: string): boolean {
+  try {
+    const value = JSON.parse(requestContext) as { webOutcomes?: unknown[] };
+    return !!value.webOutcomes?.length;
+  } catch {
+    return false;
+  }
+}
+/** The text of a request's sources, for checking a scene covers them. */
+function citationTexts(requestContext: string): string[] {
+  try {
+    const value = JSON.parse(requestContext) as { citationSources?: { text?: unknown }[] };
+    return (value.citationSources ?? []).flatMap((s) => (typeof s.text === "string" ? [s.text] : []));
+  } catch {
+    return [];
+  }
+}
 /** The part of the canvas on screen, for a scene anchored to the view. */
 function visibleCanvas(
   editor: EditorSession["editor"],

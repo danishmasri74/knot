@@ -99,3 +99,43 @@ the old path on layout, grouping, placement and connections. Two things keep it 
 clean win: arrows that cross cards (mostly long arrows between frames) and one passage left
 out in two cases. Crossings are what phase 2's look-and-fix loop measures and repairs; the
 coverage check could also become part of that loop's report.
+
+## Phase 2: look and fix (18 November 2026)
+
+Each scene from the rerun (`7f076c64…`) was measured as Ask Knot now does before its
+preview (`scene-report.ts`), drawn as a schematic (`scene-schematic.ts`) and sent for review
+(mode `scene_review`) when the report found problems; a change was kept only when it
+measured better, for at most two rounds. Staged with `tests/benchmarks/review-scenes.mjs`
+(prepare → paid review run → merge), then replayed. Round 1: 5 scenes, run `3ef4b861…`,
+**about US$0.029**. Round 2: 4 scenes, run `75e0fa08…`, **about US$0.023** (the cycle's
+round-2 reply was left out of the merge, because Ask Knot stops after a round with no
+changes). Running total about **US$0.20** of the approved US$1.20.
+
+| # | Prompt | Problems before review | After round 1 | After round 2 | What the review changed |
+|---|---|---|---|---|---|
+| 1 | Atomic notes, three decks | 13 (12 arrows over cards, 1 crossing) | 3 | **0** | Reordered cards so connected ideas sit together, then reordered the test-type cards |
+| 2 | Flowchart | 5 (3 over shapes, 1 order, 1 missing) | 3 | 3 | Moved the information and confirmation branches; its second attempt was not better and was dropped |
+| 3 | Cycle | 1 (an order mismatch) | 1 | 1 | Nothing: the model saw nothing to fix |
+| 4–6 | Comparison, levels, beside chapter | 0 | – | – | Not reviewed |
+| 7 | Exam revision | 1 (an arrow over a card) | **0** | – | Moved monitoring below testing |
+| 8 | Risk drives testing | 4 (crossing, order, repair, missing) | 3 | 3 | Cleared the crossing and added the missing passage |
+| | **Total** | **24** | **10** | **7** | |
+
+Replayed on real canvases (measured card sizes, actual arrows):
+
+| | Old path | Phase 1 rerun | Phase 2 |
+|---|---|---|---|
+| Arrows | 36 | 52 | 52 |
+| Arrows crossing objects | 8 | 19 | **0** |
+| Source passages left out | 0 | 2 | 1 |
+| Overlaps | 0 | 0 | 0 |
+
+The remaining 7 problems are reading-order mismatches the model disagreed with (a flowchart
+branch drawn beside its decision is "left of" the next step), one solver repair note, and one
+passage in the flowchart. Review requests took about 7 seconds each, so a scene with problems
+arrives 7–15 seconds later; scenes without problems are not delayed.
+
+**Verdict:** phase 2 meets its exit criterion on this suite: crossings went from 19 to 0 and
+measured problems from 24 to 7, with every arrow kept and no content lost, for about two
+cents across eight scenes. Order mismatches for branches are partly a measurement artefact:
+the order check should understand side branches before it counts them.

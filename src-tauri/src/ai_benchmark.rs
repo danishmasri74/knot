@@ -25,6 +25,10 @@ fn live_quality_benchmark() {
     // KNOT_BENCHMARK_SUITE=scenes compares canvas creation on the old path and
     // as composed scenes (17 November 2026).
     let scenes = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("scenes");
+    // KNOT_BENCHMARK_SUITE=review runs scene reviews generated from a scenes
+    // run (tests/benchmarks/review-scenes.mjs); KNOT_BENCHMARK_INPUT names the
+    // generated file under tests/benchmarks/results.
+    let review = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("review");
     // Per-case input reservation. The largest v1 case used 1,219 input tokens
     // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
     // more stops the run. Maximum output is capped by the request (6,000).
@@ -37,9 +41,11 @@ fn live_quality_benchmark() {
     // about 5,000 input tokens, and scene requests are capped at 12,000 output
     // tokens here so spending can't exceed what is reserved.
     let scene_output: u64 = if scenes { 12_000 } else { SCENE_MAX_OUTPUT };
+    // A review reads a whole scene and a picture, and writes only changes.
     let input_reserve: u64 = if scenes { 10_000 } else { 20_000 };
     let output_cap = |case: &Value| -> u64 {
-        if case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "create_on_canvas")) { scene_output } else { 6000 }
+        if case["mode"] == "scene_review" { 8_000 }
+        else if case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "create_on_canvas")) { scene_output } else { 6000 }
     };
     let limits = |case: &Value| -> (u64, u64, f64) {
         let web = case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "web_search"));
@@ -62,7 +68,14 @@ fn live_quality_benchmark() {
             + searches as f64 * crate::diagnostics::WEB_SEARCH_USD;
         (input, searches, usd)
     };
-    let suite: Value = serde_json::from_str(if scenes {
+    let generated = review.then(|| {
+        let name = std::env::var("KNOT_BENCHMARK_INPUT").expect("Name the generated review file");
+        assert!(!name.contains(['/', '\\']) && name.ends_with(".json"), "A file name in tests/benchmarks/results");
+        std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/benchmarks/results").join(name)).unwrap()
+    });
+    let suite: Value = serde_json::from_str(if let Some(text) = &generated {
+        text.as_str()
+    } else if scenes {
         include_str!("../../tests/benchmarks/scenes.v1.json")
     } else if canvas {
         include_str!("../../tests/benchmarks/canvas.v1.json")
@@ -73,7 +86,9 @@ fn live_quality_benchmark() {
     })
     .unwrap();
     let all = suite["cases"].as_array().unwrap();
-    assert_eq!(all.len(), if scenes || canvas { 16 } else if routing { 34 } else { 60 });
+    if !review {
+        assert_eq!(all.len(), if scenes || canvas { 16 } else if routing { 34 } else { 60 });
+    }
     // KNOT_BENCHMARK_CASES (comma-separated IDs) repeats a few cases cheaply.
     let only = std::env::var("KNOT_BENCHMARK_CASES").ok();
     let cases: &Vec<Value> = &match &only {
@@ -161,7 +176,11 @@ fn live_quality_benchmark() {
                 assert!(["diagram.data","report.data"].contains(&name));
                 std::fs::read_to_string(root.join("assets").join(name)).unwrap()
             });
-            let image = asset("image_asset"); let pdf = asset("pdf_asset");
+            let image = asset("image_asset").or_else(|| {
+                // A review's schematic travels in the generated file.
+                case["image_data"].as_str().filter(|d| d.starts_with("data:image/png;base64,")).map(str::to_owned)
+            });
+            let pdf = asset("pdf_asset");
             let mode = case["mode"].as_str().unwrap();
             let tools: Vec<String> = serde_json::from_value(case["tools"].clone()).unwrap_or_default();
             // A completed search, to check results are accepted and used.

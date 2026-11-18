@@ -1,7 +1,7 @@
 # AI canvas orchestration — plan
 
-Status: phase 1 built, 17 November 2026 (not yet benchmarked against the
-old path; that needs a paid run). Phases 2 to 5 are proposals.
+Status: phases 1 and 2 built and benchmarked (17–18 November 2026). Phases 3 to 5
+are proposals.
 
 Phase 1 as built:
 
@@ -19,6 +19,23 @@ Phase 1 as built:
   brought into view before measuring so that usually covers all of it.
 - Follow-up buttons ("Make … cards", "Make a mind map") and "Split this
   answer into canvas cards" now go through `create_on_canvas`.
+
+Phase 2 as built (18 November 2026):
+
+- Before a scene is previewed, `scene-review.ts` lays it out in memory with
+  the same solver (`planScene`), measures it (`scene-report.ts`) and, when
+  there are problems, sends the scene, the report and a schematic picture
+  (`scene-schematic.ts`) to the model in a `scene_review` request
+  (`REVIEW_RULES`, `review_schema` in `ai.rs`). The model returns only
+  changes, merged with `mergeScene`; a round is kept only when it measures
+  better, for at most two rounds, and Stop cancels it.
+- The draft is computed in memory, not drawn on a hidden layer: nothing
+  reaches the notebook before Apply, so no draft can be saved, synced or
+  exported. The price is that the picture is a schematic (straight arrows,
+  estimated card heights) rather than the finished render.
+- Scenes built on captured website evidence are not reviewed yet, because
+  review changes would need their own source references.
+- Benchmark: `docs/AI-CANVAS-SCENES-BENCHMARK-2026-11-18.md` (crossings 19 → 0).
 
 Ask Knot can read the canvas (the canvas map, `view_canvas`) but it can't
 compose on it. This plan hands composition to the model: it decides what goes

@@ -1,0 +1,106 @@
+import { describe, expect, it } from "vitest";
+import { mergeScene, revisionChanges, validateScene, type SceneRevision } from "../src/features/editor/blocksuite/scene";
+import { sceneReport } from "../src/features/editor/blocksuite/scene-report";
+import type { Box } from "../src/features/editor/blocksuite/scene-solver";
+
+const card = (id: string, extra: Record<string, unknown> = {}) => ({
+  id, kind: "card", text: id, content: [], nodes: [], shape: "", in: "",
+  place: { rel: "", of: "", align: "", gap: 0 }, cell: [], width: 0, color: "",
+  direction: "", order: 0, role: "", ...extra,
+});
+const arrow = (from: string, to: string, label = "") => ({ from, to, label, heads: "to", style: "", color: "" });
+const scene = (objects: unknown[], connectors: unknown[] = []) =>
+  validateScene({ plan: "", anchor: { near: "", side: "" }, objects, arrangements: [], connectors });
+const revision = (r: Partial<SceneRevision>): SceneRevision => ({
+  done: false, summary: "", objects: [], remove: [], arrangements: [], removeArrangements: [],
+  connectors: [], removeConnectors: [], ...r,
+});
+
+describe("sceneReport", () => {
+  it("finds an arrow passing over a card and arrows that cross", () => {
+    const s = scene(
+      [card("a"), card("b"), card("c"), card("d"), card("e")],
+      [arrow("a", "c", "leads to"), arrow("d", "e")],
+    );
+    const boxes = new Map<string, Box>([
+      ["a", [0, 0, 100, 100]],
+      ["b", [200, 0, 100, 100]],
+      ["c", [400, 0, 100, 100]],
+      ["d", [150, -200, 50, 50]],
+      ["e", [150, 200, 50, 50]],
+    ]);
+    const r = sceneReport(s, boxes, []);
+    expect(r.crossings).toHaveLength(1);
+    expect(r.crossings[0]).toContain('"b" (b)');
+    expect(r.crossings[0]).toContain('"leads to"');
+    expect(r.arrowCrossings).toHaveLength(1);
+    expect(r.issues).toBe(2);
+  });
+
+  it("ignores the frame an arrow's ends sit in", () => {
+    const s = scene(
+      [card("f", { kind: "frame", text: "Section" }), card("a", { in: "f" }), card("b", { in: "f" })],
+      [arrow("a", "b")],
+    );
+    const boxes = new Map<string, Box>([
+      ["f", [-40, -60, 400, 300]],
+      ["a", [0, 0, 100, 100]],
+      ["b", [200, 0, 100, 100]],
+    ]);
+    expect(sceneReport(s, boxes, []).issues).toBe(0);
+  });
+
+  it("flags positions that contradict the reading order", () => {
+    const s = scene([card("first", { order: 1 }), card("second", { order: 2 })]);
+    const boxes = new Map<string, Box>([
+      ["first", [0, 300, 100, 100]],
+      ["second", [0, 0, 100, 100]],
+    ]);
+    const r = sceneReport(s, boxes, []);
+    expect(r.order).toHaveLength(1);
+    expect(r.order[0]).toContain("above");
+  });
+
+  it("lists source passages the scene leaves out, and the size against the screen", () => {
+    const s = scene([card("risk", { content: [{ type: "paragraph", text: "Risk combines likelihood and impact of problems." }] })]);
+    const boxes = new Map<string, Box>([["risk", [0, 0, 3200, 500]]]);
+    const r = sceneReport(s, boxes, [], {
+      sources: [
+        "Risk combines likelihood and impact of problems.",
+        "Some risks are accepted, transferred, or handled with contingency plans.",
+      ],
+      view: [0, 0, 1600, 1000],
+    });
+    expect(r.missing).toEqual(["Some risks are accepted, transferred, or handled with contingency plans."]);
+    expect(r.size).toContain("2.0 screens wide");
+  });
+});
+
+describe("mergeScene", () => {
+  it("replaces, adds and removes objects, arrows and arrangement members", () => {
+    const s = validateScene({
+      plan: "p",
+      anchor: { near: "", side: "" },
+      objects: [card("a"), card("b"), card("c")],
+      arrangements: [{ id: "row", kind: "row", members: ["a", "b", "c"], center: "", columns: 0, in: "", place: { rel: "", of: "", align: "", gap: 0 }, gap: 0, align: "" }],
+      connectors: [arrow("a", "b"), arrow("b", "c")],
+    });
+    const r = revision({
+      objects: [card("a", { text: "A, renamed" }), card("d", { place: { rel: "below", of: "a", align: "", gap: 0 } })],
+      remove: ["c"],
+      connectors: [arrow("d", "a", "explains")],
+      removeConnectors: [{ from: "a", to: "b" }],
+    });
+    expect(revisionChanges(r)).toBe(true);
+    const m = mergeScene(s, r);
+    expect(m.objects.map((o) => o.id)).toEqual(["a", "b", "d"]);
+    expect(m.objects[0].text).toBe("A, renamed");
+    expect(m.arrangements[0].members).toEqual(["a", "b"]);
+    expect(m.connectors.map((c) => `${c.from}>${c.to}`)).toEqual(["d>a"]);
+    expect(m.plan).toBe("p");
+  });
+
+  it("treats an empty revision as no change", () => {
+    expect(revisionChanges(revision({ done: true }))).toBe(false);
+  });
+});

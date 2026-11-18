@@ -443,3 +443,62 @@ export function sceneSummary(scene: Scene): string {
     ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
     : (parts[0] ?? "nothing");
 }
+
+/** A scene review's changes (REVIEW_RULES in ai.rs): only what changes. */
+export type SceneRevision = {
+  done: boolean;
+  summary: string;
+  objects: unknown[];
+  remove: string[];
+  arrangements: unknown[];
+  removeArrangements: string[];
+  connectors: unknown[];
+  removeConnectors: { from: string; to: string }[];
+};
+
+/** Whether a revision changes anything. */
+export function revisionChanges(r: SceneRevision): boolean {
+  return [r.objects, r.remove, r.arrangements, r.removeArrangements, r.connectors, r.removeConnectors].some(
+    (list) => Array.isArray(list) && list.length > 0,
+  );
+}
+
+/**
+ * Applies a review's changes to a scene and validates the result. Objects
+ * and arrangements with an existing id replace it; removing an object drops
+ * its arrows and its place in arrangements.
+ */
+export function mergeScene(scene: Scene, revision: SceneRevision, handles: Set<string> = new Set()): Scene {
+  const list = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+  const removed = new Set(list<string>(revision.remove));
+  const idOf = (o: unknown) => (o && typeof (o as { id?: unknown }).id === "string" ? (o as { id: string }).id.trim() : "");
+  const objects: unknown[] = scene.objects.filter((o) => !removed.has(o.id));
+  for (const o of list(revision.objects)) {
+    const at = objects.findIndex((x) => idOf(x) === idOf(o));
+    if (at >= 0) objects[at] = o;
+    else objects.push(o);
+  }
+  const gone = new Set(list<string>(revision.removeArrangements));
+  const arrangements: unknown[] = scene.arrangements
+    .filter((a) => !gone.has(a.id))
+    .map((a) => ({ ...a, members: a.members.filter((m) => !removed.has(m)) }));
+  for (const a of list(revision.arrangements)) {
+    const at = arrangements.findIndex((x) => idOf(x) === idOf(a));
+    if (at >= 0) arrangements[at] = a;
+    else arrangements.push(a);
+  }
+  const base = (ref: string) => ref.split("#")[0];
+  const cut = list<{ from: string; to: string }>(revision.removeConnectors);
+  const connectors: unknown[] = scene.connectors.filter(
+    (c) =>
+      !removed.has(base(c.from)) &&
+      !removed.has(base(c.to)) &&
+      !cut.some((r) => r && r.from === c.from && r.to === c.to),
+  );
+  for (const c of list(revision.connectors)) connectors.push(c);
+  const merged = validateScene(
+    { plan: scene.plan, anchor: scene.anchor, objects, arrangements, connectors },
+    handles,
+  );
+  return { ...merged, notes: [...scene.notes, ...merged.notes] };
+}

@@ -115,16 +115,13 @@ function selectionBox(context: AiContext): Box | undefined {
   ];
 }
 
-export function applyScene(
+/** Everything the solver needs for a scene on this canvas, and its layout. */
+export function planScene(
   doc: Doc,
   context: AiContext,
   scene: Scene,
-  options: {
-    view?: Box;
-    /** Brings objects into view, so the editor renders and measures them. */
-    reveal?: (ids: string[]) => void;
-  } = {},
-): SceneUndo {
+  options: { view?: Box } = {},
+) {
   const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
     | SurfaceBlockModel
     | undefined;
@@ -159,8 +156,24 @@ export function applyScene(
   const sizes = new Map(scene.objects.map((o) => [o.id, estimate(o)]));
   const solve = () =>
     solveScene(scene, { sizes, handles, obstacles, anchor, origin });
-  let { boxes, report } = solve();
-  report = [...scene.notes, ...report];
+  const { boxes, report } = solve();
+  return { surface, handles, handleIds, sizes, solve, boxes, report };
+}
+
+export function applyScene(
+  doc: Doc,
+  context: AiContext,
+  scene: Scene,
+  options: {
+    view?: Box;
+    /** Brings objects into view, so the editor renders and measures them. */
+    reveal?: (ids: string[]) => void;
+  } = {},
+): SceneUndo {
+  const planned = planScene(doc, context, scene, options);
+  const { surface, handleIds, sizes, solve } = planned;
+  let { boxes } = planned;
+  let report = [...scene.notes, ...planned.report];
 
   const ids = new Map<string, string>();
   const mindmapNodes = new Map<string, string[]>();

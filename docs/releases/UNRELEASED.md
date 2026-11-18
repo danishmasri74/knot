@@ -9,3 +9,4 @@
 - Switch between Ask Knot and Study from the top of either panel; the other tab opens in the same column if it was closed. Ask Knot suggests Study when a chat keeps coming back to the same slides or asks about exam prep, and you can dismiss it for that chat.
 - Ctrl+click chats in Ask Knot's chat history to select several and delete them together. Press Esc or × to clear the selection.
 - Ask Knot composes the canvas instead of laying cards out in a grid: it groups content into framed sections, adds headings, diagram shapes, mind maps and arrows (including to mind map branches and existing cards), and places them where it describes, next to what you asked about. The preview shows the structure it chose.
+- Before showing a canvas preview, Ask Knot checks its own layout and fixes arrows that run over cards, reading-order mix-ups and points it left out. The preview says what it fixed.

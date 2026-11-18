@@ -3827,6 +3827,11 @@ main:has(.settings-modal) > .editor-area {
   color: var(--ask-muted);
   font-size: 12px;
 }
+.ask-preview p.ask-scene-review {
+  margin-bottom: 8px;
+  color: var(--ask-muted);
+  font-size: 12px;
+}
 .ask-scene-outline {
   margin: 0;
   padding: 0;
