@@ -109,7 +109,9 @@ export type Scene = {
 };
 
 /** Handles the canvas map gives existing objects (K cards, F frames, T text, M mind maps). */
-export const MAP_HANDLE = /^[KFTMG]\d{1,4}$/;
+export const MAP_HANDLE = /^[KFTMGA]\d{1,4}$/;
+/** Free areas (A1, A2…) are places, not objects: anchors only. */
+const AREA = /^A\d{1,4}$/;
 // Section ids prefix their objects' ids (namespaceSection), hence the room.
 const ID = /^[\p{L}\p{N}_.:-]{1,120}$/u;
 /** Payload safety, not a design limit. */
@@ -333,7 +335,7 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
   const endpoint = (ref: unknown): string => {
     if (!isString(ref)) return "";
     const r = ref.trim();
-    if (byId.has(r) || handles.has(r)) return r;
+    if (byId.has(r) || (handles.has(r) && !AREA.test(r))) return r;
     const node = /^(.+)#(\d+)$/.exec(r);
     if (node && byId.get(node[1])?.kind === "mindmap") {
       const map = byId.get(node[1])!;
@@ -624,4 +626,55 @@ export function assembleSections(
     { plan: outline.plan, anchor: outline.anchor, objects, arrangements, connectors },
     handles,
   );
+}
+
+/**
+ * Break this into ideas, as a scene: everything goes in one frame titled
+ * like the original card (or the scene's own single frame), and passages the
+ * scene doesn't cover are kept word for word on an "Other details" card.
+ */
+export function wrapForReplacement(
+  scene: Scene,
+  title: string,
+  uncovered: string[],
+): { scene: Scene; frame: string } {
+  const top = scene.objects.filter((o) => !o.in);
+  const ids = new Set(scene.objects.map((o) => o.id));
+  const fresh = (base: string) => {
+    let id = base;
+    for (let i = 2; ids.has(id); i++) id = `${base}${i}`;
+    ids.add(id);
+    return id;
+  };
+  const own = top.length === 1 && top[0].kind === "frame" ? top[0].id : undefined;
+  const frame = own ?? fresh("ideas");
+  const objects: SceneObject[] = own
+    ? [...scene.objects]
+    : [
+        {
+          id: frame, kind: "frame", text: title || "Ideas", content: [], nodes: [], shape: "", in: "",
+          place: { rel: "", of: "", align: "", gap: 0 }, cell: [], width: 0, color: "", direction: "",
+          order: 0, role: "replaces the card",
+        },
+        ...scene.objects.map((o) => (o.in ? o : { ...o, in: frame })),
+      ];
+  if (uncovered.length)
+    objects.push({
+      id: fresh("other-details"), kind: "card", text: "Other details",
+      content: [
+        ...uncovered.slice(0, 29),
+        ...(uncovered.length > 29 ? [uncovered.slice(29).join(" ")] : []),
+      ].map((text) => ({ type: "bulleted" as const, text })),
+      nodes: [], shape: "", in: frame, place: { rel: "", of: "", align: "", gap: 0 }, cell: [],
+      width: 0, color: "", direction: "", order: 0, role: "kept word for word",
+    });
+  return {
+    frame,
+    scene: {
+      ...scene,
+      anchor: { near: "", side: "" },
+      objects,
+      arrangements: scene.arrangements.map((a) => (a.in || own ? a : { ...a, in: frame })),
+    },
+  };
 }

@@ -131,8 +131,12 @@ export function parseFollowUps(
   return result;
 }
 
-/** What a next step sends to the model; the answer is the only source. */
-export function followUpMessage(followUp: FollowUp, answer: string): string {
+/**
+ * What a next step sends to the model. With the user's question (a canvas
+ * step, sent with the original sources), the result keeps their request in
+ * view; otherwise the answer is the only source.
+ */
+export function followUpMessage(followUp: FollowUp, answer: string, question?: string): string {
   const instruction = {
     cards:
       "Turn the following answer into separate canvas cards, one per idea. Do not make a mind map.",
@@ -143,5 +147,7 @@ export function followUpMessage(followUp: FollowUp, answer: string): string {
     insert: "Add the following answer to my note.",
   }[followUp.action];
   const focus = followUp.focus ? ` ${followUp.focus}` : "";
+  if (question?.trim())
+    return `${instruction}${focus} The user originally asked: "${question.trim().slice(0, 1000)}". Make what they asked for, in their terms. Work from the answer below and the sources it came from; keep their facts and add none.\n\n${answer}`;
   return `${instruction}${focus} Keep its facts and do not add new ones.\n\n${answer}`;
 }

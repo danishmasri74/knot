@@ -8,7 +8,9 @@
  */
 import * as Y from "yjs";
 import { Text, type Doc } from "@blocksuite/store";
-import { ConnectorMode, type SurfaceBlockModel } from "@blocksuite/blocks";
+import { ConnectorMode, type NoteBlockModel, type SurfaceBlockModel } from "@blocksuite/blocks";
+import { uncoveredPassages } from "../../../services/ai-atomize";
+import { mcqDecks } from "./mcq-block";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
 import { canvasHandles } from "../../../services/canvas-map-format";
 import { aiBlockSize, appendAiBlock } from "./ai-content";
@@ -18,11 +20,12 @@ import {
   canvasObstacles,
   connectorLabel,
   parseBox,
+  structuredAiBlocks,
   undoApplied,
   version,
   type AiContext,
 } from "./ai";
-import { sceneCardBlock, type Scene, type SceneObject } from "./scene";
+import { sceneCardBlock, sceneTexts, wrapForReplacement, type Scene, type SceneObject } from "./scene";
 import { solveScene, type Box, type Size } from "./scene-solver";
 
 type SceneUndo = (() => void) & {
@@ -120,7 +123,11 @@ export function planScene(
   doc: Doc,
   context: AiContext,
   scene: Scene,
-  options: { view?: Box } = {},
+  options: {
+    view?: Box;
+    /** Break this into ideas: the card the scene takes the place of. */
+    replaces?: { id: string; box: Box };
+  } = {},
 ) {
   const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
     | SurfaceBlockModel
@@ -139,18 +146,31 @@ export function planScene(
   ]);
   for (const [handle, target] of targets) {
     if (!used.has(handle)) continue;
+    // A free area is a place; there is nothing to look up.
+    if (target.area && target.box) {
+      handles.set(handle, target.box as Box);
+      continue;
+    }
     if (!target.box || !(doc.getBlock(target.id) || surface.getElementById(target.id)))
       throw new Error("This refers to something that isn't on the canvas any more. Try again.");
     handles.set(handle, target.box as Box);
     handleIds.set(handle, target.id);
   }
-  const anchor =
-    scene.anchor.near === "selection"
+  // A free area holds the scene: it starts at the area's corner.
+  const area = /^A\d+$/.test(scene.anchor.near) ? handles.get(scene.anchor.near) : undefined;
+  const replaces = options.replaces;
+  const anchor = area || replaces
+    ? undefined
+    : scene.anchor.near === "selection"
       ? selectionBox(context)
       : handles.get(scene.anchor.near);
-  const obstacles = canvasObstacles(doc);
-  const origin: [number, number] =
-    scene.anchor.near === "view" && options.view
+  // A replacement takes the original's place, which no longer blocks.
+  const obstacles = canvasObstacles(doc, replaces ? (id) => id === replaces.id : undefined);
+  const origin: [number, number] = replaces
+    ? [replaces.box[0], replaces.box[1]]
+    : area
+    ? [area[0], area[1]]
+    : scene.anchor.near === "view" && options.view
       ? [options.view[0] + 60, options.view[1] + 60]
       : [Math.max(0, ...obstacles.map((b) => b[0] + b[2] + 80)), 0];
   const sizes = new Map(scene.objects.map((o) => [o.id, estimate(o)]));
@@ -163,14 +183,35 @@ export function planScene(
 export function applyScene(
   doc: Doc,
   context: AiContext,
-  scene: Scene,
+  input: Scene,
   options: {
     view?: Box;
     /** Brings objects into view, so the editor renders and measures them. */
     reveal?: (ids: string[]) => void;
+    /** Break this into ideas: the card the scene replaces (it goes to Trash). */
+    replaces?: string;
   } = {},
 ): SceneUndo {
-  const planned = planScene(doc, context, scene, options);
+  let scene = input;
+  // Break this into ideas: the scene takes the card's place in a frame with
+  // its title, and whatever it doesn't cover is kept on "Other details".
+  let replaced: { note: NoteBlockModel; box: Box; frame: string } | undefined;
+  if (options.replaces) {
+    const found = doc.getBlock(options.replaces)?.model;
+    const note = found?.flavour === "affine:note" ? (found as NoteBlockModel) : undefined;
+    const box = note ? parseBox(note.xywh) : undefined;
+    if (!note || !box || note.isLocked())
+      throw new Error("The original card is unavailable. Select it again and retry.");
+    const source = structuredAiBlocks(note).map((b) => b.text);
+    const title = source.find((t) => t.trim())?.split("\n")[0].trim().slice(0, 120) || "Ideas";
+    const wrapped = wrapForReplacement(scene, title, uncoveredPassages(source, sceneTexts(scene)));
+    scene = wrapped.scene;
+    replaced = { note, box: box as Box, frame: wrapped.frame };
+  }
+  const planned = planScene(doc, context, scene, {
+    view: options.view,
+    ...(replaced && { replaces: { id: replaced.note.id, box: replaced.box } }),
+  });
   const { surface, handleIds, sizes, solve } = planned;
   let { boxes } = planned;
   let report = [...scene.notes, ...planned.report];
@@ -320,6 +361,7 @@ export function applyScene(
     }
     const endpoint = (ref: string): string | undefined => {
       if (ids.has(ref)) return ids.get(ref);
+      if (replaced && handleIds.get(ref) === replaced.note.id) return ids.get(replaced.frame);
       if (handleIds.has(ref)) return handleIds.get(ref);
       const node = /^(.+)#(\d+)$/.exec(ref);
       if (node) return mindmapNodes.get(node[1])?.[Number(node[2])] ?? ids.get(node[1]);
@@ -345,7 +387,26 @@ export function applyScene(
         ...(c.label && { text: new Y.Text(c.label), ...connectorLabel(c.label) }),
       } as never);
     }
+    if (replaced) {
+      // Arrows that pointed at the original now point at its frame.
+      const frame = ids.get(replaced.frame)!;
+      const original = replaced.note.id;
+      for (const element of surface.elementModels) {
+        if (element.type !== "connector") continue;
+        const edge = element as unknown as { id: string; source?: { id?: string }; target?: { id?: string } };
+        if (edge.source?.id === original) surface.updateElement(edge.id, { source: { id: frame } } as never);
+        if (edge.target?.id === original) surface.updateElement(edge.id, { target: { id: frame } } as never);
+      }
+      doc.deleteBlock(replaced.note);
+    }
   });
+  // The original's card goes to Trash with it unless it's shown elsewhere;
+  // Undo brings it back.
+  const deck = replaced ? mcqDecks.get(doc.spaceDoc) : undefined;
+  const replacedCard = replaced
+    ? doc.spaceDoc.getMap<string>("knot:card-links").get(replaced.note.id)
+    : undefined;
+  const trashed = !!replacedCard && !!deck?.trashUnplaced(replacedCard);
 
   let item = doc.history.undoStack.at(-1);
   let appliedVersion = version(doc);
@@ -373,7 +434,10 @@ export function applyScene(
     }
     return real;
   };
-  const undo = () => undoApplied(doc, item, appliedVersion);
+  const undo = () => {
+    undoApplied(doc, item, appliedVersion);
+    if (trashed) deck!.restore(replacedCard!);
+  };
   const result: SceneUndo = Object.assign(undo, {
     noteId: cards.length ? ids.get(cards[0].id) : undefined,
     created,

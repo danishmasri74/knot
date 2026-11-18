@@ -1,7 +1,7 @@
 # AI canvas orchestration — plan
 
-Status: phases 1 to 3 built and benchmarked (17–18 November 2026). Phases 4 and 5
-are proposals.
+Status: phases 1 to 4 built (17–18 November 2026); phases 1 to 3 benchmarked and
+phase 4's routing checked. Phase 5 is a proposal.
 
 Phase 1 as built:
 
@@ -54,6 +54,28 @@ Phase 3 as built (18 November 2026):
   Apply for what's built.
 - Benchmark: six decks, 60 cards in 6 frames, nothing left out, about
   US$0.11 and 2.3 minutes.
+
+Phase 4 as built (18 November 2026):
+
+- The canvas map lists free areas (`freeAreas` in `canvas-map-format.ts`):
+  empty space beside the selection, beside the nearest PDF and media cards,
+  and the largest empty part of the screen (the map now records the view),
+  as A1, A2… with their size. A scene anchored to one fills it from its
+  corner; areas are never arrow ends.
+- Routing: asking for study material (atomic notes, flashcards, revision
+  notes, breaking decks down) while a canvas is open goes to
+  `create_on_canvas`, even without the word canvas.
+- Follow-up buttons name the result in the user's words (the question goes
+  with the request for suggestions), and canvas steps resend the answered
+  request's own sources (its context and files, with today's canvas map)
+  instead of only the answer text. Workspace-search answers still send the
+  answer alone.
+- Break this into ideas composes a scene (forced mode `scene`): the scene
+  takes the card's place in a frame with its title, arrows to the card move
+  to the frame, uncovered passages go on "Other details", the card goes to
+  Trash, and one undo restores everything (`wrapForReplacement`,
+  `applyScene` with `replaces`). The draft check doesn't run on
+  replacements yet.
 
 Ask Knot can read the canvas (the canvas map, `view_canvas`) but it can't
 compose on it. This plan hands composition to the model: it decides what goes

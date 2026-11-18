@@ -167,3 +167,21 @@ no source passage left out (0 of 47)**. Arrows running over cards: 32 before rev
 per deck and links across decks. The remaining crossings are long links between distant
 frames; a review cannot always shorten them without moving whole sections, which it did
 only partly. Running total for these benchmarks about **US$0.30** of the approved US$1.20.
+
+## Phase 4: routing check (18 November 2026)
+
+Four automatic requests over three synthetic decks with `create_on_canvas` offered
+(`results/routing-phase4.json`, generic file suite), Terra, **about US$0.033**:
+
+| Request | Route | Expected |
+|---|---|---|
+| Generate atomic notes | create_on_canvas | create_on_canvas |
+| Break these decks down for my revision | create_on_canvas | create_on_canvas |
+| What is impact analysis? | answer | answer |
+| Explain the difference between confirmation and regression testing | answer | answer |
+
+Before this change the first request was answered in chat in all four of the user's own
+attempts. Running total about **US$0.34** of the approved US$1.20. Placement in free areas
+and Break this into ideas on the scene path are covered by unit and browser tests
+(`tests/canvas-map-format.test.ts`, `tests/scene-build.test.ts`,
+`tests/ai-scene-replace.browser.mjs`), not by a paid run.

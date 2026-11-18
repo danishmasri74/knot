@@ -141,7 +141,7 @@ import { quizLines } from "../services/ai-quiz";
 import { uncoveredPassages } from "../services/ai-atomize";
 import { renderVisibleCanvas } from "../features/editor/blocksuite/canvas-snapshot";
 import { canvasHandles } from "../services/canvas-map-format";
-import { sceneBlocks } from "../features/editor/blocksuite/scene";
+import { sceneBlocks, sceneTexts } from "../features/editor/blocksuite/scene";
 import { OutlinePreview, ScenePreview } from "./ScenePreview";
 import {
   buildSections,
@@ -1915,7 +1915,9 @@ function AskKnotPanel({
           link: attempt === r.id ? r.payload.link : undefined,
           // Without tools or searches an automatic request is an ordinary answer.
           mode:
-            r.mode !== "auto"
+            r.mode === "canvas"
+              ? "scene"
+              : r.mode !== "auto"
               ? r.mode
               : tools.length || searches.length || viewed.length
                 ? "auto"
@@ -2069,20 +2071,28 @@ function AskKnotPanel({
       action === "insert" ? action : undefined,
       {
         message: `${action === "insert" ? "Add the following answer to my note" : "Turn the following answer into canvas content"}. Keep its facts and do not add new ones.\n\n${turn.content}`,
-        // The canvas gets a composed scene, as when asked in chat.
-        ...(action === "canvas" && { onlyTool: "create_on_canvas" as const }),
+        // The canvas gets a composed scene, as when asked in chat, from the
+        // answer's own sources.
+        ...(action === "canvas" && {
+          onlyTool: "create_on_canvas" as const,
+          ...(reusableSources(turn) && { sources: reusableSources(turn) }),
+        }),
       },
     );
   }
   /** Runs a next step offered under an answer; its proposal is previewed. */
   function chooseFollowUp(turn: Turn, followUp: FollowUp) {
     const message = followUpMessage(followUp, turn.content);
-    if (followUp.action === "cards" || followUp.action === "mindmap")
+    if (followUp.action === "cards" || followUp.action === "mindmap") {
+      // The canvas gets what was asked for, built from the original sources.
+      const at = turnsRef.current.indexOf(turn);
+      const asked = turnsRef.current[at - 1]?.role === "user" ? turnsRef.current[at - 1].content : "";
       void send(undefined, followUp.label, undefined, undefined, undefined, {
-        message,
-        answerSource: true,
+        message: reusableSources(turn) ? followUpMessage(followUp, turn.content, asked) : message,
+        ...(reusableSources(turn) ? { sources: reusableSources(turn) } : { answerSource: true }),
         onlyTool: "create_on_canvas",
       });
+    }
     else if (followUp.action === "insert")
       void send(undefined, followUp.label, undefined, undefined, "insert", {
         message,
@@ -2121,6 +2131,9 @@ function AskKnotPanel({
       /** A next step: the answer in the message is the only source, so the
        * note, canvas and PDFs it came from are not sent again. */
       answerSource?: boolean;
+      /** A next step for the canvas: send the answered request's own sources
+       * (its context and files) again, with the canvas as it is now. */
+      sources?: NonNullable<Turn["request"]>;
     },
   ) {
     const retry =
@@ -2154,6 +2167,8 @@ function AskKnotPanel({
     }
     const resolved = starterContext
       ? "current"
+      : options?.sources
+        ? (options.sources.sourceMode ?? "explicit")
       : options?.answerSource
         ? "explicit"
         : retry && !retry.request?.sourceMode && sourceScope === "auto"
@@ -2346,7 +2361,20 @@ function AskKnotPanel({
           citationSources: table,
         });
       }
+      // A canvas step reuses the answered request's sources, with today's canvas.
+      const sourcesContext = options?.sources
+        ? (() => {
+            const value = JSON.parse(options.sources!.context) as Record<string, unknown>;
+            delete value.canvasMap;
+            return JSON.stringify({
+              ...value,
+              mode: action,
+              ...(current.canvasMap && { canvasMap: current.canvasMap }),
+            });
+          })()
+        : undefined;
       const replayContext =
+        sourcesContext ??
         inheritedContext ??
         (retry?.request?.sourceMode === resolved && resolved !== "none"
           ? retry.request.context
@@ -2469,13 +2497,17 @@ function AskKnotPanel({
         throw new Error(
           "This conversation exceeds the request limit. Start a new chat. Your message has not been sent.",
         );
-      const pdfSource = retry
+      const pdfSource = options?.sources
+        ? options.sources.pdfSource
+        : retry
         ? retry.request?.pdfSource
         : !useSources
           ? undefined
           : (inherit?.pdfSource ?? current.pdfSource);
       // Several selected PDFs go together, each by name; one goes as before.
-      const pdfFiles = retry
+      const pdfFiles = options?.sources
+        ? options.sources.pdfFiles
+        : retry
         ? retry.request?.pdfFiles
         : !useSources
           ? undefined
@@ -2759,7 +2791,7 @@ function AskKnotPanel({
         // A scene's draft is checked and fixed before it's previewed.
         const scene = draft.proposal.scene;
         const session = getSession();
-        if (proposed === "canvas" && scene && session && draft.context && !hasWebEvidence(requestContext)) {
+        if (proposed === "canvas" && scene && session && draft.context && !cardContext && !hasWebEvidence(requestContext)) {
           const checking = draft;
           const abort = new AbortController();
           reviewAbort.current = abort;
@@ -2813,6 +2845,7 @@ function AskKnotPanel({
                 ...draft.proposal.blocks.map(aiBlockText),
                 ...(draft.proposal.connections ?? []).map((c) => c.label),
                 ...(draft.proposal.mindmap ?? []).map((n) => n.text),
+                ...(draft.proposal.scene ? sceneTexts(draft.proposal.scene) : []),
               ],
             ).length
           : undefined;
@@ -3422,7 +3455,7 @@ function AskKnotPanel({
                         ? "Replace selection"
                         : turn.mode === "canvas"
                           ? turn.replaces
-                            ? `Replace the card with ${turn.proposal.blocks.length + (turn.uncovered ? 1 : 0)} idea cards`
+                            ? `Replace the card with ${(turn.proposal.scene ? turn.proposal.scene.objects.filter((o) => o.kind === "card").length : turn.proposal.blocks.length) + (turn.uncovered ? 1 : 0)} idea cards`
                             : turn.proposal.outline &&
                                 turn.build?.state !== "done"
                               ? `Build on canvas in ${turn.proposal.outline.sections.length} sections`
@@ -3930,6 +3963,7 @@ function AskKnotPanel({
                   !!models.length && (
                     <AnswerFollowUps
                       answer={turn.content}
+                      question={turns[i - 1]?.role === "user" ? turns[i - 1].content : undefined}
                       available={followUpActions(abilities, {
                         canvas: !!context?.canvas,
                         note: !!context?.note,
@@ -4915,6 +4949,16 @@ function outlineEstimate(turn: Turn): { usd?: number; seconds: number } | undefi
     ...(typeof usd === "number" && { usd: usd * (sections * 2.5 + 2) }),
     seconds: seconds * (sections * 1.6 + 1.5),
   };
+}
+/**
+ * An answer's sources a canvas step can send again: note, canvas and PDF
+ * sources. Workspace search results and source-free answers can't be
+ * resent as they were, so those steps use the answer alone.
+ */
+function reusableSources(turn: Turn): NonNullable<Turn["request"]> | undefined {
+  const r = turn.request;
+  if (!r || r.sourceMode === "workspace" || r.sourceMode === "none") return undefined;
+  return r;
 }
 /** Whether a request carried captured website evidence (its refs must hold). */
 function hasWebEvidence(requestContext: string): boolean {

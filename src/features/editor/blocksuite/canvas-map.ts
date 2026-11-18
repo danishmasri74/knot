@@ -56,6 +56,8 @@ export function captureCanvasMap(
   doc: Doc,
   selected: string[] = [],
   focus?: string | null,
+  /** The part of the canvas on screen, for free areas there. */
+  view?: [number, number, number, number],
 ): CanvasMapData | undefined {
   const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
     | SurfaceBlockModel
@@ -70,6 +72,7 @@ export function captureCanvasMap(
     texts: [],
     selected,
     ...(focus ? { focus } : {}),
+    ...(view && view.every(Number.isFinite) && view[2] > 0 && view[3] > 0 ? { view } : {}),
   };
   for (const { model } of doc.getBlocksByFlavour("affine:note")) {
     const note = model as NoteBlockModel;

@@ -72,7 +72,41 @@ it("describes cards, frames, groups, arrows and mind maps", () => {
     "      Unit",
     'T1 text "Exam in May" [bottom-right]',
     "selected: K3",
+    // Free areas: beside the selection and beside the video card.
+    "A1 free area right of the selection, about 2400 × 2400",
+    'A2 free area right of K4 (YouTube "ISTQB intro"), about 1040 × 2400',
+    'A3 free area below K4 (YouTube "ISTQB intro"), about 2400 × 2400',
   ]);
+});
+
+it("finds free areas beside the selection and on screen, and names them as places", async () => {
+  const { freeAreas, canvasHandles } = await import("../src/services/canvas-map-format");
+  const map: CanvasMapData = {
+    cards: [
+      { id: "a", title: "A", length: 10, box: [0, 0, 400, 300] },
+      { id: "b", title: "B", length: 10, box: [1000, 0, 400, 300] },
+    ],
+    frames: [],
+    groups: [],
+    arrows: [],
+    mindmaps: [],
+    texts: [],
+    selected: ["a"],
+    view: [-200, -200, 2000, 1400],
+  };
+  const areas = freeAreas(map);
+  // Right of "a" up to "b" (less the gap), and below it.
+  expect(areas[0]).toEqual({ box: [480, 0, 440, 2400], where: "right of the selection" });
+  expect(areas[1].where).toBe("below the selection");
+  // With nothing selected, the empty part of the screen is offered.
+  const onScreen = freeAreas({ ...map, selected: [] });
+  expect(onScreen.map((a) => a.where)).toEqual(["on screen"]);
+  // No area overlaps a card.
+  for (const { box } of areas)
+    for (const c of map.cards)
+      expect(box[0] < c.box[0] + c.box[2] && box[0] + box[2] > c.box[0] && box[1] < c.box[1] + c.box[3] && box[1] + box[3] > c.box[1]).toBe(false);
+  const handles = canvasHandles(map);
+  expect(handles.get("A1")).toMatchObject({ area: true, box: [480, 0, 440, 2400] });
 });
 
 it("drops positions, then the furthest cards, to stay in budget", () => {

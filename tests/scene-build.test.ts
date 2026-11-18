@@ -106,3 +106,39 @@ describe("sections", () => {
     expect(text).toContain("1. Maintenance (id d1): Deck 1, slides 1-20");
   });
 });
+
+describe("phase 4", () => {
+  it("wraps a replacement in a frame titled like the card, keeping uncovered passages", async () => {
+    const { validateScene, wrapForReplacement } = await import("../src/features/editor/blocksuite/scene");
+    const s = validateScene({
+      plan: "", anchor: { near: "K1", side: "right" }, objects: [card("a"), card("b", { place: { rel: "below", of: "a", align: "", gap: 0 } })],
+      arrangements: [], connectors: [],
+    }, new Set(["K1"]));
+    const { scene, frame } = wrapForReplacement(s, "Testing principles", ["A passage the cards missed."]);
+    expect(frame).toBe("ideas");
+    expect(scene.anchor.near).toBe("");
+    expect(scene.objects[0]).toMatchObject({ id: "ideas", kind: "frame", text: "Testing principles" });
+    expect(scene.objects.filter((o) => o.in === "ideas").map((o) => o.id)).toEqual(["a", "b", "other-details"]);
+    expect(scene.objects.at(-1)?.content[0].text).toBe("A passage the cards missed.");
+    // A scene that is already one frame keeps it.
+    const framed = validateScene({ plan: "", anchor: { near: "", side: "" }, objects: [card("f", { kind: "frame", text: "Mine" }), card("x", { in: "f" })], arrangements: [], connectors: [] });
+    expect(wrapForReplacement(framed, "T", []).frame).toBe("f");
+  });
+
+  it("never uses a free area as an arrow end, only as an anchor", async () => {
+    const { validateScene } = await import("../src/features/editor/blocksuite/scene");
+    const s = validateScene({
+      plan: "", anchor: { near: "A2", side: "" }, objects: [card("a")], arrangements: [],
+      connectors: [{ from: "a", to: "A2", label: "", heads: "to", style: "", color: "" }],
+    }, new Set(["A2", "K1"]));
+    expect(s.anchor.near).toBe("A2");
+    expect(s.connectors).toEqual([]);
+  });
+
+  it("keeps the user's request in view for a canvas step", async () => {
+    const { followUpMessage } = await import("../src/services/ai-followups");
+    const step = { action: "cards" as const, label: "Make 9 atomic notes" };
+    expect(followUpMessage(step, "Answer text", "Generate atomic notes")).toContain('The user originally asked: "Generate atomic notes"');
+    expect(followUpMessage(step, "Answer text")).not.toContain("originally asked");
+  });
+});

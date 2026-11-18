@@ -21,6 +21,7 @@ const cache = new Map<string, FollowUp[]>();
  */
 export function AnswerFollowUps({
   answer,
+  question,
   available,
   saved,
   model,
@@ -30,6 +31,8 @@ export function AnswerFollowUps({
   onCost,
 }: {
   answer: string;
+  /** What the user asked, so buttons name the result in their words. */
+  question?: string;
   available: FollowUpAction[];
   /** Suggestions stored on the answer, so reopening a chat costs nothing. */
   saved?: FollowUp[];
@@ -79,6 +82,7 @@ export function AnswerFollowUps({
       messages: [{ role: "user", content: "Suggest next steps." }],
       context: JSON.stringify({
         answer: answer.slice(0, MAX_FOLLOWUP_ANSWER),
+        ...(question && { question: question.slice(0, 1000) }),
         actions: available,
       }),
       onEvent: channel,

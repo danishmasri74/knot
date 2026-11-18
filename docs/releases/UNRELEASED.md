@@ -11,3 +11,7 @@
 - Ask Knot composes the canvas instead of laying cards out in a grid: it groups content into framed sections, adds headings, diagram shapes, mind maps and arrows (including to mind map branches and existing cards), and places them where it describes, next to what you asked about. The preview shows the structure it chose.
 - Before showing a canvas preview, Ask Knot checks its own layout and fixes arrows that run over cards, reading-order mix-ups and points it left out. The preview says what it fixed.
 - Ask Knot handles big canvas requests, such as atomic notes for a whole course, in sections: it shows the plan with an estimate, builds each section from its sources, links the sections and checks the layout. Stop keeps what's built, and Continue finishes the rest.
+- New canvas content lands in free space next to what you're working on (your selection, a PDF, or what's on screen) instead of far to the right.
+- Asking for atomic notes, flashcards or revision notes while a canvas is open puts them on the canvas instead of answering with a wall of text.
+- Suggested buttons under an answer use your own words and build from the original sources, not just the answer.
+- Break this into ideas lays out the new cards with structure and arrows, in a frame where the card was.

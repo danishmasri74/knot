@@ -522,6 +522,14 @@ export function captureAiContext(
           ]),
         ],
         note?.id,
+        (() => {
+          const v = (
+            editor.querySelector("affine-edgeless-root") as unknown as {
+              gfx?: { viewport: { viewportBounds: { x: number; y: number; w: number; h: number } } };
+            } | null
+          )?.gfx?.viewport.viewportBounds;
+          return v ? ([v.x, v.y, v.w, v.h] as [number, number, number, number]) : undefined;
+        })(),
       ),
     }),
   };
@@ -1096,6 +1104,7 @@ export function applyAiProposal(
     return applyScene(doc, context, scene!, {
       view: options?.view,
       reveal: options?.reveal,
+      replaces: options?.replaces,
     });
   }
   const proposal = validateProposal(input, context.webContext);

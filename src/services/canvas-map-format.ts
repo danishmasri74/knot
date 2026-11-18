@@ -42,7 +42,114 @@ export type CanvasMapData = {
   selected: string[];
   /** The note being asked about, if any; trimming keeps its surroundings. */
   focus?: string;
+  /** The part of the canvas on screen when the map was captured. */
+  view?: MapBox;
 };
+
+/** Empty space new content could go in (phase 4 of the orchestration plan). */
+export type FreeArea = { box: MapBox; where: string };
+const AREA_GAP = 80;
+const AREA_MIN: [number, number] = [360, 240];
+const AREA_MAX = 2400;
+
+/**
+ * Free areas beside the selection, beside PDF and media cards, and inside
+ * the visible part of the canvas, each as large as the space allows, so the
+ * model can put new content next to what the user is working with. Same
+ * map, same areas: Apply resolves an area handle the same way.
+ */
+export function freeAreas(map: CanvasMapData, named: (id: string) => string = () => ""): FreeArea[] {
+  const obstacles: MapBox[] = [
+    ...map.cards.map((c) => c.box),
+    ...map.frames.map((f) => f.box),
+    ...map.mindmaps.map((m) => m.box),
+    ...map.texts.map((t) => t.box),
+  ];
+  const clear = (b: MapBox) =>
+    !obstacles.some(
+      (o) => b[0] < o[0] + o[2] && b[0] + b[2] > o[0] && b[1] < o[1] + o[3] && b[1] + b[3] > o[1],
+    );
+  /** Grows a box right and down from its corner until it meets something. */
+  const grow = (x: number, y: number, band: number): MapBox | undefined => {
+    const right = obstacles
+      .filter((o) => o[1] < y + band && o[1] + o[3] > y && o[0] + o[2] > x)
+      .map((o) => o[0] - AREA_GAP);
+    const w = Math.min(AREA_MAX, ...right.map((r) => r - x).filter((d) => d > -AREA_GAP));
+    if (w < AREA_MIN[0]) return undefined;
+    const below = obstacles
+      .filter((o) => o[0] < x + w && o[0] + o[2] > x && o[1] + o[3] > y)
+      .map((o) => o[1] - AREA_GAP);
+    const h = Math.min(AREA_MAX, ...below.map((b) => b - y).filter((d) => d > -AREA_GAP));
+    if (h < AREA_MIN[1]) return undefined;
+    const box: MapBox = [x, y, w, h];
+    return clear(box) ? box : undefined;
+  };
+  const areas: FreeArea[] = [];
+  const add = (box: MapBox | undefined, where: string) => {
+    if (!box) return;
+    // One area per stretch of space: drop one the other almost contains.
+    const overlap = areas.some((a) => {
+      const ix = Math.max(0, Math.min(a.box[0] + a.box[2], box[0] + box[2]) - Math.max(a.box[0], box[0]));
+      const iy = Math.max(0, Math.min(a.box[1] + a.box[3], box[1] + box[3]) - Math.max(a.box[1], box[1]));
+      return ix * iy > 0.9 * Math.min(a.box[2] * a.box[3], box[2] * box[3]);
+    });
+    if (!overlap) areas.push({ box: box.map(Math.round) as MapBox, where });
+  };
+  const beside = (t: MapBox, label: string) => {
+    const band = Math.max(t[3], 600);
+    add(grow(t[0] + t[2] + AREA_GAP, t[1], band), `right of ${label}`);
+    add(grow(t[0], t[1] + t[3] + AREA_GAP, band), `below ${label}`);
+  };
+  const boxes = [...map.cards, ...map.frames, ...map.texts, ...map.mindmaps];
+  const picked = boxes.filter((o) => map.selected.includes(o.id)).map((o) => o.box);
+  if (picked.length) {
+    const x = Math.min(...picked.map((b) => b[0]));
+    const y = Math.min(...picked.map((b) => b[1]));
+    beside([x, y, Math.max(...picked.map((b) => b[0] + b[2])) - x, Math.max(...picked.map((b) => b[1] + b[3])) - y], "the selection");
+  }
+  // Media cards nearest the focus first: PDFs, images, videos, links, files.
+  const focus = boxes.find((o) => o.id === map.focus)?.box ?? map.view;
+  const centre = (b: MapBox) => [b[0] + b[2] / 2, b[1] + b[3] / 2];
+  const media = map.cards
+    .filter((c) => c.kind)
+    .sort((a, b) => {
+      if (!focus) return 0;
+      const [fx, fy] = centre(focus);
+      const [ax, ay] = centre(a.box);
+      const [bx, by] = centre(b.box);
+      return Math.hypot(ax - fx, ay - fy) - Math.hypot(bx - fx, by - fy);
+    })
+    .slice(0, 4);
+  for (const card of media) beside(card.box, `${named(card.id)} (${card.kind} ${JSON.stringify(card.title.slice(0, 40))})`.trim());
+  // The largest empty rectangle on screen, on a coarse grid.
+  if (map.view) {
+    const [vx, vy, vw, vh] = map.view;
+    const cols = 16;
+    const rows = 10;
+    const cw = vw / cols;
+    const ch = vh / rows;
+    const free = Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: cols }, (_, c) => clear([vx + c * cw, vy + r * ch, cw, ch])),
+    );
+    const heights = Array(cols).fill(0);
+    let best: [number, number, number, number] = [0, 0, 0, 0];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) heights[c] = free[r][c] ? heights[c] + 1 : 0;
+      for (let c = 0; c < cols; c++) {
+        let h = Infinity;
+        for (let e = c; e < cols && heights[e]; e++) {
+          h = Math.min(h, heights[e]);
+          const area = (e - c + 1) * cw * h * ch;
+          if (area > best[2] * best[3]) best = [c, r - h + 1, (e - c + 1) * cw, h * ch];
+        }
+      }
+    }
+    const [c0, r0, w, h] = best;
+    if (w - AREA_GAP >= AREA_MIN[0] && h - AREA_GAP >= AREA_MIN[1])
+      add([vx + c0 * cw + AREA_GAP / 2, vy + r0 * ch + AREA_GAP / 2, w - AREA_GAP, h - AREA_GAP], "on screen");
+  }
+  return areas.slice(0, 6);
+}
 
 /** About 3,000 tokens, estimated from UTF-8 bytes as for workspace evidence. */
 export const CANVAS_MAP_BUDGET = 12_000;
@@ -144,6 +251,8 @@ export type CanvasHandleTarget = {
   id: string;
   title: string;
   box?: MapBox;
+  /** A free area (A handle), not an object. */
+  area?: boolean;
 };
 
 /** Handle → canvas object for a captured map, as formatCanvasMap named them. */
@@ -161,6 +270,10 @@ export function canvasHandles(map: CanvasMapData): Map<string, CanvasHandleTarge
     const target = objects.get(id);
     if (target) result.set(name, target);
   }
+  // Free areas: A1, A2… (nothing on the canvas has their id).
+  freeAreas(map, (id) => handle.get(id) ?? "").forEach((area, i) =>
+    result.set(`A${i + 1}`, { id: `area:${i + 1}`, title: `free area ${area.where}`, box: area.box, area: true }),
+  );
   return result;
 }
 
@@ -338,6 +451,9 @@ export function formatCanvasMap(
       );
     const selected = map.selected.filter(described).map((id) => handle.get(id));
     if (selected.length) lines.push(`selected: ${selected.join(" ")}`);
+    freeAreas(map, (id) => handle.get(id) ?? "").forEach((area, i) =>
+      lines.push(`A${i + 1} free area ${area.where}, about ${area.box[2]} × ${area.box[3]}`),
+    );
     const hidden = orderedCards.filter((c) => !keep.has(c.id)).length;
     if (hidden)
       lines.push(
