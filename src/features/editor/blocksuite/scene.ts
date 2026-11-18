@@ -110,7 +110,8 @@ export type Scene = {
 
 /** Handles the canvas map gives existing objects (K cards, F frames, T text, M mind maps). */
 export const MAP_HANDLE = /^[KFTMG]\d{1,4}$/;
-const ID = /^[\p{L}\p{N}_.:-]{1,60}$/u;
+// Section ids prefix their objects' ids (namespaceSection), hence the room.
+const ID = /^[\p{L}\p{N}_.:-]{1,120}$/u;
 /** Payload safety, not a design limit. */
 export const MAX_SCENE_OBJECTS = 400;
 const CONTENT_TYPES = new Set([
@@ -501,4 +502,126 @@ export function mergeScene(scene: Scene, revision: SceneRevision, handles: Set<s
     handles,
   );
   return { ...merged, notes: [...scene.notes, ...merged.notes] };
+}
+
+/** A section of an outlined scene, built on its own (phase 3). */
+export type SceneSection = { id: string; title: string; covers: string };
+/** A scene too large for one reply: what each section will hold. */
+export type SceneOutline = {
+  plan: string;
+  anchor: Scene["anchor"];
+  sections: SceneSection[];
+};
+
+/**
+ * The outline in a create_on_canvas reply, when it sent one instead of a
+ * scene (sections listed, no objects); otherwise undefined.
+ */
+export function readOutline(value: unknown, handles: Set<string> = new Set()): SceneOutline | undefined {
+  const raw = value as { sections?: unknown; objects?: unknown; plan?: unknown; anchor?: unknown };
+  if (!raw || !Array.isArray(raw.sections) || !raw.sections.length) return undefined;
+  if (Array.isArray(raw.objects) && raw.objects.length) return undefined;
+  const seen = new Set<string>();
+  const sections: SceneSection[] = [];
+  for (const [i, s] of raw.sections.entries()) {
+    const section = s as Partial<SceneSection>;
+    if (!section || typeof section.title !== "string" || !section.title.trim()) continue;
+    let id = typeof section.id === "string" ? section.id.trim().replace(/[^\p{L}\p{N}_:-]/gu, "") : "";
+    if (!id || MAP_HANDLE.test(id) || seen.has(id)) id = `section${i + 1}`;
+    seen.add(id);
+    sections.push({
+      id,
+      title: section.title.trim().slice(0, 120),
+      covers: typeof section.covers === "string" ? section.covers.trim().slice(0, 1000) : "",
+    });
+  }
+  if (!sections.length) return undefined;
+  const anchor = (raw.anchor ?? {}) as Partial<Scene["anchor"]>;
+  const near = typeof anchor.near === "string" ? anchor.near.trim() : "";
+  return {
+    plan: typeof raw.plan === "string" ? raw.plan.trim().slice(0, 400) : "",
+    anchor: {
+      near: near === "selection" || near === "view" || handles.has(near) ? near : "",
+      side: (["right", "left", "below", "above"] as const).find((s) => s === anchor.side) ?? "",
+    },
+    sections,
+  };
+}
+
+/**
+ * One built section's reply with its ids prefixed by the section's id, so
+ * sections can't collide; objects without a frame go in the section's frame.
+ * Canvas map handles and the section's own id are left alone.
+ */
+export function namespaceSection(
+  value: unknown,
+  section: SceneSection,
+  handles: Set<string> = new Set(),
+): { objects: unknown[]; arrangements: unknown[]; connectors: unknown[] } {
+  const raw = (value ?? {}) as { objects?: unknown[]; arrangements?: unknown[]; connectors?: unknown[] };
+  const list = (v: unknown) => (Array.isArray(v) ? v : []);
+  const ids = new Set(
+    [...list(raw.objects), ...list(raw.arrangements)].flatMap((o) =>
+      o && typeof (o as { id?: unknown }).id === "string" ? [(o as { id: string }).id.trim()] : [],
+    ),
+  );
+  const prefix = (ref: unknown): unknown => {
+    if (typeof ref !== "string") return ref;
+    const r = ref.trim();
+    if (!r || r === section.id || handles.has(r) || r === "selection" || r === "view") return r;
+    const node = /^(.+)#(\d+)$/.exec(r);
+    if (node && ids.has(node[1])) return `${section.id}.${node[1]}#${node[2]}`;
+    return ids.has(r) ? `${section.id}.${r}` : r;
+  };
+  const place = (p: unknown) =>
+    p && typeof p === "object" ? { ...(p as object), of: prefix((p as { of?: unknown }).of) } : p;
+  return {
+    objects: list(raw.objects).map((o) => {
+      const obj = (o ?? {}) as Record<string, unknown>;
+      const inside = typeof obj.in === "string" && obj.in.trim() ? prefix(obj.in) : section.id;
+      return { ...obj, id: prefix(obj.id), in: inside, place: place(obj.place) };
+    }),
+    arrangements: list(raw.arrangements).map((a) => {
+      const arr = (a ?? {}) as Record<string, unknown>;
+      return {
+        ...arr,
+        id: prefix(arr.id),
+        members: list(arr.members).map(prefix),
+        center: prefix(arr.center),
+        in: typeof arr.in === "string" && arr.in.trim() ? prefix(arr.in) : section.id,
+        place: place(arr.place),
+      };
+    }),
+    connectors: list(raw.connectors).map((c) => {
+      const con = (c ?? {}) as Record<string, unknown>;
+      return { ...con, from: prefix(con.from), to: prefix(con.to) };
+    }),
+  };
+}
+
+/** The scene so far: a frame per built section, holding its content. */
+export function assembleSections(
+  outline: SceneOutline,
+  built: Record<string, unknown>,
+  handles: Set<string> = new Set(),
+): Scene {
+  const objects: unknown[] = [];
+  const arrangements: unknown[] = [];
+  const connectors: unknown[] = [];
+  outline.sections.forEach((section, i) => {
+    if (!(section.id in built)) return;
+    objects.push({
+      id: section.id, kind: "frame", text: section.title, content: [], nodes: [], shape: "",
+      in: "", place: { rel: "", of: "", align: "", gap: 0 }, cell: [], width: 0, color: "",
+      direction: "", order: i + 1, role: "section",
+    });
+    const part = namespaceSection(built[section.id], section, handles);
+    objects.push(...part.objects);
+    arrangements.push(...part.arrangements);
+    connectors.push(...part.connectors);
+  });
+  return validateScene(
+    { plan: outline.plan, anchor: outline.anchor, objects, arrangements, connectors },
+    handles,
+  );
 }

@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 const arg = process.argv[2];
 if (!arg) throw new Error("Pass the run UUID or --map");
 const printMap = arg === "--map";
-const suite = JSON.parse(readFileSync("tests/benchmarks/scenes.v1.json", "utf8"));
+const suite = JSON.parse(readFileSync(process.env.KNOT_SCENES_SUITE ?? "tests/benchmarks/scenes.v1.json", "utf8"));
 const rows = printMap
   ? []
   : readFileSync(`tests/benchmarks/results/${arg}.jsonl`, "utf8").trim().split("\n").map((l) => JSON.parse(l));

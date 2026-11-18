@@ -10,3 +10,4 @@
 - Ctrl+click chats in Ask Knot's chat history to select several and delete them together. Press Esc or × to clear the selection.
 - Ask Knot composes the canvas instead of laying cards out in a grid: it groups content into framed sections, adds headings, diagram shapes, mind maps and arrows (including to mind map branches and existing cards), and places them where it describes, next to what you asked about. The preview shows the structure it chose.
 - Before showing a canvas preview, Ask Knot checks its own layout and fixes arrows that run over cards, reading-order mix-ups and points it left out. The preview says what it fixed.
+- Ask Knot handles big canvas requests, such as atomic notes for a whole course, in sections: it shows the plan with an estimate, builds each section from its sources, links the sections and checks the layout. Stop keeps what's built, and Continue finishes the rest.

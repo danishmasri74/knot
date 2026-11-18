@@ -142,7 +142,13 @@ import { uncoveredPassages } from "../services/ai-atomize";
 import { renderVisibleCanvas } from "../features/editor/blocksuite/canvas-snapshot";
 import { canvasHandles } from "../services/canvas-map-format";
 import { sceneBlocks } from "../features/editor/blocksuite/scene";
-import { ScenePreview } from "./ScenePreview";
+import { OutlinePreview, ScenePreview } from "./ScenePreview";
+import {
+  buildSections,
+  connectSections,
+  sceneSoFar,
+  type BuildFiles,
+} from "../features/editor/blocksuite/scene-build";
 import { reviewScene } from "../features/editor/blocksuite/scene-review";
 import {
   chooseLayout,
@@ -193,6 +199,10 @@ type Turn = {
   layoutReport?: string[];
   /** The draft check before the preview (scene-review.ts). */
   review?: { rounds: number; summaries: string[]; before: number; after: number };
+  /** An outlined scene: each built section's reply, by section id. */
+  built?: Record<string, unknown>;
+  /** How far building an outline got (scene-build.ts). */
+  build?: { state: "building" | "stopped" | "failed" | "done"; done: number; total: number; error?: string };
   /** connect_cards: suggestions the user unticked (indexes). */
   skipped?: number[];
   /** What an applied proposal created (a note, quiz or the first canvas
@@ -878,6 +888,8 @@ function AskKnotPanel({
   const retrievalAbort = useRef<AbortController>();
   /** Stops a scene's draft check (its review requests). */
   const reviewAbort = useRef<AbortController>();
+  /** Stops building an outlined scene; built sections are kept. */
+  const buildAbort = useRef<AbortController>();
   const automaticRequest = useRef(false);
   const lastRequest = turns.filter((t) => t.role === "user").at(-1)?.request;
   const lastScope = lastRequest?.sourceMode;
@@ -1015,6 +1027,140 @@ function AskKnotPanel({
     if (mounted.current) {
       setTurns(value);
       setSpent(spentRef.current);
+    }
+  }
+  /**
+   * Builds an outlined scene's sections (or the rest of them), then connects
+   * them and checks the layout. Built sections are saved on the turn as they
+   * arrive, so Stop or a failure keeps them and Continue picks up from there.
+   */
+  async function buildOutline(turn: Turn) {
+    const outline = turn.proposal?.outline;
+    const req = turn.request;
+    const session = getSession();
+    if (!outline || !req || !turn.context) return;
+    if (!session || session.doc !== turn.context.instance) {
+      setError("Open the canvas this was planned for, then build it.");
+      return;
+    }
+    const at = turnsRef.current.indexOf(turn);
+    const asked =
+      req.message ??
+      turnsRef.current
+        .slice(0, at)
+        .reverse()
+        .find((t) => t.role === "user")?.content ??
+      "";
+    const chosen = turn.autoModel ?? (model && model !== "auto" ? model : models[0]);
+    if (!chosen) {
+      setError("Turn on an AI model in Settings → AI.");
+      return;
+    }
+    const abort = new AbortController();
+    buildAbort.current = abort;
+    const sentFrom = chatIdRef.current;
+    const built = (turn.built ??= {});
+    const handles = turn.context.canvasMap
+      ? new Set(canvasHandles(turn.context.canvasMap).keys())
+      : new Set<string>();
+    const total = outline.sections.length;
+    const count = () => outline.sections.filter((x) => x.id in built).length;
+    turn.build = { state: "building", done: count(), total };
+    turn.steps = [];
+    setBusy(true);
+    setError("");
+    update([...turnsRef.current]);
+    try {
+      // The same sources the outline was planned from.
+      const files: BuildFiles = {};
+      if (req.pdfSource) {
+        const pdf = await import("../services/pdf-input");
+        if (req.pdfFiles && req.pdfFiles.length > 1)
+          files.pdfFiles = await pdf.preparePdfFiles(req.pdfFiles);
+        else files.pdfInput = await pdf.preparePdfInput(req.pdfSource);
+      }
+      const result = await buildSections({
+        outline,
+        built,
+        model: chosen,
+        messages: [{ role: "user", content: asked }],
+        context: req.context,
+        files,
+        onSection: (index, all, section) => {
+          turn.steps = beginStep(
+            turn.steps,
+            "section",
+            `Building section ${index} of ${all}: ${section.title}`,
+            `Built ${all} sections`,
+          );
+          update([...turnsRef.current]);
+        },
+        onBuilt: () => {
+          turn.build = { state: "building", done: count(), total };
+          turn.proposal = { ...turn.proposal!, scene: sceneSoFar(outline, built, handles) };
+          update([...turnsRef.current]);
+        },
+        onCost: (cost) => recordCost(turn, cost as AiCost, sentFrom),
+        signal: abort.signal,
+      });
+      if (!mounted.current) return;
+      let scene = count() ? sceneSoFar(outline, built, handles) : undefined;
+      if (result.complete && scene) {
+        turn.steps = beginStep(turn.steps, "connect", "Connecting the sections", "Connected the sections");
+        update([...turnsRef.current]);
+        scene = (
+          await connectSections({
+            scene,
+            outline,
+            request: asked,
+            model: chosen,
+            handles,
+            onCost: (cost) => recordCost(turn, cost as AiCost, sentFrom),
+            signal: abort.signal,
+          })
+        ).scene;
+        if (!abort.signal.aborted) {
+          turn.steps = beginStep(turn.steps, "review", "Checking the layout", "Checked the layout");
+          update([...turnsRef.current]);
+          const reviewed = await reviewScene({
+            doc: session.doc,
+            context: turn.context,
+            scene,
+            request: asked,
+            model: chosen,
+            view: visibleCanvas(session.editor),
+            sources: citationTexts(req.context),
+            onCost: (cost) => recordCost(turn, cost as AiCost, sentFrom),
+            signal: abort.signal,
+          });
+          scene = reviewed.scene;
+          if (reviewed.rounds)
+            turn.review = {
+              rounds: reviewed.rounds,
+              summaries: reviewed.summaries,
+              before: reviewed.before.issues,
+              after: reviewed.after.issues,
+            };
+        }
+      }
+      turn.proposal = { ...turn.proposal!, ...(scene && { scene }) };
+      turn.build = {
+        state: result.complete ? "done" : result.error ? "failed" : "stopped",
+        done: count(),
+        total,
+        ...(result.error && { error: result.error }),
+      };
+      turn.steps = endSteps(turn.steps, !result.complete);
+    } catch (e) {
+      turn.build = { state: "failed", done: count(), total, error: String(e) };
+      turn.steps = endSteps(turn.steps, true);
+      setError(String(e));
+    } finally {
+      if (buildAbort.current === abort) buildAbort.current = undefined;
+      if (mounted.current) {
+        setBusy(false);
+        update([...turnsRef.current]);
+      }
     }
   }
   /** Records a request's cost on its answer and in the chat it was sent from. */
@@ -2681,6 +2827,8 @@ function AskKnotPanel({
                   ? "Suggested arrangement"
                   : proposed === "connect"
                     ? "Suggested connections"
+                  : draft.proposal.outline && !draft.proposal.scene
+                    ? "Suggested outline"
                   : "Suggested addition";
         draft.content = action === "auto" ? output.trim() || label : label;
       }
@@ -3275,10 +3423,13 @@ function AskKnotPanel({
                         : turn.mode === "canvas"
                           ? turn.replaces
                             ? `Replace the card with ${turn.proposal.blocks.length + (turn.uncovered ? 1 : 0)} idea cards`
-                            : turn.proposal.mindmap?.length &&
-                                !turn.proposal.blocks.length
-                              ? "Create mind map"
-                              : "Create on canvas"
+                            : turn.proposal.outline &&
+                                turn.build?.state !== "done"
+                              ? `Build on canvas in ${turn.proposal.outline.sections.length} sections`
+                              : turn.proposal.mindmap?.length &&
+                                  !turn.proposal.blocks.length
+                                ? "Create mind map"
+                                : "Create on canvas"
                           : turn.mode === "connect"
                             ? `Add ${chosenArrows(turn).length} of ${turn.proposal.arrows?.length ?? 0} connections`
                             : turn.mode === "arrange"
@@ -3303,6 +3454,13 @@ function AskKnotPanel({
                               : "Everything in the original is covered."}{" "}
                             The original goes to Trash; Undo brings it back.
                           </p>
+                        )}
+                        {turn.proposal.outline && turn.build?.state !== "done" && (
+                          <OutlinePreview
+                            outline={turn.proposal.outline}
+                            estimate={outlineEstimate(turn)}
+                            build={turn.build}
+                          />
                         )}
                         {turn.proposal.scene && (
                           <ScenePreview scene={turn.proposal.scene} review={turn.review} />
@@ -3459,6 +3617,23 @@ function AskKnotPanel({
                       </small>
                     ) : !turn.status ? (
                       <div className="ask-proposal-actions">
+                        {turn.proposal?.outline && turn.build?.state !== "done" && (
+                          turn.build?.state === "building" ? (
+                            <button onClick={() => buildAbort.current?.abort()}>
+                              Stop
+                            </button>
+                          ) : (
+                            <button
+                              disabled={busy}
+                              onClick={() => void buildOutline(turn)}
+                            >
+                              {turn.build
+                                ? `Continue (${turn.build.total - turn.build.done} left)`
+                                : `Build ${turn.proposal.outline.sections.length} sections`}
+                            </button>
+                          )
+                        )}
+                        {(!turn.proposal?.outline || turn.proposal.scene) && (
                         <button
                           disabled={
                             busy ||
@@ -3528,6 +3703,7 @@ function AskKnotPanel({
                         >
                           Apply
                         </button>
+                        )}
                         <button
                           onClick={() => {
                             recordAiOutcome(turn.attemptId, "dismiss");
@@ -4264,6 +4440,7 @@ function AskKnotPanel({
                     onClick={() => {
                       retrievalAbort.current?.abort();
                       reviewAbort.current?.abort();
+                      buildAbort.current?.abort();
                       clearStreamTimer();
                       sourceCoordinator.current.cancel();
                       const id = request.current;
@@ -4724,6 +4901,21 @@ function copyableHtml(prose: Element): string {
   return copy.innerHTML;
 }
 /** The PDFs a message sent, with full names, for its answer's citations. */
+/**
+ * What building an outline should take, judged from the outline request
+ * itself: each section reads the same sources and writes more, and
+ * connecting and checking add about two more requests.
+ */
+function outlineEstimate(turn: Turn): { usd?: number; seconds: number } | undefined {
+  const sections = turn.proposal?.outline?.sections.length ?? 0;
+  if (!sections) return undefined;
+  const usd = turn.cost?.usd;
+  const seconds = turn.elapsedSeconds ?? 20;
+  return {
+    ...(typeof usd === "number" && { usd: usd * (sections * 2.5 + 2) }),
+    seconds: seconds * (sections * 1.6 + 1.5),
+  };
+}
 /** Whether a request carried captured website evidence (its refs must hold). */
 function hasWebEvidence(requestContext: string): boolean {
   try {

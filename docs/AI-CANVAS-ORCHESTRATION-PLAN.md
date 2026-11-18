@@ -1,6 +1,6 @@
 # AI canvas orchestration — plan
 
-Status: phases 1 and 2 built and benchmarked (17–18 November 2026). Phases 3 to 5
+Status: phases 1 to 3 built and benchmarked (17–18 November 2026). Phases 4 and 5
 are proposals.
 
 Phase 1 as built:
@@ -36,6 +36,24 @@ Phase 2 as built (18 November 2026):
 - Scenes built on captured website evidence are not reviewed yet, because
   review changes would need their own source references.
 - Benchmark: `docs/AI-CANVAS-SCENES-BENCHMARK-2026-11-18.md` (crossings 19 → 0).
+
+Phase 3 as built (18 November 2026):
+
+- The scene schema has `sections`: when content is too large for one reply,
+  the model returns only an outline (each section's id, title and what it
+  covers). The preview lists the sections with an estimate made from the
+  outline request's own cost and time, and a Build button.
+- `scene-build.ts` builds each section in a `scene_section` request (the
+  request's own context and files, `SECTION_RULES` plus the scene rules),
+  prefixes each section's ids (`namespaceSection`) and assembles them in a
+  frame per section (`assembleSections`); then one `scene_connect` request
+  adds arrows between sections and places the section frames (only frames
+  may change), and the phase 2 check runs on the whole scene.
+- Built sections are saved on the chat turn as they arrive. Stop, or a
+  failed section, keeps them: the preview offers Continue for the rest and
+  Apply for what's built.
+- Benchmark: six decks, 60 cards in 6 frames, nothing left out, about
+  US$0.11 and 2.3 minutes.
 
 Ask Knot can read the canvas (the canvas map, `view_canvas`) but it can't
 compose on it. This plan hands composition to the model: it decides what goes

@@ -18,7 +18,7 @@ const [command, run, label] = process.argv.slice(2);
 if (!["prepare", "merge"].includes(command) || !run || !label)
   throw new Error("Usage: prepare <run> <label> | merge <review-run> <label>");
 const results = "tests/benchmarks/results";
-const suite = JSON.parse(readFileSync("tests/benchmarks/scenes.v1.json", "utf8"));
+const suite = JSON.parse(readFileSync(process.env.KNOT_SCENES_SUITE ?? "tests/benchmarks/scenes.v1.json", "utf8"));
 const readRun = (id) =>
   readFileSync(`${results}/${id}.jsonl`, "utf8").trim().split("\n").map((l) => JSON.parse(l));
 

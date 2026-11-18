@@ -1,0 +1,350 @@
+{
+ "version": "knot-scenes-big-v1",
+ "created": "2026-11-18",
+ "cases": [
+  {
+   "id": "big-01-new",
+   "prompt": "atomic-six-decks",
+   "path": "new",
+   "category": "canvas_scene_big",
+   "mode": "auto",
+   "tools": [
+    "create_on_canvas"
+   ],
+   "expected_route": "create_on_canvas",
+   "context": {
+    "document": "synthetic-scenes",
+    "scope": "Selected sources",
+    "mode": "canvas",
+    "citationSources": [
+     {
+      "id": "deck-maintenance-0",
+      "parent": "deck-maintenance",
+      "note": "deck-maintenance",
+      "type": "paragraph",
+      "text": "Maintenance testing: testing changes to a system that is already in operation, to keep it reliable and performing over time.",
+      "document": "deck-maintenance",
+      "citation": "[S1]"
+     },
+     {
+      "id": "deck-maintenance-1",
+      "parent": "deck-maintenance",
+      "note": "deck-maintenance",
+      "type": "paragraph",
+      "text": "Corrective maintenance fixes defects found in operation. Adaptive maintenance adapts the system to a changed environment, such as a new operating system or database. Perfective maintenance improves performance or maintainability.",
+      "document": "deck-maintenance",
+      "citation": "[S2]"
+     },
+     {
+      "id": "deck-maintenance-2",
+      "parent": "deck-maintenance",
+      "note": "deck-maintenance",
+      "type": "paragraph",
+      "text": "Triggers for maintenance testing: planned enhancements and releases, emergency fixes, upgrades or migrations of the operational environment, and retirement of the system, which may need data archiving tests.",
+      "document": "deck-maintenance",
+      "citation": "[S3]"
+     },
+     {
+      "id": "deck-maintenance-3",
+      "parent": "deck-maintenance",
+      "note": "deck-maintenance",
+      "type": "paragraph",
+      "text": "Impact analysis identifies which parts of the system a change affects and how much regression testing is needed. It is harder when specifications are out of date or test cases are missing.",
+      "document": "deck-maintenance",
+      "citation": "[S4]"
+     },
+     {
+      "id": "deck-maintenance-4",
+      "parent": "deck-maintenance",
+      "note": "deck-maintenance",
+      "type": "paragraph",
+      "text": "Maintenance releases may be planned or hot fixes. Regression tests should be automated where possible because they are repeated for every release.",
+      "document": "deck-maintenance",
+      "citation": "[S5]"
+     },
+     {
+      "id": "deck-sdlc-0",
+      "parent": "deck-sdlc",
+      "note": "deck-sdlc",
+      "type": "paragraph",
+      "text": "Testing must fit the software development lifecycle: every development activity has a corresponding test activity, and test analysis and design start during the matching development activity.",
+      "document": "deck-sdlc",
+      "citation": "[S6]"
+     },
+     {
+      "id": "deck-sdlc-1",
+      "parent": "deck-sdlc",
+      "note": "deck-sdlc",
+      "type": "paragraph",
+      "text": "In sequential models such as waterfall and the V-model, testing happens in phases; the V-model pairs each development level with a test level, for example requirements with acceptance testing.",
+      "document": "deck-sdlc",
+      "citation": "[S7]"
+     },
+     {
+      "id": "deck-sdlc-2",
+      "parent": "deck-sdlc",
+      "note": "deck-sdlc",
+      "type": "paragraph",
+      "text": "In iterative and incremental models, each iteration delivers working software and includes static and dynamic testing at several levels; regression testing grows in importance with each increment.",
+      "document": "deck-sdlc",
+      "citation": "[S8]"
+     },
+     {
+      "id": "deck-sdlc-3",
+      "parent": "deck-sdlc",
+      "note": "deck-sdlc",
+      "type": "paragraph",
+      "text": "Shift left means testing earlier: reviewing requirements, writing tests before code, running static analysis and continuous integration. It costs effort early but saves more later because early defects are cheaper to fix.",
+      "document": "deck-sdlc",
+      "citation": "[S9]"
+     },
+     {
+      "id": "deck-sdlc-4",
+      "parent": "deck-sdlc",
+      "note": "deck-sdlc",
+      "type": "paragraph",
+      "text": "Retrospectives after an iteration or release capture what went well and what to improve, including test process improvements, and feed into the next cycle.",
+      "document": "deck-sdlc",
+      "citation": "[S10]"
+     },
+     {
+      "id": "deck-sdlc-5",
+      "parent": "deck-sdlc",
+      "note": "deck-sdlc",
+      "type": "paragraph",
+      "text": "DevOps uses continuous integration and delivery pipelines; automated tests give fast feedback on every change, but manual exploratory testing is still needed.",
+      "document": "deck-sdlc",
+      "citation": "[S11]"
+     },
+     {
+      "id": "deck-levels-0",
+      "parent": "deck-levels",
+      "note": "deck-levels",
+      "type": "paragraph",
+      "text": "Test levels are groups of test activities organised together: component testing, component integration testing, system testing, system integration testing and acceptance testing.",
+      "document": "deck-levels",
+      "citation": "[S12]"
+     },
+     {
+      "id": "deck-levels-1",
+      "parent": "deck-levels",
+      "note": "deck-levels",
+      "type": "paragraph",
+      "text": "Component testing tests components in isolation, usually by developers, often with stubs and drivers. Component integration testing tests the interfaces and interactions between components.",
+      "document": "deck-levels",
+      "citation": "[S13]"
+     },
+     {
+      "id": "deck-levels-2",
+      "parent": "deck-levels",
+      "note": "deck-levels",
+      "type": "paragraph",
+      "text": "System testing tests the whole system's behaviour and capabilities, including non-functional characteristics, often by an independent test team. System integration testing tests interfaces with other systems and external services.",
+      "document": "deck-levels",
+      "citation": "[S14]"
+     },
+     {
+      "id": "deck-levels-3",
+      "parent": "deck-levels",
+      "note": "deck-levels",
+      "type": "paragraph",
+      "text": "Acceptance testing validates readiness for deployment and that the system meets users' business needs; forms include user acceptance, operational acceptance, contractual and regulatory acceptance, alpha and beta testing.",
+      "document": "deck-levels",
+      "citation": "[S15]"
+     },
+     {
+      "id": "deck-levels-4",
+      "parent": "deck-levels",
+      "note": "deck-levels",
+      "type": "paragraph",
+      "text": "Test types: functional testing checks what the system does; non-functional testing checks how well it does it, such as performance, usability and security; black-box testing derives tests from the specification and white-box testing from the internal structure.",
+      "document": "deck-levels",
+      "citation": "[S16]"
+     },
+     {
+      "id": "deck-levels-5",
+      "parent": "deck-levels",
+      "note": "deck-levels",
+      "type": "paragraph",
+      "text": "Confirmation testing checks that a reported defect has been fixed; regression testing checks that a change has not broken anything else.",
+      "document": "deck-levels",
+      "citation": "[S17]"
+     },
+     {
+      "id": "deck-static-0",
+      "parent": "deck-static",
+      "note": "deck-static",
+      "type": "paragraph",
+      "text": "Static testing examines work products such as requirements, designs, code and test cases without executing them. It finds defects early and directly, rather than failures.",
+      "document": "deck-static",
+      "citation": "[S18]"
+     },
+     {
+      "id": "deck-static-1",
+      "parent": "deck-static",
+      "note": "deck-static",
+      "type": "paragraph",
+      "text": "Reviews range from informal reviews through walkthroughs and technical reviews to inspections, the most formal type, which use roles, checklists and metrics.",
+      "document": "deck-static",
+      "citation": "[S19]"
+     },
+     {
+      "id": "deck-static-2",
+      "parent": "deck-static",
+      "note": "deck-static",
+      "type": "paragraph",
+      "text": "A review process has planning, review initiation, individual review, communication and analysis, and fixing and reporting.",
+      "document": "deck-static",
+      "citation": "[S20]"
+     },
+     {
+      "id": "deck-static-3",
+      "parent": "deck-static",
+      "note": "deck-static",
+      "type": "paragraph",
+      "text": "Review roles include manager, author, moderator or facilitator, scribe, reviewers and review leader. Success factors include clear objectives, the right participants, enough time and management support.",
+      "document": "deck-static",
+      "citation": "[S21]"
+     },
+     {
+      "id": "deck-static-4",
+      "parent": "deck-static",
+      "note": "deck-static",
+      "type": "paragraph",
+      "text": "Static analysis by tools finds issues such as unreachable code, undefined variables and coding standard violations, and measures complexity.",
+      "document": "deck-static",
+      "citation": "[S22]"
+     },
+     {
+      "id": "deck-static-5",
+      "parent": "deck-static",
+      "note": "deck-static",
+      "type": "paragraph",
+      "text": "Static and dynamic testing complement each other: static testing finds defects in work products, dynamic testing finds failures caused by defects when the software runs.",
+      "document": "deck-static",
+      "citation": "[S23]"
+     },
+     {
+      "id": "deck-techniques-0",
+      "parent": "deck-techniques",
+      "note": "deck-techniques",
+      "type": "paragraph",
+      "text": "Black-box techniques derive tests from the specification: equivalence partitioning, boundary value analysis, decision table testing and state transition testing.",
+      "document": "deck-techniques",
+      "citation": "[S24]"
+     },
+     {
+      "id": "deck-techniques-1",
+      "parent": "deck-techniques",
+      "note": "deck-techniques",
+      "type": "paragraph",
+      "text": "Equivalence partitioning divides data into partitions expected to be processed the same way; one value per partition is tested. Boundary value analysis tests the edges of ordered partitions, where defects often hide.",
+      "document": "deck-techniques",
+      "citation": "[S25]"
+     },
+     {
+      "id": "deck-techniques-2",
+      "parent": "deck-techniques",
+      "note": "deck-techniques",
+      "type": "paragraph",
+      "text": "Decision table testing covers combinations of conditions and their actions; state transition testing covers states, events and transitions, including invalid transitions.",
+      "document": "deck-techniques",
+      "citation": "[S26]"
+     },
+     {
+      "id": "deck-techniques-3",
+      "parent": "deck-techniques",
+      "note": "deck-techniques",
+      "type": "paragraph",
+      "text": "White-box techniques derive tests from the internal structure: statement testing aims to execute every statement, branch testing to execute every branch of every decision. Full branch coverage implies full statement coverage.",
+      "document": "deck-techniques",
+      "citation": "[S27]"
+     },
+     {
+      "id": "deck-techniques-4",
+      "parent": "deck-techniques",
+      "note": "deck-techniques",
+      "type": "paragraph",
+      "text": "Experience-based techniques use the tester's knowledge: error guessing, exploratory testing in time-boxed sessions guided by charters, and checklist-based testing.",
+      "document": "deck-techniques",
+      "citation": "[S28]"
+     },
+     {
+      "id": "deck-techniques-5",
+      "parent": "deck-techniques",
+      "note": "deck-techniques",
+      "type": "paragraph",
+      "text": "Collaboration-based approaches include writing acceptance criteria and acceptance test-driven development, where tests are written from user stories before implementation.",
+      "document": "deck-techniques",
+      "citation": "[S29]"
+     },
+     {
+      "id": "deck-management-0",
+      "parent": "deck-management",
+      "note": "deck-management",
+      "type": "paragraph",
+      "text": "A test plan describes the objectives, scope, approach, resources, schedule, risks and entry and exit criteria for testing.",
+      "document": "deck-management",
+      "citation": "[S30]"
+     },
+     {
+      "id": "deck-management-1",
+      "parent": "deck-management",
+      "note": "deck-management",
+      "type": "paragraph",
+      "text": "Entry criteria define preconditions for starting a test activity, such as an available test environment; exit criteria define when it is done, such as coverage achieved and no open critical defects.",
+      "document": "deck-management",
+      "citation": "[S31]"
+     },
+     {
+      "id": "deck-management-2",
+      "parent": "deck-management",
+      "note": "deck-management",
+      "type": "paragraph",
+      "text": "Estimation techniques include estimation based on ratios, extrapolation, Wideband Delphi and three-point estimation.",
+      "document": "deck-management",
+      "citation": "[S32]"
+     },
+     {
+      "id": "deck-management-3",
+      "parent": "deck-management",
+      "note": "deck-management",
+      "type": "paragraph",
+      "text": "Test case prioritisation orders tests by risk, by coverage or by requirements, so the most important tests run first.",
+      "document": "deck-management",
+      "citation": "[S33]"
+     },
+     {
+      "id": "deck-management-4",
+      "parent": "deck-management",
+      "note": "deck-management",
+      "type": "paragraph",
+      "text": "Test monitoring gathers information about progress; test control takes corrective actions; test completion collects results, archives testware and reports lessons learned.",
+      "document": "deck-management",
+      "citation": "[S34]"
+     },
+     {
+      "id": "deck-management-5",
+      "parent": "deck-management",
+      "note": "deck-management",
+      "type": "paragraph",
+      "text": "Configuration management keeps test items, testware and environments identified, version-controlled and traceable. Defect reports record what failed, how to reproduce it, its severity and priority.",
+      "document": "deck-management",
+      "citation": "[S35]"
+     }
+    ],
+    "webEvidence": [],
+    "webOutcomes": []
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Put atomic notes for these six decks on the canvas, so I can revise the whole course from it."
+    }
+   ],
+   "rubric": [
+    "Every deck covered with one idea per card; a frame per deck or topic; arrows within and across decks where the decks relate ideas; readable order."
+   ]
+  }
+ ]
+}

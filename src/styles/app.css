@@ -3832,6 +3832,19 @@ main:has(.settings-modal) > .editor-area {
   color: var(--ask-muted);
   font-size: 12px;
 }
+/* An outlined job's sections (OutlinePreview in ScenePreview.tsx). */
+.ask-outline-sections {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ask-outline-sections li span {
+  display: block;
+  font-size: 12px;
+  color: var(--ask-muted);
+}
 .ask-scene-outline {
   margin: 0;
   padding: 0;

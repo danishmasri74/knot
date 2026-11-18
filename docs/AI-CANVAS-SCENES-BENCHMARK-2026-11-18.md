@@ -139,3 +139,31 @@ arrives 7–15 seconds later; scenes without problems are not delayed.
 measured problems from 24 to 7, with every arrow kept and no content lost, for about two
 cents across eight scenes. Order mismatches for branches are partly a measurement artefact:
 the order check should understand side branches before it counts them.
+
+## Phase 3: big jobs in steps (18 November 2026)
+
+Suite `knot-scenes-big-v1` (`tests/benchmarks/scenes-big.v1.json`): one request, "Put atomic
+notes for these six decks on the canvas, so I can revise the whole course from it", over 35
+synthetic paragraphs (maintenance, lifecycle, levels and types, static testing, techniques,
+management). Staged with `tests/benchmarks/build-scenes.mjs` and the generic file suite
+(`KNOT_BENCHMARK_SUITE=file`), then reviewed with `review-scenes.mjs` and replayed.
+
+| Step | Run | What happened | Cost | Time |
+|---|---|---|---|---|
+| Request | `6fee6d67…` | The model chose to outline: 6 sections, one per deck, each saying exactly what it covers | US$0.007 | 10 s |
+| Sections | `31b9ce92…` | 6 section builds, all valid: 66 objects, 39 arrows within sections | US$0.054 | 98 s |
+| Connect | `eed11165…` | 7 arrows between sections; sections arranged | US$0.012 | 9 s |
+| Review 1 | | 56 problems → 27 (crossings 39 → 19, arrow crossings 14 → 4) | US$0.017 | 10 s |
+| Review 2 | | 27 → 17 | US$0.015 | 11 s |
+| **Total** | | | **about US$0.105** | **about 2.3 min** |
+
+The app's estimate from the outline request alone would have said about US$0.12 and about 2
+minutes.
+
+Replayed on a real canvas: **60 cards in 6 frames, 46 arrows (7 between decks), no overlaps,
+no source passage left out (0 of 47)**. Arrows running over cards: 32 before review, 12 after.
+
+**Verdict:** phase 3 meets its exit criterion: every deck's passages are kept, with a frame
+per deck and links across decks. The remaining crossings are long links between distant
+frames; a review cannot always shorten them without moving whole sections, which it did
+only partly. Running total for these benchmarks about **US$0.30** of the approved US$1.20.

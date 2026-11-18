@@ -4,7 +4,7 @@ import {
   cleanAiProposal,
   cleanScene,
 } from "../../../services/ai-generated-content";
-import { validateScene, type Scene } from "./scene";
+import { readOutline, validateScene, type Scene, type SceneOutline } from "./scene";
 import { applyScene } from "./scene-apply";
 import { ConnectorMode } from "@blocksuite/blocks";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
@@ -85,6 +85,9 @@ export type AiProposal = {
   layout?: LayoutKind | "auto";
   /** create_on_canvas: a scene the model composed (scene.ts). */
   scene?: Scene;
+  /** create_on_canvas, for a job too large for one reply: its sections,
+   * built one at a time before there is a scene (scene-build.ts). */
+  outline?: SceneOutline;
 };
 export type { AiQuestion } from "../../../services/ai-quiz";
 export type AiLink = {
@@ -530,6 +533,13 @@ export function validateProposal(
   /** Canvas map handles the request could refer to (K1, F2…). */
   handles: Set<string> = new Set(),
 ): AiProposal {
+  // An outline: a job too large for one reply, built in sections.
+  const saved = value as { outline?: unknown; scene?: unknown };
+  const outline = readOutline(saved?.outline ?? value, handles);
+  if (outline) {
+    const built = saved?.scene ? validateProposal({ scene: saved.scene }, webContext, handles).scene : undefined;
+    return { replacements: [], blocks: [], outline, ...(built && { scene: built }) };
+  }
   // A scene: create_on_canvas's arguments, or one saved with a chat.
   const raw = value as { objects?: unknown; scene?: unknown };
   if (raw && (Array.isArray(raw.objects) || raw.scene)) {
@@ -1065,6 +1075,8 @@ export function applyAiProposal(
   settled?: Promise<void>;
   report?: string[];
 } {
+  if (input.outline && !input.scene)
+    throw new Error("Build the sections first, then apply them.");
   if (input.scene) {
     if (mode !== "canvas") throw new Error("This proposal belongs on the canvas.");
     const handles = context.canvasMap

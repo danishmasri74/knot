@@ -28,7 +28,9 @@ fn live_quality_benchmark() {
     // KNOT_BENCHMARK_SUITE=review runs scene reviews generated from a scenes
     // run (tests/benchmarks/review-scenes.mjs); KNOT_BENCHMARK_INPUT names the
     // generated file under tests/benchmarks/results.
-    let review = std::env::var("KNOT_BENCHMARK_SUITE").as_deref() == Ok("review");
+    // KNOT_BENCHMARK_SUITE=file runs any generated file the same way (the
+    // staged builds of build-scenes.mjs).
+    let review = matches!(std::env::var("KNOT_BENCHMARK_SUITE").as_deref(), Ok("review" | "file"));
     // Per-case input reservation. The largest v1 case used 1,219 input tokens
     // (5 November 2026); 20,000 leaves a 16x margin, and any request reporting
     // more stops the run. Maximum output is capped by the request (6,000).
@@ -42,9 +44,13 @@ fn live_quality_benchmark() {
     // tokens here so spending can't exceed what is reserved.
     let scene_output: u64 = if scenes { 12_000 } else { SCENE_MAX_OUTPUT };
     // A review reads a whole scene and a picture, and writes only changes.
-    let input_reserve: u64 = if scenes { 10_000 } else { 20_000 };
+    // Generated files may say how much input their cases need.
+    let input_reserve: u64 = if scenes { 10_000 } else {
+        std::env::var("KNOT_BENCHMARK_INPUT_RESERVE").ok().and_then(|n| n.parse().ok()).unwrap_or(20_000)
+    };
     let output_cap = |case: &Value| -> u64 {
-        if case["mode"] == "scene_review" { 8_000 }
+        if case["mode"] == "scene_review" || case["mode"] == "scene_connect" { 8_000 }
+        else if case["mode"] == "scene_section" { 10_000 }
         else if case["tools"].as_array().is_some_and(|tools| tools.iter().any(|t| t == "create_on_canvas")) { scene_output } else { 6000 }
     };
     let limits = |case: &Value| -> (u64, u64, f64) {
