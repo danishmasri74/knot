@@ -47,7 +47,6 @@ try {
     const ai = await import("/src/features/editor/blocksuite/ai.ts");
     const { formatCanvasMap } = await import("/src/services/canvas-map-format.ts");
     const { uncoveredPassages } = await import("/src/services/ai-atomize.ts");
-    const { chooseLayout } = await import("/src/features/editor/blocksuite/ai-layout.ts");
     const { aiBlockText } = await import("/src/features/editor/blocksuite/ai-content.ts");
     const { sceneTexts } = await import("/src/features/editor/blocksuite/scene.ts");
     // The anchoring case's canvas: a chapter card and an unrelated card.
@@ -90,7 +89,7 @@ try {
       }
       return { d, editor, existing };
     };
-    window.__replay = { build, ai, formatCanvasMap, uncoveredPassages, chooseLayout, aiBlockText, sceneTexts };
+    window.__replay = { build, ai, formatCanvasMap, uncoveredPassages, aiBlockText, sceneTexts };
   });
 
   if (printMap) {
@@ -108,7 +107,7 @@ try {
         continue;
       }
       const result = await page.evaluate(async (job) => {
-        const { build, ai, formatCanvasMap, uncoveredPassages, chooseLayout, aiBlockText, sceneTexts } = window.__replay;
+        const { build, ai, formatCanvasMap, uncoveredPassages, aiBlockText, sceneTexts } = window.__replay;
         const { d, editor, existing } = await build(!!job.map);
         const context = ai.captureAiContext(editor, "replay", existing.chapter ?? null);
         const captured = context.canvasMap ? formatCanvasMap(context.canvasMap) : "";
@@ -216,7 +215,8 @@ try {
           applied: true,
           sameMap,
           plan: proposal.scene?.plan ?? "",
-          layout: proposal.scene ? "scene" : chooseLayout(proposal.blocks.length, proposal.connections ?? []).kind,
+          // Older runs' card proposals can't be applied since phase 5.
+          layout: proposal.scene ? "scene" : "cards",
           counts: {
             cards: fresh.filter((o) => o.kind === "card").length,
             frames: fresh.filter((o) => o.kind === "frame").length,

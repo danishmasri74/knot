@@ -71,11 +71,18 @@ try {
           context,
           {
             replacements: [],
-            blocks: [
-              { type: "paragraph", text: "Start" },
-              { type: "paragraph", text: "Finish" },
-            ],
-            connections: [{ from: 0, to: 1, label: "Next" }],
+            blocks: [],
+            scene: {
+              plan: "", anchor: { near: "", side: "" }, sections: [],
+              objects: ["Start", "Finish"].map((text, i) => ({
+                id: `c${i}`, kind: "card", ref: "", text, content: [], nodes: [], shape: "", in: "",
+                place: i ? { rel: "rightOf", of: "c0", align: "", gap: 0 } : { rel: "", of: "", align: "", gap: 0 },
+                cell: [], width: 0, color: "", direction: "", order: 0, role: "",
+              })),
+              arrangements: [],
+              connectors: [{ from: "c0", to: "c1", label: "Next", heads: "to", style: "", color: "", reason: "" }],
+              notes: [],
+            },
           },
           "canvas",
         );

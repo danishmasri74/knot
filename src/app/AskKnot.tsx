@@ -150,10 +150,6 @@ import {
   type BuildFiles,
 } from "../features/editor/blocksuite/scene-build";
 import { reviewScene } from "../features/editor/blocksuite/scene-review";
-import {
-  chooseLayout,
-  type LayoutKind,
-} from "../features/editor/blocksuite/ai-layout";
 import { savedSearchText } from "../features/editor/blocksuite/search";
 import {
   attachments,
@@ -203,7 +199,8 @@ type Turn = {
   built?: Record<string, unknown>;
   /** How far building an outline got (scene-build.ts). */
   build?: { state: "building" | "stopped" | "failed" | "done"; done: number; total: number; error?: string };
-  /** connect_cards: suggestions the user unticked (indexes). */
+  /** Arrows the user unticked (indexes): a scene's arrows between existing
+   * cards, or an older Knot's connect_cards suggestions. */
   skipped?: number[];
   /** What an applied proposal created (a note, quiz or the first canvas
    * card): its first block, for the Open button. */
@@ -350,32 +347,22 @@ function chosenArrows(turn: Turn) {
     (_, i) => !turn.skipped?.includes(i),
   );
 }
-/** The arrangement an arrange_cards proposal will use, for the preview. */
-function arrangeKind(turn: Turn): LayoutKind {
-  const requested = turn.proposal?.layout;
-  if (requested && requested !== "auto") return requested;
-  const map = turn.context?.canvasMap;
-  if (!map || !turn.proposal?.cards) return "grid";
-  const handles = canvasHandles(map);
-  const ids = turn.proposal.cards.map((h) => handles.get(h)?.id);
-  const edges = map.arrows.flatMap((a) => {
-    const from = ids.indexOf(a.from);
-    const to = ids.indexOf(a.to);
-    return from < 0 || to < 0 ? [] : [{ from, to, label: a.label }];
+/**
+ * A scene's arrows between things already on the canvas, which the user can
+ * tick or untick before applying, each with its reason.
+ */
+function existingArrows(scene: NonNullable<AiProposal["scene"]>) {
+  const handleOf = (end: string) => {
+    if (/^[KFTMG]\d+$/.test(end)) return end;
+    const o = scene.objects.find((x) => x.id === end);
+    return o?.kind === "existing" ? o.ref : undefined;
+  };
+  return scene.connectors.flatMap((arrow, index) => {
+    const from = handleOf(arrow.from);
+    const to = handleOf(arrow.to);
+    return from && to ? [{ arrow, index, from, to }] : [];
   });
-  return chooseLayout(ids.length, edges).kind;
 }
-/** How a canvas proposal's cards will be laid out, for the preview. */
-function layoutName(kind: LayoutKind) {
-  return kind === "flow"
-    ? ", laid out as a flow from left to right"
-    : kind === "tree"
-      ? ", laid out as a tree"
-      : kind === "hub"
-        ? ", laid out around a central card"
-        : "";
-}
-
 export function AskKnot(props: AskKnotProps) {
   const [loaded, setLoaded] = useState<{ chats: Chat[]; error: string }>();
   const { workspace } = props;
@@ -2682,7 +2669,7 @@ function AskKnotPanel({
                 ? tools.length && (options?.onlyTool || editIntent(input))
                   ? "rewrite"
                   : // Connections and map checks on a canvas need judgement.
-                    (tools.includes("connect_cards") && connectIntent(input))
+                    (tools.includes("create_on_canvas") && connectIntent(input))
                     ? "connect"
                     : "ask"
                 : action,
@@ -2856,11 +2843,7 @@ function AskKnotPanel({
               ? "Suggested note"
               : proposed === "quiz"
                 ? "Suggested quiz"
-                : proposed === "arrange"
-                  ? "Suggested arrangement"
-                  : proposed === "connect"
-                    ? "Suggested connections"
-                  : draft.proposal.outline && !draft.proposal.scene
+                : draft.proposal.outline && !draft.proposal.scene
                     ? "Suggested outline"
                   : "Suggested addition";
         draft.content = action === "auto" ? output.trim() || label : label;
@@ -3466,7 +3449,7 @@ function AskKnotPanel({
                           : turn.mode === "connect"
                             ? `Add ${chosenArrows(turn).length} of ${turn.proposal.arrows?.length ?? 0} connections`
                             : turn.mode === "arrange"
-                            ? `Arrange ${turn.proposal.cards?.length ?? 0} cards${layoutName(arrangeKind(turn))}`
+                            ? `Arrange ${turn.proposal.cards?.length ?? 0} cards`
                             : turn.mode === "note"
                             ? "Create note in this notebook"
                             : turn.mode === "quiz"
@@ -3496,7 +3479,45 @@ function AskKnotPanel({
                           />
                         )}
                         {turn.proposal.scene && (
-                          <ScenePreview scene={turn.proposal.scene} review={turn.review} />
+                          <ScenePreview
+                            scene={turn.proposal.scene}
+                            review={turn.review}
+                            title={(handle) => mapTitle(turn, handle)}
+                          />
+                        )}
+                        {turn.proposal.scene && existingArrows(turn.proposal.scene).length > 0 && (
+                          <>
+                            <p className="ask-links-title">Arrows between cards already on the canvas</p>
+                            <ul className="ask-connect-list">
+                              {existingArrows(turn.proposal.scene).map(({ arrow, index, from, to }) => (
+                                <li key={index}>
+                                  <label>
+                                    <input
+                                      type="checkbox"
+                                      checked={!turn.skipped?.includes(index)}
+                                      disabled={!!turn.status || busy || !turn.context}
+                                      onChange={(event) => {
+                                        const skipped = new Set(turn.skipped);
+                                        if (event.target.checked) skipped.delete(index);
+                                        else skipped.add(index);
+                                        turn.skipped = [...skipped].sort((a, b) => a - b);
+                                        update([...turns]);
+                                      }}
+                                    />
+                                    <span>
+                                      <strong>
+                                        {mapTitle(turn, from) || "A card"}
+                                        {" → "}
+                                        {arrow.label ? `${arrow.label} → ` : ""}
+                                        {mapTitle(turn, to) || "a card"}
+                                      </strong>
+                                      {arrow.reason && <small>{arrow.reason}</small>}
+                                    </span>
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
                         )}
                         {turn.proposal.mindmap?.map((node, i, nodes) => (
                           <p key={i}>
@@ -3511,14 +3532,7 @@ function AskKnotPanel({
                           !!turn.proposal.blocks.length && (
                             <p>
                               Create {turn.proposal.blocks.length} cards and{" "}
-                              {turn.proposal.connections?.length ?? 0} arrows
-                              {layoutName(
-                                chooseLayout(
-                                  turn.proposal.blocks.length,
-                                  turn.proposal.connections ?? [],
-                                ).kind,
-                              )}
-                              .
+                              {turn.proposal.connections?.length ?? 0} arrows.
                             </p>
                           )}
                         {turn.mode === "canvas" &&
@@ -3686,7 +3700,17 @@ function AskKnotPanel({
                                       ...turn.proposal!,
                                       arrows: chosenArrows(turn),
                                     }
-                                  : turn.proposal!,
+                                  : turn.proposal!.scene && turn.skipped?.length
+                                    ? {
+                                        ...turn.proposal!,
+                                        scene: {
+                                          ...turn.proposal!.scene,
+                                          connectors: turn.proposal!.scene.connectors.filter(
+                                            (_, i) => !turn.skipped!.includes(i),
+                                          ),
+                                        },
+                                      }
+                                    : turn.proposal!,
                                 turn.mode!,
                                 turn.replaces
                                   ? { replaces: turn.replaces }

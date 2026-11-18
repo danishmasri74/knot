@@ -15,3 +15,4 @@
 - Asking for atomic notes, flashcards or revision notes while a canvas is open puts them on the canvas instead of answering with a wall of text.
 - Suggested buttons under an answer use your own words and build from the original sources, not just the answer.
 - Break this into ideas lays out the new cards with structure and arrows, in a frame where the card was.
+- Ask Knot tidies, rearranges, regroups and connects cards already on the canvas with the same layout skills it uses for new content; suggested connections between your cards still come with reasons you can tick or untick.

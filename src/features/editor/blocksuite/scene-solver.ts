@@ -9,7 +9,6 @@
  * Free of the editor so it can be unit tested. See
  * docs/AI-CANVAS-ORCHESTRATION-PLAN.md §4.
  */
-import { labelGap } from "./ai-layout";
 import {
   readingOrder,
   type Scene,
@@ -32,6 +31,8 @@ export type SolveInput = {
   anchor?: Box;
   /** Where the scene starts when there's no anchor. */
   origin?: [number, number];
+  /** Existing objects the scene lists but doesn't move: where they are. */
+  fixed?: Map<string, Box>;
 };
 export type SolveResult = {
   /** Absolute boxes for every object, frames included. */
@@ -39,6 +40,24 @@ export type SolveResult = {
   report: string[];
 };
 
+/** Widest gap an arrow label may claim. */
+const MAX_LABEL_GAP = 340;
+/**
+ * Gap that keeps an arrow's label (16 px, drawn at the arrow's middle) in
+ * the space between two objects instead of over them.
+ */
+export function labelGap(labels: (string | undefined)[], base = 140) {
+  const widest = Math.max(
+    0,
+    ...labels.map((label) =>
+      Array.from(label?.trim() ?? "").reduce(
+        (width, char) => width + (char.charCodeAt(0) > 255 ? 16 : 8.5),
+        0,
+      ),
+    ),
+  );
+  return Math.min(MAX_LABEL_GAP, Math.max(base, Math.ceil(widest + 56)));
+}
 /** Space between neighbours when the model doesn't give one. */
 export const NORMAL_GAP = 100;
 /** Closest two objects may sit after collision repair. */
@@ -251,6 +270,14 @@ export function solveScene(scene: Scene, input: SolveInput): SolveResult {
     };
     const placed: Unit[] = [];
     const fixed: Box[] = root ? [...(input.obstacles ?? [])] : [];
+    // Existing objects that don't move are already placed.
+    const pinned = new Set(root ? units.filter((u) => input.fixed?.has(u.id)).map((u) => u.id) : []);
+    for (const u of units)
+      if (pinned.has(u.id)) {
+        const b = input.fixed!.get(u.id)!;
+        u.at = [b[0], b[1]];
+        placed.push(u);
+      }
     const boxOf = (u: Unit): Box => [u.at![0], u.at![1], u.w, u.h];
     /** Box of the referenced thing in this container's coordinates. */
     const refBox = (ref: string): Box | undefined => {
@@ -365,6 +392,10 @@ export function solveScene(scene: Scene, input: SolveInput): SolveResult {
     // then moved clear of the canvas as a group below.
     const settled: Unit[] = [];
     for (const u of placed) {
+      if (pinned.has(u.id)) {
+        settled.push(u);
+        continue;
+      }
       const start = u.at!;
       for (let i = 0; i < 200; i++) {
         const b = boxOf(u);
@@ -459,6 +490,7 @@ export function solveScene(scene: Scene, input: SolveInput): SolveResult {
     }
     // Units tied to existing objects slide off anything they'd cover.
     for (const u of tied) {
+      if (pinned.has(u.id)) continue;
       for (let i = 0; i < 200; i++) {
         const b = boxOf(u);
         const hit = [...fixed, ...settled.filter((s) => s !== u).map(boxOf)].find((f) => overlaps(b, f));
@@ -473,6 +505,7 @@ export function solveScene(scene: Scene, input: SolveInput): SolveResult {
   };
   /** Placed relative to an existing canvas object, directly or through others. */
   function tiedToCanvas(u: Unit, all: Unit[], seen = new Set<string>()): boolean {
+    if (input.fixed?.has(u.id)) return true;
     if (!u.place.of || seen.has(u.id)) return false;
     if (handles.has(u.place.of)) return true;
     seen.add(u.id);

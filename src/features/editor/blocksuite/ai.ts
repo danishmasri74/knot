@@ -17,16 +17,9 @@ import { mcqDecks } from "./mcq-block";
 import { captureCanvasMap } from "./canvas-map";
 import {
   canvasHandles,
-  type CanvasHandleTarget,
   type CanvasMapData,
 } from "../../../services/canvas-map-format";
-import { Text } from "@blocksuite/store";
-import {
-  clearPlacement,
-  relationStroke,
-  uncoveredPassages,
-  type Box,
-} from "../../../services/ai-atomize";
+import type { Box } from "../../../services/ai-atomize";
 import { mcqReferenceFlavour } from "./card-deck";
 import {
   quizCardPlacement,
@@ -39,8 +32,9 @@ import {
   type QuizTarget,
 } from "../../../services/ai-quiz";
 import { youtubeVideoId } from "../../../services/youtube-transcript";
-import { aiConnectorPorts, layoutCards, type LayoutKind } from "./ai-layout";
-import { dissolveDotsAmong, isRerouteDot } from "./reroute";
+import { isRerouteDot } from "./reroute";
+/** How older Knot's arrange_cards arranged cards; kept to read saved chats. */
+type LayoutKind = "flow" | "tree" | "hub" | "grid";
 import { fitInViewport } from "./canvas-viewport";
 import type { AiPdfFile, AiPdfSource } from "../../../services/pdf-input";
 import type { BlockModel, Doc } from "@blocksuite/store";
@@ -55,7 +49,6 @@ import type {
 import {
   type AiBlock,
   validAiContent,
-  aiBlockText,
   aiBlockSize,
   appendAiBlock,
 } from "./ai-content";
@@ -854,190 +847,6 @@ function applyQuiz(
   return Object.assign(undo, { noteId });
 }
 
-/**
- * Moves existing canvas cards into the arrangement their arrows describe (or
- * the requested one). The group stays where it was, moved down only past
- * other objects; frames holding any of the cards are fitted around their
- * members. One undo step.
- */
-function applyArrange(
-  doc: Doc,
-  workspace: string,
-  context: AiContext,
-  proposal: AiProposal,
-): (() => void) & { noteId?: string } {
-  if (
-    doc !== context.instance ||
-    doc.id !== context.document ||
-    workspace !== context.workspace ||
-    version(doc) !== context.version ||
-    doc.readonly
-  )
-    throw new Error("This edit is stale. Capture fresh context and try again.");
-  const map = context.canvasMap;
-  if (!map || !proposal.cards?.length)
-    throw new Error("Open the canvas to arrange cards.");
-  const handles = canvasHandles(map);
-  const cards = proposal.cards.map((handle) => {
-    const target = handles.get(handle);
-    const model = target ? doc.getBlock(target.id)?.model : undefined;
-    const box = model ? parseBox((model as { xywh?: unknown }).xywh) : undefined;
-    if (!target || !model || !box)
-      throw new Error(
-        "Some of these cards aren't on the canvas any more. Try again.",
-      );
-    return { model, box, title: target.title };
-  });
-  const index = new Map(cards.map((c, i) => [c.model.id, i]));
-  const edges = map.arrows.flatMap((arrow) => {
-    const from = arrow.from ? index.get(arrow.from) : undefined;
-    const to = arrow.to ? index.get(arrow.to) : undefined;
-    return from === undefined || to === undefined
-      ? []
-      : [{ from, to, label: arrow.label }];
-  });
-  const laid = layoutCards(
-    cards.map((c) => c.title),
-    edges,
-    0,
-    cards.map((c) => ({ width: c.box[2], height: c.box[3] })),
-    proposal.layout ?? "auto",
-    0,
-    false,
-  );
-  const width = Math.max(...laid.bounds.map((b) => b[0] + b[2]));
-  const height = Math.max(...laid.bounds.map((b) => b[1] + b[3]));
-  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
-    | SurfaceBlockModel
-    | undefined;
-  const moving = new Set(cards.map((c) => c.model.id));
-  const frames = map.frames.filter((f) => f.members.some((id) => moving.has(id)));
-  const occupied = canvasObstacles(
-    doc,
-    // Objects sharing a frame with the arranged cards may stay inside it.
-    (id) => moving.has(id) || frames.some((f) => f.members.includes(id)),
-    false,
-  );
-  const region = clearPlacement(
-    Math.min(...cards.map((c) => c.box[0])),
-    Math.min(...cards.map((c) => c.box[1])),
-    occupied,
-    [width, height],
-  );
-  const next = laid.bounds.map(
-    ([x, y, w, h]): Box => [x + region[0], y + region[1], w, h],
-  );
-  doc.captureSync();
-  doc.transact(() => {
-    // Reroute points between the arranged cards would stay in the old
-    // layout; their arrows are joined back into direct ones.
-    if (surface) dissolveDotsAmong(surface, moving);
-    cards.forEach((card, i) =>
-      doc.updateBlock(card.model, {
-        xywh: `[${next[i].join(",")}]`,
-      } as never),
-    );
-    // Fit each frame around its members, moved or not.
-    for (const frame of frames) {
-      const model = doc.getBlock(frame.id)?.model;
-      if (!model) continue;
-      const boxes = frame.members.flatMap((id) => {
-        const i = index.get(id);
-        if (i !== undefined) return [next[i]];
-        const other =
-          doc.getBlock(id)?.model ?? surface?.getElementById(id) ?? undefined;
-        const b = other && "xywh" in other ? parseBox(other.xywh) : undefined;
-        return b ? [b] : [];
-      });
-      if (!boxes.length) continue;
-      const left = Math.min(...boxes.map((b) => b[0])) - FRAME_PAD;
-      const top = Math.min(...boxes.map((b) => b[1])) - FRAME_TOP;
-      const right = Math.max(...boxes.map((b) => b[0] + b[2])) + FRAME_PAD;
-      const bottom = Math.max(...boxes.map((b) => b[1] + b[3])) + FRAME_PAD;
-      doc.updateBlock(model, {
-        xywh: `[${left},${top},${right - left},${bottom - top}]`,
-      } as never);
-    }
-  });
-  doc.captureSync();
-  const item = doc.history.undoStack.at(-1);
-  const appliedVersion = version(doc);
-  const undo = () => {
-    undoApplied(doc, item, appliedVersion);
-  };
-  return Object.assign(undo, { noteId: cards[0].model.id });
-}
-
-/**
- * Adds the suggested arrows between existing objects, skipping any that
- * already exist in the same direction. One undo step.
- */
-function applyConnect(
-  doc: Doc,
-  workspace: string,
-  context: AiContext,
-  proposal: AiProposal,
-): (() => void) & { noteId?: string } {
-  if (
-    doc !== context.instance ||
-    doc.id !== context.document ||
-    workspace !== context.workspace ||
-    version(doc) !== context.version ||
-    doc.readonly
-  )
-    throw new Error("This edit is stale. Capture fresh context and try again.");
-  const map = context.canvasMap;
-  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
-    | SurfaceBlockModel
-    | undefined;
-  if (!map || !surface || !proposal.arrows?.length)
-    throw new Error("Choose at least one connection to add.");
-  const handles = canvasHandles(map);
-  const resolve = (handle: string) => {
-    const target = handles.get(handle);
-    if (
-      !target?.box ||
-      !(doc.getBlock(target.id) || surface.getElementById(target.id))
-    )
-      throw new Error(
-        "Some of these cards aren't on the canvas any more. Try again.",
-      );
-    return target as Required<CanvasHandleTarget>;
-  };
-  const existing = new Set(map.arrows.map((a) => `${a.from}>${a.to}`));
-  const todo = proposal.arrows
-    .map((arrow) => ({ arrow, from: resolve(arrow.from), to: resolve(arrow.to) }))
-    .filter(({ from, to }) => !existing.has(`${from.id}>${to.id}`));
-  if (!todo.length)
-    throw new Error("These connections are already on the canvas.");
-  const mode = {
-    curve: ConnectorMode.Curve,
-    elbowed: ConnectorMode.Orthogonal,
-    straight: ConnectorMode.Straight,
-  }[getAiConnectorShape()];
-  doc.captureSync();
-  doc.transact(() => {
-    todo.forEach(({ arrow, from, to }, index) => {
-      const ports = aiConnectorPorts(from.box, to.box);
-      surface.addElement({
-        type: "connector",
-        mode,
-        stroke: relationStroke(arrow.label) || aiConnectorStroke(index),
-        source: { id: from.id, position: ports.source },
-        target: { id: to.id, position: ports.target },
-        text: new Y.Text(arrow.label),
-        ...connectorLabel(arrow.label),
-      });
-    });
-  });
-  doc.captureSync();
-  const item = doc.history.undoStack.at(-1);
-  const appliedVersion = version(doc);
-  return () => {
-    undoApplied(doc, item, appliedVersion);
-  };
-}
-
 /** Save one chat response as one editable card, including structured previews. */
 export function addAiMessageCard(doc: Doc, blocks: AiBlock[]) {
   blocks = blocks.map(cleanAiBlock);
@@ -1109,19 +918,17 @@ export function applyAiProposal(
   }
   const proposal = validateProposal(input, context.webContext);
   if (mode === "quiz") return applyQuiz(doc, workspace, context, proposal);
-  if (mode === "arrange")
-    return applyArrange(doc, workspace, context, proposal);
-  if (mode === "connect")
-    return applyConnect(doc, workspace, context, proposal);
+  // Canvas content is a scene now; cards, arrangements and connections from
+  // an older Knot's proposals can't be applied.
+  if (mode === "canvas" || mode === "arrange" || mode === "connect")
+    throw new Error("This suggestion came from an older version of Knot. Ask again to get a new one.");
   const allRefs = [
-    ...new Set([
-      ...proposal.blocks.flatMap((b) => [
+    ...new Set(
+      proposal.blocks.flatMap((b) => [
         ...(b.sourceRefs ?? []),
         ...(b.children ?? []).flatMap((c) => c.sourceRefs ?? []),
       ]),
-      ...(proposal.connections ?? []).flatMap((c) => c.sourceRefs ?? []),
-      ...(proposal.mindmap ?? []).flatMap((n) => n.sourceRefs ?? []),
-    ]),
+    ),
   ];
   // Resolve and serialize every source before mutating the document.
   webProvenance(context.webContext, allRefs);
@@ -1165,7 +972,6 @@ export function applyAiProposal(
   ) {
     throw new Error("Open a notebook to add the new note.");
   } else if (
-    mode !== "canvas" &&
     mode !== "note" &&
     (!context.note ||
       doc.getBlock(context.note)?.model.flavour !== "affine:note" ||
@@ -1173,139 +979,7 @@ export function applyAiProposal(
       proposal.replacements.length)
   )
     throw new Error("Open a note before inserting content.");
-  const surface = doc.getBlocksByFlavour("affine:surface")[0]?.model as
-    SurfaceBlockModel | undefined;
-  if (
-    mode === "canvas" &&
-    (!context.canvas ||
-      !surface ||
-      !doc.root ||
-      !(proposal.blocks.length || proposal.mindmap?.length) ||
-      proposal.blocks.length > 20 ||
-      proposal.replacements.length)
-  )
-    throw new Error("Open a canvas to create up to 20 cards.");
-  const connections = proposal.connections ?? [];
-  // Break this into ideas: the cards take the original's place, in a frame
-  // with its title, and the original goes to Trash. Passages the cards don't
-  // cover are kept word for word on an "Other details" card.
-  let replaced:
-    | { note: NoteBlockModel; title: string; region: Box; shift: [number, number] }
-    | undefined;
-  if (mode === "canvas" && options?.replaces) {
-    const found = doc.getBlock(options.replaces)?.model;
-    const note =
-      found?.flavour === "affine:note" ? (found as NoteBlockModel) : undefined;
-    const box = note ? parseBox(note.xywh) : undefined;
-    if (!note || !box || note.isLocked())
-      throw new Error(
-        "The original card is unavailable. Select it again and retry.",
-      );
-    if (!proposal.blocks.length)
-      throw new Error("This suggestion has no cards to replace the card with.");
-    const source = structuredAiBlocks(note).map((b) => b.text);
-    const uncovered = uncoveredPassages(source, [
-      ...proposal.blocks.map(aiBlockText),
-      ...connections.map((c) => c.label),
-      ...(proposal.mindmap ?? []).map((n) => n.text),
-    ]);
-    if (uncovered.length)
-      proposal.blocks.push({
-        type: "paragraph",
-        text: "Other details",
-        columns: [],
-        rows: [],
-        children: [
-          ...uncovered.slice(0, 29),
-          ...(uncovered.length > 29 ? [uncovered.slice(29).join(" ")] : []),
-        ].map((text) => ({ type: "bulleted" as const, text, columns: [], rows: [] })),
-      });
-    // Lay the cards out, then move the whole group where the original was,
-    // or down past anything in the way.
-    const laid = layoutCards(
-      proposal.blocks.map(aiBlockText),
-      connections,
-      0,
-      proposal.blocks.map(aiBlockSize),
-    ).bounds;
-    const minX = Math.min(...laid.map((b) => b[0]));
-    const minY = Math.min(...laid.map((b) => b[1]));
-    const width = Math.max(...laid.map((b) => b[0] + b[2])) - minX + 2 * FRAME_PAD;
-    const height =
-      Math.max(...laid.map((b) => b[1] + b[3])) - minY + FRAME_PAD + FRAME_TOP;
-    // Arrows and groups don't block; the arrows to the original move.
-    const occupied = canvasObstacles(doc, (id) => id === note.id);
-    const region = clearPlacement(box[0], box[1], occupied, [width, height]);
-    replaced = {
-      note,
-      title:
-        source.find((t) => t.trim())?.split("\n")[0].trim().slice(0, 120) ||
-        "Ideas",
-      region,
-      shift: [region[0] + FRAME_PAD - minX, region[1] + FRAME_TOP - minY],
-    };
-  }
-  // Links to existing objects resolve through the canvas map captured with
-  // the request; the document revision is unchanged, so its IDs still hold.
-  const handles = context.canvasMap
-    ? canvasHandles(context.canvasMap)
-    : new Map<string, CanvasHandleTarget>();
-  const links =
-    mode === "canvas"
-      ? (proposal.links ?? []).map((link) => {
-          const target = handles.get(link.existing);
-          if (
-            !target?.box ||
-            target.id === options?.replaces ||
-            !(doc.getBlock(target.id) || surface?.getElementById(target.id))
-          )
-            throw new Error(
-              "This proposal links to something that isn't on the canvas any more. Try again.",
-            );
-          return { ...link, target: target as Required<CanvasHandleTarget> };
-        })
-      : [];
-  // Where the new cards go as a group: the replaced card's place, or beside
-  // the existing objects they link to, clear of anything in the way.
-  let placed: { shift: [number, number]; top: number } | undefined = replaced
-    ? { shift: replaced.shift, top: replaced.region[1] }
-    : undefined;
-  if (!placed && links.length && proposal.blocks.length) {
-    const laid = layoutCards(
-      proposal.blocks.map(aiBlockText),
-      connections,
-      0,
-      proposal.blocks.map(aiBlockSize),
-    ).bounds;
-    const minX = Math.min(...laid.map((b) => b[0]));
-    const minY = Math.min(...laid.map((b) => b[1]));
-    const size: [number, number] = [
-      Math.max(...laid.map((b) => b[0] + b[2])) - minX,
-      Math.max(...laid.map((b) => b[1] + b[3])) - minY,
-    ];
-    const targets = links.map((l) => l.target.box);
-    const occupied = canvasObstacles(doc);
-    const region = clearPlacement(
-      Math.max(...targets.map((b) => b[0] + b[2])) + 160,
-      Math.min(...targets.map((b) => b[1])),
-      occupied,
-      size,
-    );
-    placed = { shift: [region[0] - minX, region[1] - minY], top: region[1] };
-  }
-  const connectorMode = {
-    curve: ConnectorMode.Curve,
-    elbowed: ConnectorMode.Orthogonal,
-    straight: ConnectorMode.Straight,
-  }[getAiConnectorShape()];
-  // New cards start right of everything, so none covers a PDF or image.
-  const right =
-    mode === "canvas"
-      ? Math.max(0, ...canvasObstacles(doc).map((b) => b[0] + b[2] + 80))
-      : 0;
   let noteId: string | undefined;
-  /** Cards and mind map made on the canvas, to bring into view. */
-  const created: string[] = [];
   doc.captureSync();
   doc.transact(() => {
     if (mode === "note") {
@@ -1342,164 +1016,6 @@ export function applyAiProposal(
             child.text,
           );
       }
-    } else if (mode === "canvas") {
-      // Laid out by the structure the arrows describe (flow, tree, hub or grid).
-      const laidOut = layoutCards(
-        proposal.blocks.map(aiBlockText),
-        connections,
-        placed ? 0 : right,
-        proposal.blocks.map(aiBlockSize),
-      );
-      const bounds = laidOut.bounds.map(([x, y, w, h]): [number, number, number, number] =>
-        placed
-          ? [x + placed.shift[0], y + placed.shift[1], w, h]
-          : [x, y, w, h],
-      );
-      if (proposal.mindmap?.length) {
-        type Node = { text: string; children: Node[]; xywh?: string };
-        const nodes: Node[] = proposal.mindmap.map(({ text }) => ({
-          text,
-          children: [],
-        }));
-        const mapLeft = bounds.length
-          ? Math.max(...bounds.map(([x, , width]) => x + width)) + 160
-          : right;
-        nodes[0].xywh = JSON.stringify([
-          mapLeft,
-          placed ? placed.top : 0,
-          180,
-          50,
-        ]);
-        proposal.mindmap.forEach(({ parent }, i) => {
-          if (i) nodes[parent].children.push(nodes[i]);
-        });
-        created.push(
-          surface!.addElement({ type: "mindmap", children: nodes[0] }),
-        );
-      }
-      const ids = proposal.blocks.map((block, i) => {
-        const [x, y, w, h] = bounds[i];
-        const id = doc.addBlock(
-          "affine:note",
-          { xywh: `[${x},${y},${w},${h}]` },
-          doc.root!,
-        );
-        appendAiBlock(doc, id, block);
-        appendWebProvenance(
-          doc,
-          id,
-          context.webContext,
-          [...(block.sourceRefs ?? [])],
-          block.text,
-        );
-        for (const child of block.children ?? [])
-          appendWebProvenance(
-            doc,
-            id,
-            context.webContext,
-            child.sourceRefs ?? [],
-            child.text,
-          );
-        for (const edge of connections.filter((c) => c.from === i))
-          appendWebProvenance(
-            doc,
-            id,
-            context.webContext,
-            edge.sourceRefs ?? [],
-            `Connection: ${edge.label}`,
-          );
-        return id;
-      });
-      // The first new card, for Show on canvas.
-      noteId = ids[0];
-      created.push(...ids);
-      if (proposal.mindmap?.some((n) => n.sourceRefs?.length)) {
-        const id =
-          ids[0] ??
-          doc.addBlock(
-            "affine:note",
-            {
-              xywh: `[${right},${Math.max(0, ...bounds.map((b) => b[1] + b[3])) + 100},420,320]`,
-            },
-            doc.root!,
-          );
-        for (const node of proposal.mindmap)
-          appendWebProvenance(
-            doc,
-            id,
-            context.webContext,
-            node.sourceRefs ?? [],
-            `Mind map node: ${node.text}`,
-          );
-      }
-      for (const [index, c] of connections.entries()) {
-        // In a tree, a child below its parent joins top to bottom, so no
-        // arrow runs behind a sibling card.
-        const ports =
-          laidOut.kind === "tree" &&
-          bounds[c.from][1] >= bounds[c.to][1] + bounds[c.to][3]
-            ? { source: [0.5, 0], target: [0.5, 1] }
-            : aiConnectorPorts(bounds[c.from], bounds[c.to]);
-        surface!.addElement({
-          type: "connector",
-          mode: connectorMode,
-          // Typed arrows from Break this into ideas share a color per type.
-          stroke: (replaced && relationStroke(c.label)) || aiConnectorStroke(index),
-          source: { id: ids[c.from], position: ports.source },
-          target: { id: ids[c.to], position: ports.target },
-          text: new Y.Text(c.label),
-          ...connectorLabel(
-            c.label,
-            laidOut.kind === "tree"
-              ? treeLabelDistance(bounds[c.from], bounds[c.to])
-              : undefined,
-          ),
-        });
-      }
-      // Arrows between new cards and the existing objects they link to.
-      for (const [index, link] of links.entries()) {
-        const ports = aiConnectorPorts(bounds[link.card], link.target.box);
-        // Ports were measured from the new card to the existing object.
-        const fromNew = { id: ids[link.card], position: ports.source };
-        const toOld = { id: link.target.id, position: ports.target };
-        surface!.addElement({
-          type: "connector",
-          mode: connectorMode,
-          stroke:
-            relationStroke(link.label) ||
-            aiConnectorStroke(connections.length + index),
-          source: link.toExisting ? fromNew : toOld,
-          target: link.toExisting ? toOld : fromNew,
-          text: new Y.Text(link.label),
-          ...connectorLabel(link.label),
-        });
-      }
-      if (replaced) {
-        const original = replaced.note.id;
-        const frame = doc.addBlock(
-          "affine:frame" as never,
-          {
-            title: new Text(replaced.title),
-            xywh: `[${replaced.region.join(",")}]`,
-            childElementIds: Object.fromEntries(ids.map((id) => [id, true])),
-          },
-          surface!.id,
-        );
-        // Arrows that pointed at the original now point at its frame.
-        for (const element of surface!.elementModels) {
-          if (element.type !== "connector") continue;
-          const edge = element as unknown as {
-            id: string;
-            source?: { id?: string };
-            target?: { id?: string };
-          };
-          if (edge.source?.id === original)
-            surface!.updateElement(edge.id, { source: { id: frame } });
-          if (edge.target?.id === original)
-            surface!.updateElement(edge.id, { target: { id: frame } });
-        }
-        doc.deleteBlock(replaced.note);
-      }
     } else if (mode === "rewrite") {
       for (let i = context.ranges.length - 1; i >= 0; i--) {
         const r = context.ranges[i],
@@ -1527,29 +1043,11 @@ export function applyAiProposal(
           );
       }
   });
-  // The original's card goes to Trash with it unless it is shown elsewhere;
-  // Undo bringing the note back reclaims it.
-  const deck = replaced ? mcqDecks.get(doc.spaceDoc) : undefined;
-  const replacedCard = replaced
-    ? doc.spaceDoc.getMap<string>("knot:card-links").get(replaced.note.id)
-    : undefined;
-  const trashed =
-    !!replacedCard && !!deck?.trashUnplaced(replacedCard);
-  let item = doc.history.undoStack.at(-1);
-  let appliedVersion = version(doc);
-  const finishCapture = () => {
-    doc.captureSync();
-    item = doc.history.undoStack.at(-1);
-    appliedVersion = version(doc);
-  };
-  // BlockSuite lays out newly created mind maps in a microtask.
-  if (proposal.mindmap?.length) queueMicrotask(finishCapture);
-  else finishCapture();
-  const undo = () => {
-    undoApplied(doc, item, appliedVersion);
-    if (trashed) deck!.restore(replacedCard!);
-  };
-  return Object.assign(undo, { noteId, created });
+  doc.captureSync();
+  const item = doc.history.undoStack.at(-1);
+  const appliedVersion = version(doc);
+  const undo = () => undoApplied(doc, item, appliedVersion);
+  return Object.assign(undo, { noteId, created: [] as string[] });
 }
 
 /**
@@ -1688,23 +1186,6 @@ export function observeArrowLabelColors(doc: Doc) {
   };
 }
 
-/**
- * In a tree, every child's elbow arrow shares the horizontal line to its
- * parent, so a label in the middle cuts that shared line. Put it on the
- * child's own vertical stretch instead: halfway up the first segment, which
- * runs to the midpoint between the levels.
- */
-function treeLabelDistance(child: Box, parent: Box) {
-  const childTop = child[1];
-  const parentBottom = parent[1] + parent[3];
-  const rise = Math.abs(childTop - parentBottom);
-  const across = Math.abs(child[0] + child[2] / 2 - (parent[0] + parent[2] / 2));
-  if (!rise) return 0.5;
-  return Math.min(0.5, Math.max(0.05, rise / 4 / (rise + across)));
-}
-
-const FRAME_PAD = 40;
-const FRAME_TOP = 60;
 /**
  * Everything on the canvas new cards must not cover: cards, the blocks kept
  * under the surface (PDFs and other attachments, images, embeds and, unless

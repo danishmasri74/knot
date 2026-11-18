@@ -12,6 +12,7 @@ const kindLabel: Record<SceneObject["kind"], string> = {
   shape: "Shape",
   frame: "Section",
   mindmap: "Mind map",
+  existing: "Move",
 };
 
 /**
@@ -21,13 +22,19 @@ const kindLabel: Record<SceneObject["kind"], string> = {
 export function ScenePreview({
   scene,
   review,
+  title,
 }: {
   scene: Scene;
+  /** The title of something already on the canvas, by its map handle. */
+  title?: (handle: string) => string;
   /** The draft check before this preview, if it found anything. */
   review?: { rounds: number; summaries: string[]; before: number; after: number };
 }) {
   const titleOf = (o: SceneObject) =>
-    o.text || (o.kind === "mindmap" ? o.nodes[0]?.text : "") || kindLabel[o.kind];
+    (o.kind === "existing" ? title?.(o.ref) || "a card already on the canvas" : "") ||
+    o.text ||
+    (o.kind === "mindmap" ? o.nodes[0]?.text : "") ||
+    kindLabel[o.kind];
   const outline = (container: string, depth: number): React.ReactNode[] =>
     readingOrder(scene.objects.filter((o) => o.in === container)).flatMap((o) => [
       <li key={o.id} className="ask-scene-item" data-kind={o.kind} style={{ paddingLeft: depth * 14 }}>

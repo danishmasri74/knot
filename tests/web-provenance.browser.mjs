@@ -92,19 +92,22 @@ try {
       },
     };
     const context = composeAiContext("{}", [attempt]);
+    // A scene: two cards and an arrow, each citing the captured page.
+    const card = (id, text, place) => ({
+      id, kind: "card", ref: "", text, content: [], nodes: [], shape: "", in: "",
+      place: place ?? { rel: "", of: "", align: "", gap: 0 }, cell: [], width: 0, color: "",
+      direction: "", order: 0, role: "", sourceRefs: ["capture/s1"],
+    });
     const proposal = {
       replacements: [],
-      blocks: [
-        {
-          type: "paragraph",
-          text: "Supported card",
-          sourceRefs: ["capture/s1"],
-        },
-        { type: "paragraph", text: "Related card", sourceRefs: ["capture/s1"] },
-      ],
-      connections: [
-        { from: 0, to: 1, label: "supports", sourceRefs: ["capture/s1"] },
-      ],
+      blocks: [],
+      scene: {
+        plan: "", anchor: { near: "", side: "" }, sections: [],
+        objects: [card("a", "Supported card"), card("b", "Related card", { rel: "rightOf", of: "a", align: "", gap: 0 })],
+        arrangements: [],
+        connectors: [{ from: "a", to: "b", label: "supports", heads: "to", style: "", color: "", reason: "", sourceRefs: ["capture/s1"] }],
+        notes: [],
+      },
     };
     a.doc.resetHistory();
     const captured = {
@@ -224,11 +227,21 @@ try {
     const mindmap = {
       replacements: [],
       blocks: [],
-      connections: [],
-      mindmap: [
-        { text: "Root", parent: -1, sourceRefs: ["capture/s1"] },
-        { text: "Fact", parent: 0, sourceRefs: ["capture/s1"] },
-      ],
+      scene: {
+        plan: "", anchor: { near: "", side: "" }, sections: [],
+        objects: [{
+          id: "m", kind: "mindmap", ref: "", text: "", content: [], shape: "", in: "",
+          place: { rel: "", of: "", align: "", gap: 0 }, cell: [], width: 0, color: "", direction: "",
+          order: 0, role: "", sourceRefs: [],
+          nodes: [
+            { text: "Root", parent: -1, sourceRefs: ["capture/s1"] },
+            { text: "Fact", parent: 0, sourceRefs: ["capture/s1"] },
+          ],
+        }],
+        arrangements: [],
+        connectors: [],
+        notes: [],
+      },
     };
     const before = reopened.doc.getBlocksByFlavour("knot:web-source").length;
     const undoMap = applyAiProposal(
@@ -241,7 +254,7 @@ try {
       mindmap,
       "canvas",
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await undoMap.settled;
     if (
       reopened.doc.getBlocksByFlavour("knot:web-source").length !==
       before + 2

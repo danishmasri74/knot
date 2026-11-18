@@ -1,7 +1,7 @@
 # AI canvas orchestration — plan
 
-Status: phases 1 to 4 built (17–18 November 2026); phases 1 to 3 benchmarked and
-phase 4's routing checked. Phase 5 is a proposal.
+Status: all five phases built (17–18 November 2026) and checked against paid
+benchmarks; see docs/AI-CANVAS-SCENES-BENCHMARK-2026-11-18.md.
 
 Phase 1 as built:
 
@@ -76,6 +76,27 @@ Phase 4 as built (18 November 2026):
   Trash, and one undo restores everything (`wrapForReplacement`,
   `applyScene` with `replaces`). The draft check doesn't run on
   replacements yet.
+
+Phase 5 as built (18 November 2026):
+
+- Scenes edit what is already on the canvas: an object of kind `existing`
+  names a map handle (`ref`); cards and text can be placed, put in an
+  arrangement, moved into a scene frame or into an existing frame (`in`
+  given an F handle, which then grows to fit); frames and mind maps already
+  there are fixed references. Listed objects that don't move stay pinned;
+  unlisted objects are untouched. Frames whose cards are tidied keep them
+  and are fitted around them; reroute points between moved cards are
+  dissolved, as the old arrange did.
+- Arrows between existing objects carry a reason; the preview lists them
+  with checkboxes, as `connect_cards` did.
+- A scene may be only connectors (and existing objects).
+- `arrange_cards` and `connect_cards` are gone, and so are `ai-layout.ts`
+  (`chooseLayout`, `layoutCards` and their fixed limits) and the old canvas
+  path in `applyAiProposal` (cards, connections, links and the old
+  Break this into ideas). Proposals saved from older Knot still show as
+  read-only previews but can't be applied. The forced `canvas` mode and
+  its rules remain in `ai.rs` for the benchmark fixtures only; the app
+  sends `scene` instead.
 
 Ask Knot can read the canvas (the canvas map, `view_canvas`) but it can't
 compose on it. This plan hands composition to the model: it decides what goes

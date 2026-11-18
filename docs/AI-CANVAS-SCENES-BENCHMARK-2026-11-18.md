@@ -185,3 +185,21 @@ attempts. Running total about **US$0.34** of the approved US$1.20. Placement in 
 and Break this into ideas on the scene path are covered by unit and browser tests
 (`tests/canvas-map-format.test.ts`, `tests/scene-build.test.ts`,
 `tests/ai-scene-replace.browser.mjs`), not by a paid run.
+
+## Phase 5: arranging and connecting as scenes (18 November 2026)
+
+The four arrange and connect cases of `knot-canvas-v1`, sent with the scene tool only
+(`arrange_cards` and `connect_cards` removed; `results/canvas-phase5.json`), Terra, two
+runs (`881907b7…`, then `94d7f8b9…` after the tool's rules named arranging and connecting
+and existing frames could take objects in), **about US$0.034** in all:
+
+| Case | Old tools (16 Nov) | Scene tool |
+|---|---|---|
+| 08 What connections are missing? | connect_cards; Terra made one cautious, correct suggestion | Answered in chat: nothing clearly missing, and two existing arrows look mislabelled (static vs dynamic testing "contrasts with", early testing "can use" static testing) |
+| 09 Tidy up the Testing principles frame | arrange_cards, the frame's 4 cards | The 4 cards as existing objects in a grid; they stay in their frame, which is fitted around them |
+| 10 Lay out all my cards as a flow | arrange_cards, 8 cards, flow | All 8 cards as existing objects in a column (first run: two rows) |
+| 12 Add a reviews card linked to static testing | create_on_canvas with a link | A new card beside static testing with an arrow to it |
+
+Covered in a real editor by `tests/ai-scene-existing.browser.mjs` (tidy in place, regroup
+into a new section, connect existing cards, unlisted cards untouched, one undo).
+Running total about **US$0.37** of the approved US$1.20.

@@ -142,3 +142,40 @@ describe("phase 4", () => {
     expect(followUpMessage(step, "Answer text")).not.toContain("originally asked");
   });
 });
+
+describe("phase 5", () => {
+  it("edits what's on the canvas: movable cards, fixed frames, joining an existing frame", async () => {
+    const { validateScene } = await import("../src/features/editor/blocksuite/scene");
+    const s = validateScene(
+      {
+        plan: "", anchor: { near: "", side: "" },
+        objects: [
+          card("k1", { kind: "existing", ref: "K1", text: "ignored", place: { rel: "below", of: "K2", align: "", gap: 0 } }),
+          card("f1", { kind: "existing", ref: "F1", place: { rel: "rightOf", of: "K2", align: "", gap: 0 } }),
+          card("dup", { kind: "existing", ref: "K1" }),
+          card("gone", { kind: "existing", ref: "K9" }),
+          card("new", { in: "F1" }),
+        ],
+        arrangements: [], connectors: [{ from: "k1", to: "K2", label: "part of", heads: "to", style: "", color: "", reason: "Reviews are static testing. And more." }],
+      },
+      new Set(["K1", "K2", "F1"]),
+    );
+    expect(s.objects.map((o) => o.id)).toEqual(["k1", "f1", "new"]);
+    expect(s.objects[0]).toMatchObject({ ref: "K1", text: "", place: { rel: "below", of: "K2" } });
+    expect(s.objects[1].place.rel).toBe("");
+    expect(s.objects[2]).toMatchObject({ in: "", into: "F1", place: { rel: "near", of: "F1" } });
+    expect(s.connectors[0].reason).toBe("Reviews are static testing.");
+    expect(s.notes.join(" ")).toMatch(/F1 stays where it is.*listed twice.*K9 isn't on the canvas/);
+  });
+
+  it("accepts a scene that only connects what's there", async () => {
+    const { validateScene } = await import("../src/features/editor/blocksuite/scene");
+    const s = validateScene(
+      { plan: "", anchor: { near: "", side: "" }, objects: [], arrangements: [],
+        connectors: [{ from: "K1", to: "K2", label: "leads to", heads: "to", style: "", color: "", reason: "" }] },
+      new Set(["K1", "K2"]),
+    );
+    expect(s.connectors).toHaveLength(1);
+    expect(() => validateScene({ objects: [], connectors: [] })).toThrow();
+  });
+});

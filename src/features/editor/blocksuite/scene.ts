@@ -10,7 +10,7 @@
  */
 import type { AiBlock, AiContent } from "./ai-content";
 
-export const SCENE_KINDS = ["card", "text", "shape", "frame", "mindmap"] as const;
+export const SCENE_KINDS = ["card", "text", "shape", "frame", "mindmap", "existing"] as const;
 export const SCENE_SHAPES = [
   "rect",
   "roundedRect",
@@ -52,6 +52,9 @@ export type ScenePlace = {
 export type SceneObject = {
   id: string;
   kind: (typeof SCENE_KINDS)[number];
+  /** kind existing: the canvas map handle of what is already there (K, T
+   * can move; F, M are fixed references). Empty for new objects. */
+  ref: string;
   /** Card title, frame title, text, shape label or mind map title. */
   text: string;
   /** A card's formatted body. */
@@ -61,6 +64,8 @@ export type SceneObject = {
   shape: (typeof SCENE_SHAPES)[number] | "";
   /** The frame this object sits in, or "". */
   in: string;
+  /** An existing frame (its F handle) this object goes in; it grows to fit. */
+  into?: string;
   place: ScenePlace;
   /** [column, row] in the container's grid, or []. */
   cell: number[];
@@ -93,6 +98,8 @@ export type SceneConnector = {
   to: string;
   label: string;
   heads: "to" | "from" | "both" | "none";
+  /** Between two existing objects: what in their text supports it. */
+  reason: string;
   style: "solid" | "dashed" | "";
   color: SceneColor | "";
   sourceRefs?: string[];
@@ -129,6 +136,12 @@ const CONTENT_TYPES = new Set([
 ]);
 
 const isString = (v: unknown): v is string => typeof v === "string";
+/** A reason as its first sentence, at most 240 characters. */
+const firstSentence = (text: string) => {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  const first = trimmed.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? trimmed;
+  return first.length > 240 ? `${first.slice(0, 239).trimEnd()}…` : first;
+};
 const oneOf = <T extends string>(list: readonly T[], v: unknown, fallback: T | "" = "") =>
   (list as readonly unknown[]).includes(v) ? (v as T) : fallback;
 
@@ -167,13 +180,14 @@ function place(value: unknown): ScenePlace {
  */
 export function validateScene(value: unknown, handles: Set<string> = new Set()): Scene {
   const raw = value as Partial<Scene> & Record<string, unknown>;
-  if (!raw || !Array.isArray(raw.objects) || !raw.objects.length)
+  if (!raw || !Array.isArray(raw.objects))
     throw new Error("The canvas response has nothing to create. Please try again.");
   if (raw.objects.length > MAX_SCENE_OBJECTS)
     throw new Error("The canvas response is too large. Ask for it in parts.");
   const notes: string[] = [];
   const objects: SceneObject[] = [];
   const ids = new Set<string>();
+  const refs = new Set<string>();
   for (const [i, value] of raw.objects.entries()) {
     const o = value as Partial<SceneObject>;
     const kind = oneOf(SCENE_KINDS, o?.kind);
@@ -189,6 +203,24 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
       id = fresh;
     }
     ids.add(id);
+    // What's already on the canvas: moved or regrouped, never rewritten.
+    let ref = "";
+    let fixed = false;
+    if (kind === "existing") {
+      ref = isString(o.ref) ? o.ref.trim() : "";
+      if (!handles.has(ref) || AREA.test(ref)) {
+        notes.push(`Skipped "${id}": ${ref ? `${ref} isn't on the canvas` : "it names nothing on the canvas"}.`);
+        continue;
+      }
+      if (refs.has(ref)) {
+        notes.push(`${ref} was listed twice; the first one counts.`);
+        continue;
+      }
+      refs.add(ref);
+      fixed = !/^[KT]\d/.test(ref);
+      const asked = (isString(o.in) && o.in.trim()) || (o.place as ScenePlace | undefined)?.rel || (Array.isArray(o.cell) && o.cell.length);
+      if (fixed && asked) notes.push(`${ref} stays where it is: frames, groups and mind maps already on the canvas don't move.`);
+    }
     const body = Array.isArray(o.content)
       ? o.content.map(content).filter((c): c is AiContent => !!c)
       : [];
@@ -234,13 +266,14 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
     objects.push({
       id,
       kind,
-      text,
+      ref,
+      text: kind === "existing" ? "" : text,
       content: kind === "card" ? body : [],
       nodes: kind === "mindmap" ? nodes : [],
       shape: kind === "shape" ? oneOf(SCENE_SHAPES, o.shape, "rect") : "",
-      in: isString(o.in) ? o.in.trim() : "",
-      place: place(o.place),
-      cell,
+      in: !fixed && isString(o.in) ? o.in.trim() : "",
+      place: fixed ? place(undefined) : place(o.place),
+      cell: fixed ? [] : cell,
       width:
         Number.isFinite(o.width) && Number(o.width) > 0
           ? Math.max(120, Math.min(1600, Number(o.width)))
@@ -252,11 +285,19 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
       ...(Array.isArray(o.sourceRefs) && { sourceRefs: o.sourceRefs.filter(isString) }),
     });
   }
-  if (!objects.length)
-    throw new Error("The canvas response has nothing to create. Please try again.");
   const byId = new Map(objects.map((o) => [o.id, o]));
   const frames = new Set(objects.filter((o) => o.kind === "frame").map((o) => o.id));
 
+  // An existing frame as the container: the object joins that frame.
+  for (const o of objects) {
+    if (o.in && /^F\d/.test(o.in) && handles.has(o.in) && !frames.has(o.in)) {
+      o.into = o.in;
+      o.in = "";
+      // A new object without a position goes beside the frame it joins.
+      if (o.kind !== "existing" && !o.place.rel && o.cell.length !== 2)
+        o.place = { rel: "near", of: o.into, align: "start", gap: 0 };
+    }
+  }
   // Containers: only frames, and never a loop.
   for (const o of objects) {
     if (o.in && (!frames.has(o.in) || o.in === o.id)) {
@@ -291,7 +332,12 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
     const members = (Array.isArray(a.members) ? a.members : [])
       .filter(isString)
       .map((m) => m.trim())
-      .filter((m, k, list) => byId.has(m) && list.indexOf(m) === k);
+      .filter(
+        (m, k, list) =>
+          byId.has(m) &&
+          list.indexOf(m) === k &&
+          !(byId.get(m)!.kind === "existing" && !/^[KT]\d/.test(byId.get(m)!.ref)),
+      );
     const taken = members.filter((m) => arranged.has(m));
     if (taken.length)
       notes.push(`${taken.map((m) => `"${m}"`).join(", ")} already belonged to another arrangement and stayed there.`);
@@ -359,9 +405,12 @@ export function validateScene(value: unknown, handles: Set<string> = new Set()):
       heads: oneOf(["to", "from", "both", "none"] as const, c.heads, "to") as SceneConnector["heads"],
       style: oneOf(["solid", "dashed"] as const, c.style),
       color: oneOf(SCENE_COLORS, c.color),
+      reason: isString(c.reason) ? firstSentence(c.reason) : "",
       ...(Array.isArray(c.sourceRefs) && { sourceRefs: c.sourceRefs.filter(isString) }),
     });
   }
+  if (!objects.length && !connectors.length)
+    throw new Error("The canvas response has nothing to create. Please try again.");
   const anchorRaw = (raw.anchor ?? {}) as Partial<Scene["anchor"]>;
   const near = isString(anchorRaw.near) ? anchorRaw.near.trim() : "";
   return {
@@ -440,6 +489,7 @@ export function sceneSummary(scene: Scene): string {
     count(kinds("mindmap"), "mind map"),
     count(kinds("shape"), "shape"),
     count(kinds("text"), "text label"),
+    count(kinds("existing"), "move", "moves"),
     count(scene.connectors.length, "arrow"),
   ].filter(Boolean);
   return parts.length > 1
@@ -652,7 +702,7 @@ export function wrapForReplacement(
     ? [...scene.objects]
     : [
         {
-          id: frame, kind: "frame", text: title || "Ideas", content: [], nodes: [], shape: "", in: "",
+          id: frame, kind: "frame", ref: "", text: title || "Ideas", content: [], nodes: [], shape: "", in: "",
           place: { rel: "", of: "", align: "", gap: 0 }, cell: [], width: 0, color: "", direction: "",
           order: 0, role: "replaces the card",
         },
@@ -660,7 +710,7 @@ export function wrapForReplacement(
       ];
   if (uncovered.length)
     objects.push({
-      id: fresh("other-details"), kind: "card", text: "Other details",
+      id: fresh("other-details"), kind: "card", ref: "", text: "Other details",
       content: [
         ...uncovered.slice(0, 29),
         ...(uncovered.length > 29 ? [uncovered.slice(29).join(" ")] : []),

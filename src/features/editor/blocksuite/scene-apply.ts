@@ -11,6 +11,7 @@ import { Text, type Doc } from "@blocksuite/store";
 import { ConnectorMode, type NoteBlockModel, type SurfaceBlockModel } from "@blocksuite/blocks";
 import { uncoveredPassages } from "../../../services/ai-atomize";
 import { mcqDecks } from "./mcq-block";
+import { dissolveDotsAmong } from "./reroute";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
 import { canvasHandles } from "../../../services/canvas-map-format";
 import { aiBlockSize, appendAiBlock } from "./ai-content";
@@ -26,7 +27,7 @@ import {
   type AiContext,
 } from "./ai";
 import { sceneCardBlock, sceneTexts, wrapForReplacement, type Scene, type SceneObject } from "./scene";
-import { solveScene, type Box, type Size } from "./scene-solver";
+import { FRAME_PAD, FRAME_TOP, solveScene, type Box, type Size } from "./scene-solver";
 
 type SceneUndo = (() => void) & {
   noteId?: string;
@@ -139,6 +140,8 @@ export function planScene(
   const handles = new Map<string, Box>();
   const handleIds = new Map<string, string>();
   const used = new Set<string>([
+    ...scene.objects.map((o) => o.ref),
+    ...scene.objects.map((o) => o.into ?? ""),
     ...scene.objects.map((o) => o.place.of),
     ...scene.arrangements.map((a) => a.place.of),
     ...scene.connectors.flatMap((c) => [c.from, c.to]),
@@ -156,6 +159,33 @@ export function planScene(
     handles.set(handle, target.box as Box);
     handleIds.set(handle, target.id);
   }
+  // What's already on the canvas: moved ones are placed like new objects but
+  // keep their size; listed ones that don't move are pinned where they are.
+  const existingIds = new Map<string, string>();
+  const fixed = new Map<string, Box>();
+  const moved = new Set<string>();
+  const arranged = new Set(scene.arrangements.flatMap((a) => a.members));
+  const frameOf = (id: string) => context.canvasMap?.frames.find((f) => f.members.includes(id))?.id;
+  /** Existing objects that end up in another frame, so they leave theirs. */
+  const switching = new Set<string>();
+  for (const o of scene.objects) {
+    if (o.kind !== "existing") continue;
+    const id = handleIds.get(o.ref);
+    const box = handles.get(o.ref);
+    if (!id || !box) throw new Error("This refers to something that isn't on the canvas any more. Try again.");
+    existingIds.set(o.id, id);
+    // Joining an existing frame it isn't in: it moves beside that frame.
+    const target = o.into ? handleIds.get(o.into) : undefined;
+    if (target && target !== frameOf(id)) {
+      switching.add(id);
+      if (!o.place.rel && o.cell.length !== 2 && !arranged.has(o.id))
+        o.place = { rel: "near", of: o.into!, align: "start", gap: 0 };
+    }
+    const moves =
+      /^[KT]\d/.test(o.ref) && (!!o.place.rel || o.cell.length === 2 || !!o.in || arranged.has(o.id));
+    if (moves) moved.add(id);
+    else if (!o.in) fixed.set(o.id, box);
+  }
   // A free area holds the scene: it starts at the area's corner.
   const area = /^A\d+$/.test(scene.anchor.near) ? handles.get(scene.anchor.near) : undefined;
   const replaces = options.replaces;
@@ -165,19 +195,53 @@ export function planScene(
       ? selectionBox(context)
       : handles.get(scene.anchor.near);
   // A replacement takes the original's place, which no longer blocks.
-  const obstacles = canvasObstacles(doc, replaces ? (id) => id === replaces.id : undefined);
+  const listed = new Set(existingIds.values());
+  // Frames whose cards move, unless those cards go into a frame of the scene:
+  // they stay their frame and fit around them, so they don't block them.
+  const regrouped = new Set([
+    ...scene.objects.filter((o) => o.kind === "existing" && o.in).map((o) => existingIds.get(o.id)!),
+    ...switching,
+  ]);
+  const homeFrames = [
+    ...new Set([
+      ...(context.canvasMap?.frames ?? [])
+        .filter((f) => f.members.some((id) => moved.has(id) && !regrouped.has(id)))
+        .map((f) => f.id),
+      // Existing frames that take objects in.
+      ...scene.objects.flatMap((o) => (o.into && handleIds.get(o.into) ? [handleIds.get(o.into)!] : [])),
+    ]),
+  ];
+  const obstacles = canvasObstacles(
+    doc,
+    (id) => id === replaces?.id || listed.has(id) || homeFrames.includes(id),
+  );
+  // Rearranging what's there keeps it roughly where it was.
+  const movedBoxes = scene.objects
+    .filter((o) => moved.has(existingIds.get(o.id) ?? ""))
+    .map((o) => handles.get(o.ref)!);
+  const rearranged: [number, number] | undefined =
+    !scene.anchor.near && movedBoxes.length
+      ? [Math.min(...movedBoxes.map((b) => b[0])), Math.min(...movedBoxes.map((b) => b[1]))]
+      : undefined;
   const origin: [number, number] = replaces
     ? [replaces.box[0], replaces.box[1]]
+    : rearranged
+    ? rearranged
     : area
     ? [area[0], area[1]]
     : scene.anchor.near === "view" && options.view
       ? [options.view[0] + 60, options.view[1] + 60]
       : [Math.max(0, ...obstacles.map((b) => b[0] + b[2] + 80)), 0];
-  const sizes = new Map(scene.objects.map((o) => [o.id, estimate(o)]));
+  const sizes = new Map(
+    scene.objects.map((o) => {
+      const box = o.kind === "existing" ? handles.get(o.ref) : undefined;
+      return [o.id, box ? { width: box[2], height: box[3] } : estimate(o)];
+    }),
+  );
   const solve = () =>
-    solveScene(scene, { sizes, handles, obstacles, anchor, origin });
+    solveScene(scene, { sizes, handles, obstacles, anchor: rearranged ? undefined : anchor, origin, fixed });
   const { boxes, report } = solve();
-  return { surface, handles, handleIds, sizes, solve, boxes, report };
+  return { surface, handles, handleIds, existingIds, moved, regrouped, homeFrames, sizes, solve, boxes, report };
 }
 
 export function applyScene(
@@ -212,7 +276,33 @@ export function applyScene(
     view: options.view,
     ...(replaced && { replaces: { id: replaced.note.id, box: replaced.box } }),
   });
-  const { surface, handleIds, sizes, solve } = planned;
+  const { surface, handleIds, existingIds, moved, regrouped, homeFrames, sizes, solve } = planned;
+  /** Fits frames whose cards moved around their members again. */
+  const refit = () => {
+    for (const frameId of homeFrames) {
+      const frame = doc.getBlock(frameId)?.model as unknown as
+        | { childElementIds?: Record<string, boolean> }
+        | undefined;
+      if (!frame) continue;
+      const members = Object.keys(frame.childElementIds ?? {}).flatMap((id) => {
+        const m = (doc.getBlock(id)?.model ?? surface.getElementById(id)) as unknown as { xywh?: unknown } | null;
+        const b = parseBox(m?.xywh);
+        return b ? [b as Box] : [];
+      });
+      if (!members.length) continue;
+      const x = Math.min(...members.map((b) => b[0])) - FRAME_PAD;
+      const y = Math.min(...members.map((b) => b[1])) - FRAME_TOP;
+      const w = Math.max(...members.map((b) => b[0] + b[2])) + FRAME_PAD - x;
+      const h = Math.max(...members.map((b) => b[1] + b[3])) + FRAME_PAD - y;
+      doc.updateBlock(frame as never, { xywh: xywh([x, y, w, h]) } as never);
+    }
+  };
+  /** Moves an object already on the canvas (a card or a canvas element). */
+  const move = (id: string, box: Box) => {
+    const model = doc.getBlock(id)?.model;
+    if (model) doc.updateBlock(model, { xywh: xywh(box) } as never);
+    else surface.updateElement(id, { xywh: xywh(box) } as never);
+  };
   let { boxes } = planned;
   let report = [...scene.notes, ...planned.report];
 
@@ -231,8 +321,17 @@ export function applyScene(
   // Creation, arrows and final placement are one undo step.
   history.captureTimeout = 60_000;
   doc.transact(() => {
+    // Reroute points between moved cards belong to the old layout; their
+    // arrows are joined back into direct ones.
+    if (moved.size) dissolveDotsAmong(surface, moved);
     for (const o of scene.objects) {
       const box = boxes.get(o.id)!;
+      if (o.kind === "existing") {
+        const id = existingIds.get(o.id)!;
+        ids.set(o.id, id);
+        if (moved.has(id)) move(id, box);
+        continue;
+      }
       if (o.kind === "card") {
         const id = doc.addBlock(
           "affine:note",
@@ -297,8 +396,36 @@ export function applyScene(
             ...(o.direction && { layoutType: LAYOUT[o.direction] }),
           } as never),
         );
+        // A mind map's web evidence goes on a companion card under it.
+        if (o.nodes.some((n) => n.sourceRefs?.length)) {
+          const note = doc.addBlock(
+            "affine:note",
+            { xywh: xywh([box[0], box[1] + box[3] + 60, 420, 200]) } as never,
+            doc.root!,
+          );
+          doc.addBlock("affine:paragraph", { text: new Text(`Sources for “${o.nodes[0].text}”`) } as never, note);
+          for (const node of o.nodes)
+            appendWebProvenance(doc, note, context.webContext, node.sourceRefs ?? [], `Mind map node: ${node.text}`);
+        }
       }
     }
+    // Objects put in a frame of the scene leave the frames they were in.
+    for (const { model } of doc.getBlocksByFlavour("affine:frame")) {
+      const held = (model as unknown as { childElementIds?: Record<string, boolean> }).childElementIds ?? {};
+      if (Object.keys(held).some((id) => regrouped.has(id)))
+        doc.updateBlock(model, {
+          childElementIds: Object.fromEntries(Object.entries(held).filter(([id]) => !regrouped.has(id))),
+        } as never);
+    }
+    // Objects joining an existing frame.
+    for (const o of scene.objects) {
+      const target = o.into ? handleIds.get(o.into) : undefined;
+      const frame = target ? (doc.getBlock(target)?.model as unknown as { childElementIds?: Record<string, boolean> } | undefined) : undefined;
+      const id = ids.get(o.id);
+      if (frame && id && !frame.childElementIds?.[id])
+        doc.updateBlock(frame as never, { childElementIds: { ...(frame.childElementIds ?? {}), [id]: true } } as never);
+    }
+    refit();
     // Frames last: they list what they hold, and sit behind it.
     const frames = scene.objects.filter((o) => o.kind === "frame");
     for (const f of [...frames].reverse()) {
@@ -386,6 +513,9 @@ export function applyScene(
         rearEndpointStyle: c.heads === "to" || c.heads === "both" ? "Arrow" : "None",
         ...(c.label && { text: new Y.Text(c.label), ...connectorLabel(c.label) }),
       } as never);
+      // An arrow's web evidence is kept on the new card it starts from.
+      if (c.sourceRefs?.length && doc.getBlock(from)?.model.flavour === "affine:note")
+        appendWebProvenance(doc, from, context.webContext, c.sourceRefs, `Connection: ${c.label}`);
     }
     if (replaced) {
       // Arrows that pointed at the original now point at its frame.
@@ -447,6 +577,9 @@ export function applyScene(
   options.reveal?.(created);
   result.settled = (async () => {
     try {
+      // Undone before it settled: nothing left to place.
+      const gone = () =>
+        [...ids.values()].every((id) => !doc.getBlock(id) && !surface.getElementById(id));
       let last = "";
       let still = 0;
       for (let frame = 0; frame < MEASURE_FRAMES; frame++) {
@@ -456,6 +589,7 @@ export function applyScene(
         last = key;
         if (frame >= MIN_MEASURE_FRAMES && still >= 3) break;
       }
+      if (gone()) return;
       const real = measured();
       for (const [id, s] of real) sizes.set(id, s);
       const next = solve();
@@ -470,7 +604,9 @@ export function applyScene(
             const id = ids.get(o.id);
             const box = next.boxes.get(o.id)!;
             if (!id) continue;
-            if (o.kind === "card" || o.kind === "frame") {
+            if (o.kind === "existing") {
+              if (moved.has(id)) move(id, box);
+            } else if (o.kind === "card" || o.kind === "frame") {
               const model = doc.getBlock(id)?.model;
               // A card keeps the height the editor measured.
               if (model) doc.updateBlock(model, { xywh: xywh(box) } as never);
@@ -481,6 +617,7 @@ export function applyScene(
               element?.moveTo?.(box);
             } else surface.updateElement(id, { xywh: xywh(box) } as never);
           }
+          refit();
         });
       boxes = next.boxes;
       report = [...scene.notes, ...next.report, ...report.filter((r) => r.startsWith("Left out"))];
