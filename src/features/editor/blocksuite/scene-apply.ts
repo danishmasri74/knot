@@ -14,7 +14,7 @@ import { mcqDecks } from "./mcq-block";
 import { dissolveDotsAmong } from "./reroute";
 import { getAiConnectorShape } from "../../../services/ai-preferences";
 import { canvasHandles } from "../../../services/canvas-map-format";
-import { aiBlockSize, appendAiBlock, type AiCite } from "./ai-content";
+import { aiBlockSize, aiReadableCitations, appendAiBlock, type AiCite } from "./ai-content";
 import { resolvePdfCitation } from "../../../services/pdf-citations";
 import { pdfSourceUrl } from "./pdf-highlights";
 import { appendWebProvenance } from "./web-source";
@@ -443,7 +443,8 @@ export function applyScene(
           surface.addElement({
             type: "text",
             xywh: xywh(box),
-            text: new Y.Text(o.text),
+            // A canvas text label can't hold links; citations at least read cleanly.
+            text: new Y.Text(aiReadableCitations(o.text, cite)),
             color: ARROW_LABEL_COLOR,
             fontSize: 24,
             fontFamily: "blocksuite:surface:Inter",

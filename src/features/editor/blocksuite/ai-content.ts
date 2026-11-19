@@ -1,6 +1,6 @@
 import { Text, type Doc } from "@blocksuite/store";
 import type { DatabaseBlockModel } from "@blocksuite/blocks";
-import { PDF_CITATION } from "../../../services/pdf-citations";
+import { anyCitation } from "../../../services/pdf-citations";
 
 export type AiContent = {
   sourceRefs?: string[];
@@ -28,11 +28,33 @@ export type AiBlock = AiContent & { children?: AiContent[] };
 export type AiCite = (citation: string) => { label: string; url: string } | undefined;
 type InlineRun = { insert: string; attributes?: { bold?: true; italic?: true; link?: string } };
 
+/**
+ * Plain text that can't hold a link (a canvas text label): citations keep
+ * their place but read as "11-Testing in the Context…, slides 1–8" instead
+ * of the raw file name.
+ */
+export function aiReadableCitations(text: string, cite?: AiCite): string {
+  if (!cite) return text;
+  return text
+    .split(anyCitation())
+    .map((part, i) => {
+      if (i % 2 === 0) return part;
+      const bare = !part.startsWith("(");
+      const label = cite(bare ? `(${part})` : part)?.label;
+      return label ? (bare ? label : `(${label})`) : part;
+    })
+    .join("");
+}
+
 export function aiInlineRuns(text: string, cite?: AiCite): InlineRun[] {
   if (cite) {
-    // Citations become links; the text around them keeps its formatting.
-    return text.split(new RegExp(`(${PDF_CITATION})`, "g")).flatMap((part, i): InlineRun[] => {
-      const link = i % 2 ? cite(part) : undefined;
+    // Citations become links, with or without the parentheses the model
+    // wrote ("Source: X.pptx, slides 1–5"); the text around them keeps its
+    // formatting.
+    return text.split(anyCitation()).flatMap((part, i): InlineRun[] => {
+      const bare = !part.startsWith("(");
+      const link = i % 2 ? cite(bare ? `(${part})` : part) : undefined;
+      if (link && bare) return [{ insert: link.label, attributes: { link: link.url } }];
       if (link) return [{ insert: "(" }, { insert: link.label, attributes: { link: link.url } }, { insert: ")" }];
       return part ? aiInlineRuns(part) : [];
     });

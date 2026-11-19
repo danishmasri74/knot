@@ -11,6 +11,15 @@ export type PdfCitation = { pdf: CitedPdf; page: number; label: string };
 export const PDF_CITATION =
   /\((?:[^()\n]{1,200}?,\s*)?(?:slides?|pp?\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?\)/
     .source;
+/**
+ * The same citation written without parentheses, as in "Source:
+ * 12-Test+Levels.pptx, slides 1–5": a file name ending in its extension,
+ * then its pages. Use with String.split (no captures).
+ */
+export const NAMED_PAGES = String.raw`[^\s(),:][^()\n,:]{0,200}?\.(?:pptx?|pdf|docx?|key|odp),\s*(?:slides?|pp?\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?`;
+/** Splits text on citations with or without parentheses (one capture). */
+export const anyCitation = () => new RegExp(`(${PDF_CITATION}|${NAMED_PAGES})`, "g");
+
 const parts =
   /^\((?:([^()\n]{1,200}?),\s*)?(slides?|pp?\.|pages?)\s*(\d+)(?:\s*[-–]\s*(\d+))?\)$/;
 
@@ -56,7 +65,7 @@ export function resolvePdfCitation(
       );
   } else if (pdfs.length === 1) pdf = pdfs[0];
   if (!pdf) return;
-  const unit = kind.startsWith("s") ? "slide" : "p.";
+  const unit = kind.startsWith("s") ? (last ? "slides" : "slide") : last ? "pp." : "p.";
   const pages = last ? `${page}–${last}` : `${page}`;
   return {
     pdf,

@@ -15,7 +15,8 @@ it("opens the only PDF at the cited slide or page", () => {
     label: "slide 3",
   });
   expect(resolvePdfCitation("(p. 12)", [levels])?.page).toBe(12);
-  expect(resolvePdfCitation("(slides 3–4)", [levels])?.label).toBe("slide 3–4");
+  expect(resolvePdfCitation("(slides 3–4)", [levels])?.label).toBe("slides 3–4");
+  expect(resolvePdfCitation("(pp. 3-4)", [levels])?.label).toBe("pp. 3–4");
   expect(resolvePdfCitation("(slide 3)", [])).toBeUndefined();
 });
 

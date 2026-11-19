@@ -6,16 +6,12 @@ import {
   type SceneOutline,
 } from "../features/editor/blocksuite/scene";
 import {
-  PDF_CITATION,
+  anyCitation,
   resolvePdfCitation,
   type CitedPdf,
   type PdfCitation,
 } from "../services/pdf-citations";
 import { PdfRef } from "./PdfPreview";
-
-/** "12-Test+Levels.pptx, slides 1–5" written without parentheses. */
-const NAMED_PAGES = String.raw`[^\s(),:][^()
-,:]{0,200}?\.(?:pptx?|pdf|docx?|key|odp),\s*(?:slides?|pp?\.|pages?)\s*\d+(?:\s*[-–]\s*\d+)?`;
 
 /**
  * Splits a section's description into text and links to the pages it
@@ -25,7 +21,7 @@ const NAMED_PAGES = String.raw`[^\s(),:][^()
 export function citedParts(text: string, pdfs: CitedPdf[]): (string | PdfCitation)[] {
   if (!pdfs.length) return [text];
   let file: CitedPdf | undefined;
-  return text.split(new RegExp(`(${PDF_CITATION}|${NAMED_PAGES})`, "g")).map((part, i) => {
+  return text.split(anyCitation()).map((part, i) => {
     if (i % 2 === 0) return part;
     const bare = !part.startsWith("(");
     const citation = bare ? `(${part})` : part;

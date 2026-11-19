@@ -25,6 +25,17 @@ describe("slide citations on canvas cards", () => {
     expect(parsePdfSourceUrl(link.attributes!.link!)).toMatchObject({ key: "k11", documentId: "doc-1", page: 7, rects: [] });
     // A citation for a file that wasn't sent stays as text.
     expect(aiInlineRuns("See (other.pptx, slide 2)", cite).some((r) => r.attributes?.link)).toBe(false);
+    // Written without parentheses, as in a card's source line.
+    const bare = aiInlineRuns("Source: 11-Testing+in+the+Context+of+a+Software+Development+Lifecycle.pptx, slides 1–2.", cite);
+    expect(bare.map((r) => r.insert).join("")).toBe(
+      "Source: 11-Testing in the Context of a Software Development Lifecycle, slides 1–2.",
+    );
+    expect(parsePdfSourceUrl(bare.find((r) => r.attributes?.link)!.attributes!.link!)).toMatchObject({ key: "k11", page: 1 });
+    // A canvas text label can't hold a link, but reads cleanly.
+    const { aiReadableCitations } = await import("../src/features/editor/blocksuite/ai-content");
+    expect(aiReadableCitations("Rafal Podraza | Udemy Course\nSource: (13-Maintenance+Testing.pptx, slides 1–8)", cite)).toBe(
+      "Rafal Podraza | Udemy Course\nSource: (13-Maintenance Testing, slides 1–8)",
+    );
     // Without decks there is nothing to link.
     expect(sceneCitations({ document: "doc-1" } as never)).toBeUndefined();
   }, 60_000);
