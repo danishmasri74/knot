@@ -260,6 +260,114 @@
 .study-tracker > span[data-state="open"] {
   background: light-dark(#9fc0e3, #3d5a78);
 }
+/* An open checkpoint's segment fills as its quiz is answered. */
+.study-tracker > span {
+  position: relative;
+  overflow: hidden;
+}
+.study-tracker > span > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--control-accent);
+  transition: width 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .study-tracker > span > i {
+    transition: none;
+  }
+}
+
+/* A checkpoint (StudyCheckpoint.tsx): the header stays pinned while the
+   notes and the quiz scroll on their own, alone or side by side. */
+.study-panel.study-checkpoint {
+  container: study-checkpoint / inline-size;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.study-sticky {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 24px 10px;
+  border-bottom: 1px solid var(--shell-border);
+}
+.study-sticky-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.study-sticky-line > .study-muted {
+  flex: none;
+  white-space: nowrap;
+}
+.study-sticky-line > strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.study-sticky .tool-switch .tool-switch-option {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.study-answered {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--study-soft);
+  color: var(--study-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.study-answered[data-full="true"] {
+  background: var(--study-blue-soft);
+  color: var(--study-blue-text);
+}
+.study-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.study-col {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+}
+.study-columns[data-show="notes"] > .study-col-quiz,
+.study-columns[data-show="quiz"] > .study-col-notes {
+  display: none;
+}
+.study-columns[data-show="both"] > .study-col-notes {
+  flex: 0 0 42%;
+  max-width: 440px;
+  padding-right: 20px;
+  background: var(--study-soft);
+  border-right: 1px solid var(--shell-border);
+}
+.study-col-quiz > .study-quiz {
+  max-width: 680px;
+}
+.study-checkpoint-status {
+  flex: none;
+  padding: 0 24px 12px;
+}
+/* A narrow panel keeps the title readable: the position goes first. */
+@container study-checkpoint (max-width: 520px) {
+  .study-sticky-line > .study-muted {
+    display: none;
+  }
+}
 /* A lesson reads like a page: a comfortable line length, room between
    parts, no boxes around plain text. */
 .study-lesson {

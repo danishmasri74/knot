@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShellIcon } from "./ShellIcon";
 import type { StudyAttempt, StudyQuestion } from "../services/study-course";
 
@@ -14,6 +14,7 @@ export function StudyQuiz({
   onSubmit,
   renderSlide,
   footer,
+  onProgress,
 }: {
   title: string;
   questions: StudyQuestion[];
@@ -23,11 +24,21 @@ export function StudyQuiz({
   renderSlide: (question: StudyQuestion) => React.ReactNode;
   /** Actions after grading (Next, Retry). */
   footer?: React.ReactNode;
+  /** Called as answers change, and with the score once graded. */
+  onProgress?: (progress: {
+    answered: number;
+    total: number;
+    score?: number;
+  }) => void;
 }) {
   const [picks, setPicks] = useState<number[]>(() => questions.map(() => -1));
   const shown = graded?.picks ?? picks;
   const answered = shown.filter((p) => p >= 0).length;
   const total = questions.length;
+  const score = graded?.score;
+  useEffect(() => {
+    onProgress?.({ answered, total, score });
+  }, [onProgress, answered, total, score]);
   return (
     <section className="study-quiz" aria-label={title}>
       <header>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type * as Y from "yjs";
 import { ShellIcon } from "./ShellIcon";
 import { StudyQuiz } from "./StudyQuiz";
+import { StudyCheckpoint } from "./StudyCheckpoint";
 import { PdfRef } from "./PdfPreview";
 import { shortPdfName } from "../services/pdf-citations";
 import type { AiQuestion } from "../services/ai-quiz";
@@ -361,24 +362,29 @@ export function StudyPanel({
       <ShellIcon name="back" /> Course
     </button>
   );
-  const tracker = (
+  /** The course tracker; `fill` shows quiz answers on an open checkpoint. */
+  const trackerFor = (fill?: { index: number; fraction: number }) => (
     <div className="study-tracker" aria-label={`${progress.done} of ${progress.steps} done`}>
-      {Array.from({ length: progress.steps }, (_, i) => (
-        <span
-          key={i}
-          data-state={
-            i < course.checkpoints.length
-              ? states[i]
-              : course.final?.attempts.length
-                ? "done"
-                : allCheckpointsDone(course)
-                  ? "current"
-                  : "locked"
-          }
-        />
-      ))}
+      {Array.from({ length: progress.steps }, (_, i) => {
+        const state =
+          i < course.checkpoints.length
+            ? states[i]
+            : course.final?.attempts.length
+              ? "done"
+              : allCheckpointsDone(course)
+                ? "current"
+                : "locked";
+        return (
+          <span key={i} data-state={state}>
+            {fill?.index === i && state !== "done" && fill.fraction > 0 && (
+              <i style={{ width: `${fill.fraction * 100}%` }} />
+            )}
+          </span>
+        );
+      })}
     </div>
   );
+  const tracker = trackerFor();
 
   if (view.kind === "checkpoint") {
     const index = view.index;
@@ -387,21 +393,27 @@ export function StudyPanel({
     if (lesson) prefetch(course, index + 1);
     const graded = checkpoint ? currentAttempt(checkpoint) : undefined;
     const isLast = index === course.checkpoints.length - 1;
-    return (
-      <div className="study-panel" key={`checkpoint:${index}`}>
-        <div className="study-bar-row">
-          {back}
-          {tracker}
-          <span className="study-muted">
-            {progress.done}/{progress.steps} done
-          </span>
+    if (!checkpoint)
+      return (
+        <div className="study-panel" key={`checkpoint:${index}`}>
+          <div className="study-bar-row">
+            {back}
+            {tracker}
+          </div>
+          {status}
         </div>
-        {checkpoint && (
+      );
+    return (
+      <StudyCheckpoint
+        key={`checkpoint:${index}`}
+        back={back}
+        tracker={(fraction) => trackerFor({ index, fraction })}
+        doneLabel={`${progress.done}/${progress.steps} done`}
+        position={`Checkpoint ${index + 1} of ${course.checkpoints.length}`}
+        title={checkpoint.title}
+        status={status}
+        notes={
           <article className="study-lesson">
-            <div className="study-kicker">
-              Checkpoint {index + 1} of {course.checkpoints.length}
-            </div>
-            <h2>{checkpoint.title}</h2>
             <div className="study-sources">
               {checkpoint.slides.map((r, i) => (
                 <span key={i}>{slideChip(course, r.source, r.from, r.to)}</span>
@@ -458,76 +470,81 @@ export function StudyPanel({
                     </ul>
                   </section>
                 )}
-                <StudyQuiz
-                  key={`${index}:${lesson.round ?? 0}:${checkpoint.attempts.length}`}
-                  title={`Checkpoint ${index + 1} quiz`}
-                  questions={lesson.questions}
-                  graded={graded}
-                  renderSlide={(q) => slideChip(course, q.source, q.slide)}
-                  onSubmit={(picks) =>
-                    update(course.id, (c) => {
-                      c.checkpoints[index].attempts.push(
-                        grade(lesson.questions, picks, lesson.round ?? 0),
-                      );
-                    })
-                  }
-                  footer={
-                    <>
-                      <button
-                        type="button"
-                        disabled={!!busy || readonly}
-                        onClick={() =>
-                          void work("Writing new questions", async (signal) => {
-                            const questions = await makeDrill(
-                              course,
-                              [index],
-                              costTo(course.id),
-                              signal,
-                            );
-                            update(course.id, (c) => {
-                              const l = c.checkpoints[index].lesson;
-                              if (!l) return;
-                              l.questions = questions.map(({ area, shortcut, ...q }) => {
-                                void area;
-                                void shortcut;
-                                return q;
-                              });
-                              // A new round: earlier scores stay in the history.
-                              l.round = (l.round ?? 0) + 1;
-                            });
-                          })
-                        }
-                      >
-                        Retry with new questions
-                      </button>
-                      <button
-                        type="button"
-                        className="study-primary"
-                        onClick={() =>
-                          setView(
-                            isLast
-                              ? course.options.finalExam
-                                ? { kind: "final", id: course.id }
-                                : { kind: "course", id: course.id }
-                              : { kind: "checkpoint", id: course.id, index: index + 1 },
-                          )
-                        }
-                      >
-                        {isLast
-                          ? course.options.finalExam
-                            ? "Final exam →"
-                            : "Back to course"
-                          : `Next: ${course.checkpoints[index + 1].title} →`}
-                      </button>
-                    </>
-                  }
-                />
               </>
             )}
           </article>
-        )}
-        {status}
-      </div>
+        }
+        quiz={
+          lesson &&
+          ((onProgress) => (
+            <StudyQuiz
+              key={`${index}:${lesson.round ?? 0}:${checkpoint.attempts.length}`}
+              title={`Checkpoint ${index + 1} quiz`}
+              questions={lesson.questions}
+              graded={graded}
+              onProgress={onProgress}
+              renderSlide={(q) => slideChip(course, q.source, q.slide)}
+              onSubmit={(picks) =>
+                update(course.id, (c) => {
+                  c.checkpoints[index].attempts.push(
+                    grade(lesson.questions, picks, lesson.round ?? 0),
+                  );
+                })
+              }
+              footer={
+                <>
+                  <button
+                    type="button"
+                    disabled={!!busy || readonly}
+                    onClick={() =>
+                      void work("Writing new questions", async (signal) => {
+                        const questions = await makeDrill(
+                          course,
+                          [index],
+                          costTo(course.id),
+                          signal,
+                        );
+                        update(course.id, (c) => {
+                          const l = c.checkpoints[index].lesson;
+                          if (!l) return;
+                          l.questions = questions.map(({ area, shortcut, ...q }) => {
+                            void area;
+                            void shortcut;
+                            return q;
+                          });
+                          // A new round: earlier scores stay in the history.
+                          l.round = (l.round ?? 0) + 1;
+                        });
+                      })
+                    }
+                  >
+                    Retry with new questions
+                  </button>
+                  <button
+                    type="button"
+                    className="study-primary"
+                    onClick={() =>
+                      setView(
+                        isLast
+                          ? course.options.finalExam
+                            ? { kind: "final", id: course.id }
+                            : { kind: "course", id: course.id }
+                          : { kind: "checkpoint", id: course.id, index: index + 1 },
+                      )
+                    }
+                  >
+                    {isLast
+                      ? course.options.finalExam
+                        ? "Final exam →"
+                        : "Back to course"
+                      : `Next: ${course.checkpoints[index + 1].title} →`}
+                  </button>
+                </>
+              }
+            />
+          ))
+        }
+      />
     );
   }
 
