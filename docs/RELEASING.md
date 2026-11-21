@@ -1,6 +1,6 @@
 # Releasing Knot
 
-Releases are published as files on a public, code-free GitHub repository. The Knot source repository has no remote and is never pushed. Design and rationale: [UPDATER-INSTALLER-PLAN.md](UPDATER-INSTALLER-PLAN.md).
+Releases are published as files on a separate, code-free GitHub repository, `knot-desktop/knot-releases`, which installed copies check for updates. The source code is at `danishmasri74/knot`, and its README links to the latest release there; `pnpm release` doesn't push the source. Design and rationale: [UPDATER-INSTALLER-PLAN.md](UPDATER-INSTALLER-PLAN.md).
 
 ## One-time setup
 

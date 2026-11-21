@@ -4,6 +4,12 @@ A Windows-first, offline knowledge workspace built with Tauri 2, React, TypeScri
 
 Milestones 1–5 are complete under the acceptance scope in [the roadmap](docs/ROADMAP.md). Milestone 5 adds a compact workspace shell, contextual panels, dedicated library/workspace management surfaces, a comfortable Page reading column and the default BlockSuite Canvas toolbar. The final accessibility/consistency audit, actual Windows 100%/150% scaling checks and release/NSIS rebuild passed. The current release includes recovery, backup management, workspace relocation, exports, guarded orphan cleanup, PDF reader with highlight cards, backlinks, body search; see [verification](docs/VERIFICATION.md) for tested coverage and deferred work.
 
+## Download
+
+**[Download the latest Windows installer](https://github.com/knot-desktop/knot-releases/releases/latest)** and run `Knot_<version>_x64-setup.exe`. It needs Windows 10 or 11 and installs for your user only, so it doesn't ask for admin rights. Knot then updates itself from Settings → Updates.
+
+Windows may show a SmartScreen warning because the installer isn't code-signed yet. Choose **More info → Run anyway**.
+
 ## Development
 
 Prerequisites: Windows 10/11, Microsoft C++ Build Tools (Desktop development with C++ and Windows SDK), WebView2 Runtime, Node 22+, pnpm 10.13.1, and rustup. `rust-toolchain.toml` selects Rust 1.90.0 without changing your global toolchain.
